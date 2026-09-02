@@ -10,7 +10,7 @@ import { useAuth } from './context/AuthContext';
 
 function AppLayout({ children }) {
   return (
-    <div className="min-h-screen flex bg-white dark:bg-zinc-950 text-zinc-900 dark:text-zinc-100 transition-colors duration-200">
+    <div className="min-h-screen flex bg-slate-50/70 dark:bg-black text-slate-900 dark:text-white transition-colors duration-200">
       <Sidebar />
       <main className="flex-1 min-w-0 overflow-y-auto">
         {children}

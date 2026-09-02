@@ -39,46 +39,46 @@ export const UserDashboard = () => {
   return (
     <div className="max-w-6xl mx-auto p-4 sm:p-8 space-y-8">
       {/* Student Welcome Banner */}
-      <section className="glass-panel-light rounded-3xl p-6 sm:p-10 shadow-xl space-y-6 transition-colors duration-200">
+      <section className="basic-card p-6 sm:p-10 space-y-6">
         <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
           <div>
-            <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-zinc-100 dark:bg-zinc-900 text-zinc-900 dark:text-zinc-100 border border-zinc-300 dark:border-zinc-800 text-xs font-bold uppercase tracking-wider mb-2">
+            <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-blue-50 dark:bg-blue-950/70 text-blue-700 dark:text-blue-300 border border-blue-200 dark:border-blue-800 text-xs font-semibold uppercase tracking-wider mb-2">
               <Award className="w-3.5 h-3.5" /> Student Dashboard
             </div>
-            <h2 className="text-3xl font-black text-zinc-900 dark:text-white">
+            <h2 className="text-3xl font-bold text-slate-900 dark:text-white">
               Welcome back, {user?.name || user?.email} 👋
             </h2>
-            <p className="text-zinc-600 dark:text-zinc-400 text-sm mt-1">Ready to showcase your knowledge in the Eloquence 2K26 competition?</p>
+            <p className="text-slate-600 dark:text-zinc-400 text-sm mt-1">Ready to showcase your knowledge in the Eloquence 2K26 competition?</p>
           </div>
 
-          <div className="flex items-center gap-3 bg-zinc-100 dark:bg-zinc-900 p-3 rounded-2xl border border-zinc-300 dark:border-zinc-800">
-            <div className="p-2.5 bg-zinc-900 dark:bg-zinc-100 text-white dark:text-zinc-900 rounded-xl">
+          <div className="flex items-center gap-3 bg-slate-50/80 dark:bg-zinc-900/90 p-3 rounded-2xl border border-slate-200 dark:border-zinc-800">
+            <div className="p-2.5 bg-amber-500 text-white rounded-xl shadow-md">
               <Trophy className="w-6 h-6" />
             </div>
             <div>
-              <span className="text-xs text-zinc-500 dark:text-zinc-400 block font-medium">Your Rank</span>
-              <span className="text-lg font-bold text-zinc-900 dark:text-white">#4 in Leaderboard</span>
+              <span className="text-xs text-slate-500 dark:text-zinc-400 block font-medium">Your Rank</span>
+              <span className="text-lg font-bold text-slate-900 dark:text-white">#4 in Leaderboard</span>
             </div>
           </div>
         </div>
 
         {/* Quick Stats Grid */}
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-4 pt-4 border-t border-zinc-200 dark:border-zinc-800">
-          <div className="bg-zinc-50 dark:bg-zinc-900/60 p-4 rounded-xl border border-zinc-200 dark:border-zinc-800">
-            <span className="text-xs text-zinc-500 dark:text-zinc-400 block font-medium">Quizzes Attended</span>
-            <span className="text-2xl font-black text-zinc-900 dark:text-zinc-100">1 / 3</span>
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-4 pt-4 border-t border-slate-200 dark:border-zinc-800">
+          <div className="bg-slate-50/80 dark:bg-zinc-900/90 p-4 rounded-xl border border-slate-200 dark:border-zinc-800">
+            <span className="text-xs text-slate-500 dark:text-zinc-400 block font-medium">Quizzes Attended</span>
+            <span className="text-2xl font-bold text-slate-900 dark:text-white">1 / 3</span>
           </div>
-          <div className="bg-zinc-50 dark:bg-zinc-900/60 p-4 rounded-xl border border-zinc-200 dark:border-zinc-800">
-            <span className="text-xs text-zinc-500 dark:text-zinc-400 block font-medium">Total Points</span>
-            <span className="text-2xl font-black text-zinc-900 dark:text-zinc-100">185 pts</span>
+          <div className="bg-slate-50/80 dark:bg-zinc-900/90 p-4 rounded-xl border border-slate-200 dark:border-zinc-800">
+            <span className="text-xs text-slate-500 dark:text-zinc-400 block font-medium">Total Points</span>
+            <span className="text-2xl font-bold text-slate-900 dark:text-white">185 pts</span>
           </div>
-          <div className="bg-zinc-50 dark:bg-zinc-900/60 p-4 rounded-xl border border-zinc-200 dark:border-zinc-800">
-            <span className="text-xs text-zinc-500 dark:text-zinc-400 block font-medium">Accuracy</span>
-            <span className="text-2xl font-black text-zinc-900 dark:text-zinc-100">92%</span>
+          <div className="bg-slate-50/80 dark:bg-zinc-900/90 p-4 rounded-xl border border-slate-200 dark:border-zinc-800">
+            <span className="text-xs text-slate-500 dark:text-zinc-400 block font-medium">Accuracy</span>
+            <span className="text-2xl font-bold text-slate-900 dark:text-white">92%</span>
           </div>
-          <div className="bg-zinc-50 dark:bg-zinc-900/60 p-4 rounded-xl border border-zinc-200 dark:border-zinc-800">
-            <span className="text-xs text-zinc-500 dark:text-zinc-400 block font-medium">Certificates</span>
-            <span className="text-2xl font-black text-zinc-900 dark:text-zinc-100">1 Earned</span>
+          <div className="bg-slate-50/80 dark:bg-zinc-900/90 p-4 rounded-xl border border-slate-200 dark:border-zinc-800">
+            <span className="text-xs text-slate-500 dark:text-zinc-400 block font-medium">Certificates</span>
+            <span className="text-2xl font-bold text-slate-900 dark:text-white">1 Earned</span>
           </div>
         </div>
       </section>
@@ -86,30 +86,30 @@ export const UserDashboard = () => {
       {/* Available Quizzes */}
       <section className="space-y-4">
         <div className="flex justify-between items-center">
-          <h3 className="text-xl font-bold text-zinc-900 dark:text-white flex items-center gap-2">
-            <BookOpen className="w-5 h-5 text-zinc-900 dark:text-zinc-100" /> Active Quiz Rounds
+          <h3 className="text-xl font-bold text-slate-900 dark:text-white flex items-center gap-2">
+            <BookOpen className="w-5 h-5 text-blue-600 dark:text-blue-400" /> Active Quiz Rounds
           </h3>
-          <span className="text-xs text-zinc-500 dark:text-zinc-400 font-medium">3 Rounds Total</span>
+          <span className="text-xs text-slate-500 dark:text-zinc-400 font-medium">3 Rounds Total</span>
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
           {dummyQuizzes.map((quiz) => (
-            <div key={quiz.id} className="glass-panel-light rounded-2xl p-6 transition-all flex flex-col justify-between space-y-4">
+            <div key={quiz.id} className="basic-card p-6 transition-all flex flex-col justify-between space-y-4 hover:border-blue-400 dark:hover:border-blue-600">
               <div className="space-y-2">
                 <div className="flex justify-between items-center">
-                  <span className="text-[10px] font-bold uppercase tracking-wider px-2.5 py-1 rounded-full bg-zinc-100 dark:bg-zinc-900 text-zinc-900 dark:text-zinc-100 border border-zinc-300 dark:border-zinc-800">
+                  <span className="text-[10px] font-semibold uppercase tracking-wider px-2.5 py-1 rounded-full bg-blue-50 dark:bg-blue-950/80 text-blue-700 dark:text-blue-300 border border-blue-200 dark:border-blue-800">
                     {quiz.category}
                   </span>
-                  <span className="text-xs text-zinc-500 dark:text-zinc-400 flex items-center gap-1">
+                  <span className="text-xs text-slate-500 dark:text-zinc-400 flex items-center gap-1 font-medium">
                     <Clock className="w-3.5 h-3.5" /> {quiz.duration}
                   </span>
                 </div>
-                <h4 className="text-lg font-bold text-zinc-900 dark:text-white">{quiz.title}</h4>
-                <p className="text-xs text-zinc-500 dark:text-zinc-400">Test your skills in modern technical concepts.</p>
+                <h4 className="text-lg font-bold text-slate-900 dark:text-white">{quiz.title}</h4>
+                <p className="text-xs text-slate-500 dark:text-zinc-400">Test your skills in modern technical concepts.</p>
               </div>
 
-              <div className="pt-4 border-t border-zinc-200 dark:border-zinc-800 flex items-center justify-between">
-                <span className="text-xs font-semibold text-zinc-700 dark:text-zinc-300">{quiz.questions} Questions</span>
+              <div className="pt-4 border-t border-slate-200 dark:border-zinc-800 flex items-center justify-between">
+                <span className="text-xs font-semibold text-slate-600 dark:text-zinc-400">{quiz.questions} Questions</span>
                 <Button 
                   size="sm" 
                   variant={quiz.status === 'Completed' ? 'secondary' : 'primary'}
