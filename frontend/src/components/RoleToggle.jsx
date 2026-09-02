@@ -14,7 +14,7 @@ export const RoleToggle = ({ activeRole, onRoleChange }) => {
         }`}
       >
         <User className="w-4 h-4" />
-        <span>Student / User Login</span>
+        <span>Participant Login</span>
       </button>
 
       <button
@@ -27,7 +27,7 @@ export const RoleToggle = ({ activeRole, onRoleChange }) => {
         }`}
       >
         <ShieldCheck className="w-4 h-4" />
-        <span>Admin Portal Login</span>
+        <span>Admin Login</span>
       </button>
     </div>
   );

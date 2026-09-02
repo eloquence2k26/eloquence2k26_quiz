@@ -1,10 +1,11 @@
 import React from 'react';
 import { useAuth } from '../context/AuthContext';
-import { ShieldCheck, Plus, Users, FileSpreadsheet, Settings, CheckCircle2 } from 'lucide-react';
+import { ShieldCheck, Plus, Users, FileSpreadsheet, Settings, CheckCircle2, UserPlus } from 'lucide-react';
 import { Button } from '../components/Button';
+import { Link } from 'react-router-dom';
 
 export const AdminDashboard = () => {
-  const { user } = useAuth();
+  const { user, registeredUsers } = useAuth();
 
   return (
     <div className="max-w-6xl mx-auto p-4 sm:p-8 space-y-8">
@@ -18,19 +19,23 @@ export const AdminDashboard = () => {
             <h2 className="text-3xl font-black text-zinc-900 dark:text-white">
               Admin Portal: {user?.name || 'Administrator'}
             </h2>
-            <p className="text-zinc-600 dark:text-zinc-400 text-sm mt-1">Manage Eloquence 2K26 quiz sessions, questions, and participant leaderboards.</p>
+            <p className="text-zinc-600 dark:text-zinc-400 text-sm mt-1">Manage Eloquence 2K26 quiz sessions, user registration, and participant leaderboards.</p>
           </div>
 
-          <Button variant="primary" icon={Plus}>
-            Create New Quiz
-          </Button>
+          <div className="flex items-center gap-3">
+            <Link to="/users">
+              <Button variant="primary" icon={UserPlus}>
+                Register User
+              </Button>
+            </Link>
+          </div>
         </div>
 
         {/* Admin Stats Grid */}
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4 pt-4 border-t border-zinc-200 dark:border-zinc-800">
           <div className="bg-zinc-50 dark:bg-zinc-900/60 p-4 rounded-xl border border-zinc-200 dark:border-zinc-800">
-            <span className="text-xs text-zinc-500 dark:text-zinc-400 block font-medium">Total Participants</span>
-            <span className="text-2xl font-black text-zinc-900 dark:text-zinc-100">142 Users</span>
+            <span className="text-xs text-zinc-500 dark:text-zinc-400 block font-medium">Total Registered Users</span>
+            <span className="text-2xl font-black text-zinc-900 dark:text-zinc-100">{registeredUsers?.length || 5} Users</span>
           </div>
           <div className="bg-zinc-50 dark:bg-zinc-900/60 p-4 rounded-xl border border-zinc-200 dark:border-zinc-800">
             <span className="text-xs text-zinc-500 dark:text-zinc-400 block font-medium">Active Quizzes</span>
@@ -60,23 +65,27 @@ export const AdminDashboard = () => {
           <p className="text-xs text-zinc-500 dark:text-zinc-400 leading-relaxed">
             Add, update, or remove multiple choice questions, set timers, and set scoring multipliers.
           </p>
-          <Button variant="secondary" size="sm" className="w-full">
-            Manage Questions
-          </Button>
+          <Link to="/add-question">
+            <Button variant="secondary" size="sm" className="w-full mt-2">
+              Manage Questions
+            </Button>
+          </Link>
         </div>
 
-        {/* Participant Analytics Card */}
+        {/* Participant Analytics & User Registration Card */}
         <div className="glass-panel-light rounded-2xl p-6 space-y-4">
           <div className="p-3 bg-zinc-900 dark:bg-zinc-100 rounded-xl w-fit text-white dark:text-zinc-900">
             <Users className="w-6 h-6" />
           </div>
-          <h3 className="text-lg font-bold text-zinc-900 dark:text-white">Participant Analytics</h3>
+          <h3 className="text-lg font-bold text-zinc-900 dark:text-white">User Directory & Register</h3>
           <p className="text-xs text-zinc-500 dark:text-zinc-400 leading-relaxed">
-            View real-time participant scores, tab-switch violations, and export final winner rankings.
+            Register new participants with username and phone number, view registered accounts, and manage roles.
           </p>
-          <Button variant="secondary" size="sm" className="w-full">
-            View Analytics
-          </Button>
+          <Link to="/users">
+            <Button variant="secondary" size="sm" className="w-full mt-2">
+              Manage & Register Users
+            </Button>
+          </Link>
         </div>
 
         {/* Database Export Card */}

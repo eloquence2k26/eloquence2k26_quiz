@@ -4,21 +4,40 @@ import { useAuth } from '../context/AuthContext';
 import { Input } from '../components/Input';
 import { Button } from '../components/Button';
 import { ThemeToggle } from '../components/ThemeToggle';
-import { Mail, Lock, Eye, EyeOff, Sparkles, User, AlertCircle, BrainCircuit } from 'lucide-react';
+import { RoleToggle } from '../components/RoleToggle';
+import { Mail, Lock, Eye, EyeOff, Sparkles, User, ShieldCheck, AlertCircle, BrainCircuit } from 'lucide-react';
 
 export const LoginPage = () => {
   const navigate = useNavigate();
   const { login, loading: authLoading } = useAuth();
 
+  const [activeRole, setActiveRole] = useState('user'); // 'user' (participant) or 'admin'
   const [email, setEmail] = useState('student@eloquence.com');
   const [password, setPassword] = useState('user123');
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
 
+  const handleRoleChange = (role) => {
+    setActiveRole(role);
+    setError('');
+    if (role === 'admin') {
+      setEmail('admin@eloquence.com');
+      setPassword('admin123');
+    } else {
+      setEmail('student@eloquence.com');
+      setPassword('user123');
+    }
+  };
+
   const fillDemoCredentials = () => {
-    setEmail('student@eloquence.com');
-    setPassword('user123');
+    if (activeRole === 'admin') {
+      setEmail('admin@eloquence.com');
+      setPassword('admin123');
+    } else {
+      setEmail('student@eloquence.com');
+      setPassword('user123');
+    }
     setError('');
   };
 
@@ -27,7 +46,7 @@ export const LoginPage = () => {
     setError('');
     setIsSubmitting(true);
 
-    const result = await login(email, password, 'user');
+    const result = await login(email, password, activeRole);
     setIsSubmitting(false);
 
     if (result.success) {
@@ -58,11 +77,44 @@ export const LoginPage = () => {
           <h2 className="text-3xl font-black text-zinc-900 dark:text-white tracking-tight">
             Sign In to Account
           </h2>
-          <p className="text-xs sm:text-sm text-zinc-500 dark:text-zinc-400 font-medium">Enter your credentials to access the quiz portal</p>
+          <p className="text-xs sm:text-sm text-zinc-500 dark:text-zinc-400 font-medium">Select your portal type below to continue</p>
         </div>
 
         {/* Card Container */}
         <div className="glass-panel-light rounded-3xl p-6 sm:p-8 space-y-6 transition-all duration-200">
+          {/* Dual Login Role Selection Tabs */}
+          <div className="space-y-2">
+            <label className="text-xs font-bold uppercase text-zinc-400 dark:text-zinc-500 tracking-wider block">
+              Choose Login Type
+            </label>
+            <RoleToggle activeRole={activeRole} onRoleChange={handleRoleChange} />
+          </div>
+
+          {/* Mode Indicator Banner */}
+          <div className="p-3.5 rounded-2xl bg-zinc-100/70 dark:bg-zinc-900/70 border border-zinc-200 dark:border-zinc-800 flex items-center gap-3">
+            {activeRole === 'admin' ? (
+              <>
+                <div className="p-2 bg-zinc-900 text-white dark:bg-zinc-100 dark:text-zinc-900 rounded-xl shrink-0">
+                  <ShieldCheck className="w-4 h-4" />
+                </div>
+                <div>
+                  <h4 className="text-xs font-bold text-zinc-900 dark:text-white">Admin Portal</h4>
+                  <p className="text-[11px] text-zinc-500 dark:text-zinc-400">Manage questions, users, and live quiz settings</p>
+                </div>
+              </>
+            ) : (
+              <>
+                <div className="p-2 bg-zinc-900 text-white dark:bg-zinc-100 dark:text-zinc-900 rounded-xl shrink-0">
+                  <User className="w-4 h-4" />
+                </div>
+                <div>
+                  <h4 className="text-xs font-bold text-zinc-900 dark:text-white">Participant Portal</h4>
+                  <p className="text-[11px] text-zinc-500 dark:text-zinc-400">Take quizzes, attempt rounds, and view your score</p>
+                </div>
+              </>
+            )}
+          </div>
+
           {/* Error Alert */}
           {error && (
             <div className="bg-zinc-100 dark:bg-zinc-900 border border-zinc-900 dark:border-zinc-100 text-zinc-900 dark:text-zinc-100 px-4 py-3 rounded-2xl text-xs flex items-center gap-2 font-bold">
@@ -75,9 +127,9 @@ export const LoginPage = () => {
           <form onSubmit={handleSubmit} className="space-y-4">
             <Input
               id="email"
-              label="Email Address"
+              label={activeRole === 'admin' ? "Admin Email Address" : "Participant Email Address"}
               type="email"
-              placeholder="student@eloquence.com"
+              placeholder={activeRole === 'admin' ? "admin@eloquence.com" : "student@eloquence.com"}
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               icon={Mail}
@@ -112,21 +164,31 @@ export const LoginPage = () => {
               size="lg"
               className="w-full mt-2"
               isLoading={isSubmitting || authLoading}
-              icon={User}
+              icon={activeRole === 'admin' ? ShieldCheck : User}
             >
-              Sign In to Dashboard
+              {activeRole === 'admin' ? 'Sign In as Admin' : 'Sign In as Participant'}
             </Button>
           </form>
 
           {/* Quick Demo Fill Shortcut */}
           <div className="pt-4 border-t border-zinc-200 dark:border-zinc-800 space-y-3 text-center">
-            <p className="text-[11px] text-zinc-500 dark:text-zinc-400 font-bold uppercase tracking-wider">Quick Demo Credentials</p>
+            <p className="text-[11px] text-zinc-500 dark:text-zinc-400 font-bold uppercase tracking-wider">
+              Quick Demo Credentials
+            </p>
             <button
               type="button"
               onClick={fillDemoCredentials}
               className="w-full py-2.5 bg-zinc-100 hover:bg-zinc-200 dark:bg-zinc-900 dark:hover:bg-zinc-800 text-zinc-900 dark:text-zinc-100 border border-zinc-300 dark:border-zinc-800 rounded-2xl text-xs font-bold transition-all flex items-center justify-center gap-2 shadow-sm"
             >
-              <User className="w-4 h-4" /> Fill Demo Student Credentials
+              {activeRole === 'admin' ? (
+                <>
+                  <ShieldCheck className="w-4 h-4" /> Fill Demo Admin Credentials
+                </>
+              ) : (
+                <>
+                  <User className="w-4 h-4" /> Fill Demo Participant Credentials
+                </>
+              )}
             </button>
           </div>
         </div>
