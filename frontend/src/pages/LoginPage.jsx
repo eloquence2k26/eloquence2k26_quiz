@@ -38,7 +38,7 @@ export const LoginPage = () => {
   };
 
   return (
-    <div className="min-h-screen flex flex-col items-center justify-center p-4 bg-white dark:bg-zinc-950 transition-colors duration-200">
+    <div className="min-h-screen flex flex-col items-center justify-center p-4 bg-slate-50/80 dark:bg-black transition-colors duration-200">
       {/* Top right theme toggle */}
       <div className="absolute top-6 right-6">
         <ThemeToggle />
@@ -47,25 +47,25 @@ export const LoginPage = () => {
       <div className="w-full max-w-md space-y-6">
         {/* Header Title */}
         <div className="text-center space-y-3">
-          <div className="inline-flex p-3 bg-zinc-900 dark:bg-zinc-100 rounded-2xl shadow-lg mb-1">
-            <BrainCircuit className="w-8 h-8 text-white dark:text-zinc-900" />
+          <div className="inline-flex p-3 bg-blue-600 rounded-2xl text-white shadow-lg shadow-blue-500/20 dark:shadow-[0_0_20px_rgba(37,99,235,0.4)] mb-1">
+            <BrainCircuit className="w-8 h-8" />
           </div>
           <div className="inline-block">
-            <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-zinc-100 dark:bg-zinc-900 border border-zinc-300 dark:border-zinc-800 text-zinc-900 dark:text-zinc-100 text-xs font-bold uppercase tracking-wider mb-2">
+            <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-blue-50 dark:bg-blue-950/70 border border-blue-200 dark:border-blue-800 text-blue-700 dark:text-blue-300 text-xs font-semibold uppercase tracking-wider mb-2">
               <Sparkles className="w-3.5 h-3.5" /> Eloquence 2K26 Quiz
             </div>
           </div>
-          <h2 className="text-3xl font-black text-zinc-900 dark:text-white tracking-tight">
+          <h2 className="text-3xl font-bold text-slate-900 dark:text-white tracking-tight">
             Sign In to Account
           </h2>
-          <p className="text-xs sm:text-sm text-zinc-500 dark:text-zinc-400 font-medium">Enter your credentials to access the quiz portal</p>
+          <p className="text-xs sm:text-sm text-slate-500 dark:text-zinc-400 font-normal">Enter your credentials to access the quiz portal</p>
         </div>
 
         {/* Card Container */}
-        <div className="glass-panel-light rounded-3xl p-6 sm:p-8 space-y-6 transition-all duration-200">
+        <div className="basic-card p-6 sm:p-8 space-y-6">
           {/* Error Alert */}
           {error && (
-            <div className="bg-zinc-100 dark:bg-zinc-900 border border-zinc-900 dark:border-zinc-100 text-zinc-900 dark:text-zinc-100 px-4 py-3 rounded-2xl text-xs flex items-center gap-2 font-bold">
+            <div className="bg-red-50 dark:bg-red-950/40 border border-red-200 dark:border-red-900 text-red-700 dark:text-red-300 px-4 py-3 rounded-xl text-xs flex items-center gap-2 font-medium">
               <AlertCircle className="w-4 h-4 shrink-0" />
               <span>{error}</span>
             </div>
@@ -99,7 +99,7 @@ export const LoginPage = () => {
                 <button
                   type="button"
                   onClick={() => setShowPassword(!showPassword)}
-                  className="text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-200 transition-colors p-1"
+                  className="text-slate-400 hover:text-blue-600 dark:hover:text-blue-400 transition-colors p-1 cursor-pointer"
                 >
                   {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                 </button>
@@ -119,12 +119,12 @@ export const LoginPage = () => {
           </form>
 
           {/* Quick Demo Fill Shortcut */}
-          <div className="pt-4 border-t border-zinc-200 dark:border-zinc-800 space-y-3 text-center">
-            <p className="text-[11px] text-zinc-500 dark:text-zinc-400 font-bold uppercase tracking-wider">Quick Demo Credentials</p>
+          <div className="pt-4 border-t border-slate-200 dark:border-zinc-800 space-y-3 text-center">
+            <p className="text-[11px] text-slate-500 dark:text-zinc-400 font-semibold uppercase tracking-wider">Quick Demo Credentials</p>
             <button
               type="button"
               onClick={fillDemoCredentials}
-              className="w-full py-2.5 bg-zinc-100 hover:bg-zinc-200 dark:bg-zinc-900 dark:hover:bg-zinc-800 text-zinc-900 dark:text-zinc-100 border border-zinc-300 dark:border-zinc-800 rounded-2xl text-xs font-bold transition-all flex items-center justify-center gap-2 shadow-sm"
+              className="w-full py-2.5 bg-slate-50 hover:bg-blue-50 dark:bg-zinc-900 dark:hover:bg-zinc-800 text-slate-700 hover:text-blue-700 dark:text-zinc-200 dark:hover:text-blue-400 border border-slate-200 hover:border-blue-300 dark:border-zinc-800 dark:hover:border-blue-700 rounded-xl text-xs font-semibold transition-all flex items-center justify-center gap-2 shadow-sm cursor-pointer"
             >
               <User className="w-4 h-4" /> Fill Demo Student Credentials
             </button>

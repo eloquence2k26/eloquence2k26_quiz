@@ -12,14 +12,14 @@ export const Button = ({
   className = '',
   icon: Icon
 }) => {
-  const baseStyles = 'inline-flex items-center justify-center font-bold rounded-xl transition-all duration-200 focus:outline-none disabled:opacity-50 disabled:cursor-not-allowed active:scale-95';
+  const baseStyles = 'inline-flex items-center justify-center font-semibold rounded-xl transition-all duration-150 focus:outline-none focus:ring-2 focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed active:scale-95 cursor-pointer';
   
   const variants = {
-    primary: 'bg-zinc-900 hover:bg-zinc-800 text-white dark:bg-zinc-100 dark:hover:bg-white dark:text-zinc-900 shadow-md',
-    admin: 'bg-zinc-900 hover:bg-zinc-800 text-white dark:bg-zinc-100 dark:hover:bg-white dark:text-zinc-900 shadow-md',
-    secondary: 'bg-zinc-100 hover:bg-zinc-200 dark:bg-zinc-900 dark:hover:bg-zinc-800 text-zinc-900 dark:text-zinc-100 border border-zinc-300 dark:border-zinc-800',
-    outline: 'bg-transparent border border-zinc-300 dark:border-zinc-700 hover:border-zinc-900 dark:hover:border-zinc-100 text-zinc-900 dark:text-zinc-100',
-    danger: 'bg-zinc-900 text-white dark:bg-zinc-100 dark:text-zinc-900 border border-zinc-900 dark:border-zinc-100'
+    primary: 'bg-blue-600 hover:bg-blue-700 text-white focus:ring-blue-500 shadow-md shadow-blue-600/20 dark:shadow-[0_0_15px_rgba(37,99,235,0.35)]',
+    admin: 'bg-blue-600 hover:bg-blue-700 text-white focus:ring-blue-500 shadow-md shadow-blue-600/20 dark:shadow-[0_0_15px_rgba(37,99,235,0.35)]',
+    secondary: 'bg-white hover:bg-blue-50 dark:bg-zinc-900 dark:hover:bg-zinc-800 text-slate-700 hover:text-blue-700 dark:text-zinc-200 dark:hover:text-blue-400 border border-slate-200 hover:border-blue-300 dark:border-zinc-800 dark:hover:border-blue-700 focus:ring-blue-500 shadow-sm',
+    outline: 'bg-transparent hover:bg-blue-50 dark:hover:bg-blue-950/30 text-slate-700 hover:text-blue-700 dark:text-zinc-200 dark:hover:text-blue-300 border border-slate-300 hover:border-blue-400 dark:border-zinc-700 dark:hover:border-blue-600 focus:ring-blue-500',
+    danger: 'bg-red-600 hover:bg-red-700 text-white focus:ring-red-500 shadow-sm'
   };
 
   const sizes = {
