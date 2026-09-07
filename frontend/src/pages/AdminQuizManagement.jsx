@@ -41,7 +41,7 @@ import { useToast } from '../context/ToastContext';
 import { parseQuestionFile, parseUserFile } from '../utils/fileParser';
 
 export const AdminQuizManagement = ({ initialTab = 'quizzes' }) => {
-  const { user } = useAuth();
+  const { user, registeredUsers, fetchUsers } = useAuth();
   const { toast } = useToast();
 
   // Active Tab: 'quizzes' | 'questions' | 'registrations' | 'submissions' | 'results' | 'violations' | 'retests'
@@ -90,6 +90,12 @@ export const AdminQuizManagement = ({ initialTab = 'quizzes' }) => {
   const [parsedStudentsPreview, setParsedStudentsPreview] = useState([]);
   const [isParsingStudents, setIsParsingStudents] = useState(false);
   const [importStudentFileName, setImportStudentFileName] = useState('');
+
+  // Select from Registered Users Modal States
+  const [isSelectUsersModalOpen, setIsSelectUsersModalOpen] = useState(false);
+  const [userSearchTerm, setUserSearchTerm] = useState('');
+  const [selectedUserIds, setSelectedUserIds] = useState([]);
+  const [isGrantingSelected, setIsGrantingSelected] = useState(false);
 
   // Form States - Quiz Event
   const [quizForm, setQuizForm] = useState({
@@ -558,6 +564,35 @@ export const AdminQuizManagement = ({ initialTab = 'quizzes' }) => {
       toast.error('Network error during bulk student upload.');
     } finally {
       setLoading(false);
+    }
+  };
+
+  // Grant Access to Selected Registered Users
+  const handleGrantSelectedUsers = async () => {
+    if (!selectedQuiz || selectedUserIds.length === 0) return;
+    setIsGrantingSelected(true);
+    let successCount = 0;
+    try {
+      for (const userId of selectedUserIds) {
+        const user = (registeredUsers || []).find((u) => u.id === userId);
+        if (!user) continue;
+        const res = await fetch(`${API_ADMIN_URL}/quizzes/${selectedQuiz.id}/access`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ participantId: user.id, accessStatus: 'Granted' })
+        });
+        if (res.ok) successCount++;
+      }
+      toast.success(`Granted access to ${successCount} student(s) for "${selectedQuiz.title}"!`);
+      setIsSelectUsersModalOpen(false);
+      setSelectedUserIds([]);
+      setUserSearchTerm('');
+      fetchRegistrations(selectedQuiz.id);
+    } catch (err) {
+      console.error('Grant selected users error:', err);
+      toast.error('Network error granting user access.');
+    } finally {
+      setIsGrantingSelected(false);
     }
   };
 
@@ -1158,21 +1193,35 @@ export const AdminQuizManagement = ({ initialTab = 'quizzes' }) => {
                     Registrations & Access for "{selectedQuiz.title}"
                   </h3>
                   <p className="text-xs text-slate-500 dark:text-zinc-400 mt-1">
-                    Grant or Revoke access per student or upload student lists (PDF/DOC/CSV/JSON) for direct access.
+                    Grant or Revoke access per student. Add from registered users or upload a file.
                   </p>
                 </div>
 
-                <Button
-                  variant="primary"
-                  icon={Upload}
-                  onClick={() => {
-                    setParsedStudentsPreview([]);
-                    setImportStudentFileName('');
-                    setIsImportStudentsModalOpen(true);
-                  }}
-                >
-                  Upload Students File (PDF/DOC/CSV/JSON)
-                </Button>
+                <div className="flex items-center gap-2 flex-wrap">
+                  <Button
+                    variant="secondary"
+                    icon={Users}
+                    onClick={() => {
+                      fetchUsers();
+                      setUserSearchTerm('');
+                      setSelectedUserIds([]);
+                      setIsSelectUsersModalOpen(true);
+                    }}
+                  >
+                    Add from Registered Users
+                  </Button>
+                  <Button
+                    variant="primary"
+                    icon={Upload}
+                    onClick={() => {
+                      setParsedStudentsPreview([]);
+                      setImportStudentFileName('');
+                      setIsImportStudentsModalOpen(true);
+                    }}
+                  >
+                    Upload File (PDF/CSV/JSON)
+                  </Button>
+                </div>
               </div>
 
               {/* Registrations Table */}
@@ -1987,6 +2036,150 @@ export const AdminQuizManagement = ({ initialTab = 'quizzes' }) => {
           </div>
         </div>
       )}
+      {/* SELECT FROM REGISTERED USERS MODAL */}
+      {isSelectUsersModalOpen && selectedQuiz && (() => {
+        const alreadyGranted = new Set(registrations.map((r) => String(r.participant_id)));
+        const filteredRegUsers = (registeredUsers || []).filter((u) => {
+          if (u.role === 'admin') return false;
+          const term = userSearchTerm.toLowerCase();
+          return (
+            !term ||
+            (u.name && u.name.toLowerCase().includes(term)) ||
+            (u.email && u.email.toLowerCase().includes(term)) ||
+            (u.phone && u.phone.includes(term))
+          );
+        });
+        return (
+          <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4 overflow-y-auto">
+            <div className="bg-white dark:bg-zinc-950 border border-slate-200 dark:border-zinc-800 rounded-3xl w-full max-w-2xl p-6 sm:p-8 space-y-6 shadow-2xl my-8 max-h-[90vh] flex flex-col">
+              <div className="flex items-center justify-between border-b border-slate-200 dark:border-zinc-800 pb-4 shrink-0">
+                <div>
+                  <h3 className="text-xl font-bold text-slate-900 dark:text-white flex items-center gap-2">
+                    <Users className="w-5 h-5 text-blue-600 dark:text-blue-400" />
+                    Add Registered Users to Quiz Access
+                  </h3>
+                  <p className="text-xs text-slate-500 dark:text-zinc-400 mt-0.5">
+                    Select student(s) from the database to grant access to <strong>"{selectedQuiz.title}"</strong>
+                  </p>
+                </div>
+                <button
+                  onClick={() => { setIsSelectUsersModalOpen(false); setSelectedUserIds([]); setUserSearchTerm(''); }}
+                  className="p-2 text-slate-400 hover:text-slate-900 dark:hover:text-white rounded-xl cursor-pointer"
+                >
+                  ✕
+                </button>
+              </div>
+
+              {/* Search + Select All Row */}
+              <div className="flex items-center gap-3 shrink-0">
+                <div className="relative flex-1">
+                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+                  <input
+                    type="text"
+                    placeholder="Search by name, email or phone..."
+                    value={userSearchTerm}
+                    onChange={(e) => setUserSearchTerm(e.target.value)}
+                    className="w-full pl-9 pr-4 py-2.5 bg-slate-50 dark:bg-zinc-900 border border-slate-200 dark:border-zinc-800 rounded-xl text-xs text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  />
+                </div>
+                <button
+                  onClick={() => {
+                    const notYetGranted = filteredRegUsers.filter((u) => !alreadyGranted.has(String(u.id)));
+                    if (selectedUserIds.length === notYetGranted.length) {
+                      setSelectedUserIds([]);
+                    } else {
+                      setSelectedUserIds(notYetGranted.map((u) => u.id));
+                    }
+                  }}
+                  className="text-xs font-bold text-blue-600 dark:text-blue-400 px-3 py-2 rounded-xl border border-blue-200 dark:border-blue-800 hover:bg-blue-50 dark:hover:bg-blue-950/50 whitespace-nowrap cursor-pointer"
+                >
+                  {selectedUserIds.length > 0 ? 'Deselect All' : 'Select All'}
+                </button>
+              </div>
+
+              {/* Users List */}
+              <div className="flex-1 overflow-y-auto rounded-2xl border border-slate-200 dark:border-zinc-800 min-h-0">
+                {filteredRegUsers.length === 0 ? (
+                  <div className="p-8 text-center text-slate-500 dark:text-zinc-400 text-sm">
+                    No registered students found.
+                  </div>
+                ) : (
+                  <table className="w-full text-left text-xs border-collapse">
+                    <thead>
+                      <tr className="border-b border-slate-200 dark:border-zinc-800 text-slate-400 uppercase text-[10px] font-bold tracking-wider bg-slate-50 dark:bg-zinc-900 sticky top-0">
+                        <th className="py-2.5 px-3 w-10">✓</th>
+                        <th className="py-2.5 px-3">Name</th>
+                        <th className="py-2.5 px-3">Phone</th>
+                        <th className="py-2.5 px-3">Email</th>
+                        <th className="py-2.5 px-3 text-right">Status</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-200 dark:divide-zinc-800">
+                      {filteredRegUsers.map((u) => {
+                        const alreadyHas = alreadyGranted.has(String(u.id));
+                        const isChecked = selectedUserIds.includes(u.id);
+                        return (
+                          <tr
+                            key={u.id}
+                            onClick={() => {
+                              if (alreadyHas) return;
+                              setSelectedUserIds((prev) =>
+                                prev.includes(u.id) ? prev.filter((id) => id !== u.id) : [...prev, u.id]
+                              );
+                            }}
+                            className={`transition-colors ${alreadyHas ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer hover:bg-blue-50/50 dark:hover:bg-blue-950/20'} ${isChecked ? 'bg-blue-50 dark:bg-blue-950/30' : ''}`}
+                          >
+                            <td className="py-2.5 px-3">
+                              <div className={`w-4 h-4 rounded border-2 flex items-center justify-center ${isChecked ? 'bg-blue-600 border-blue-600' : 'border-slate-300 dark:border-zinc-600'}`}>
+                                {isChecked && <Check className="w-2.5 h-2.5 text-white" />}
+                              </div>
+                            </td>
+                            <td className="py-2.5 px-3 font-bold text-slate-900 dark:text-white">{u.name}</td>
+                            <td className="py-2.5 px-3 text-slate-600 dark:text-zinc-400">{u.phone || '—'}</td>
+                            <td className="py-2.5 px-3 text-slate-500 dark:text-zinc-500 text-[11px]">{u.email || '—'}</td>
+                            <td className="py-2.5 px-3 text-right">
+                              {alreadyHas ? (
+                                <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-50 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300">
+                                  Already Granted
+                                </span>
+                              ) : (
+                                <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-slate-100 text-slate-600 dark:bg-zinc-800 dark:text-zinc-400">
+                                  {u.status || 'Active'}
+                                </span>
+                              )}
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                )}
+              </div>
+
+              {/* Footer */}
+              <div className="flex items-center justify-between pt-4 border-t border-slate-200 dark:border-zinc-800 shrink-0">
+                <span className="text-xs text-slate-500 dark:text-zinc-400 font-semibold">
+                  {selectedUserIds.length > 0 ? `${selectedUserIds.length} student(s) selected` : 'No students selected yet'}
+                </span>
+                <div className="flex items-center gap-3">
+                  <Button type="button" variant="secondary" onClick={() => { setIsSelectUsersModalOpen(false); setSelectedUserIds([]); setUserSearchTerm(''); }}>
+                    Cancel
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="primary"
+                    icon={UserCheck}
+                    disabled={selectedUserIds.length === 0 || isGrantingSelected}
+                    onClick={handleGrantSelectedUsers}
+                  >
+                    {isGrantingSelected ? 'Granting...' : `Grant Access to ${selectedUserIds.length} Student(s)`}
+                  </Button>
+                </div>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
     </div>
   );
 };
