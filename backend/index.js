@@ -13,7 +13,7 @@ import scheduleRoutes from './routes/scheduleRoutes.js';
 dotenv.config();
 
 const app = express();
-let PORT = parseInt(process.env.PORT, 10) || 5001;
+const PORT = process.env.PORT ? parseInt(process.env.PORT, 10) : 5001;
 
 // Bulletproof CORS Configuration (handles all origins, preflights, and headers)
 app.use((req, res, next) => {
@@ -60,28 +60,8 @@ app.get('/api/health', (req, res) => {
   });
 });
 
-// Start Server with fallback port attempt if EADDRINUSE in development
-const HOST = '0.0.0.0';
-
-function startServer(portToTry) {
-  const server = app.listen(portToTry, HOST, () => {
-    PORT = portToTry;
-    console.log(`🚀 Server running on http://${HOST}:${PORT}`);
-    console.log(`📊 Health check: http://${HOST}:${PORT}/api/health`);
-  });
-
-  server.on('error', (err) => {
-    if (err.code === 'EADDRINUSE') {
-      if (process.env.NODE_ENV === 'production' || process.env.RENDER) {
-        console.error(`❌ Port ${portToTry} is already in use in production environment. Exiting.`);
-        process.exit(1);
-      }
-      console.warn(`⚠️  Port ${portToTry} is in use. Trying port ${portToTry + 1}...`);
-      startServer(portToTry + 1);
-    } else {
-      console.error('❌ Server listener error:', err);
-    }
-  });
-}
-
-startServer(PORT);
+// Start server (Render provides PORT)
+app.listen(PORT, '0.0.0.0', () => {
+  console.log(`🚀 Server running on http://0.0.0.0:${PORT}`);
+  console.log(`📊 Health check: http://0.0.0.0:${PORT}/api/health`);
+});

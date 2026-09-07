@@ -63,10 +63,10 @@ export const StrictQuizInterface = () => {
       if (res.ok) {
         const data = await res.json();
         setAttemptId(data.attemptId);
-        setQuizTitle(data.quizTitle || 'Symposium Quiz');
-        setQuestions(data.questions || []);
-        setSecuritySettings(data.securitySettings || {});
-        setTimerSeconds((data.durationMinutes || 30) * 60);
+        setQuizTitle(data.quiz?.title || data.quizTitle || 'Symposium Quiz');
+        setQuestions(data.quiz?.questions || data.questions || []);
+        setSecuritySettings(data.securitySettings || data.quiz || {});
+        setTimerSeconds((data.duration || data.durationMinutes || 30) * 60);
         setIsQuizStarted(true);
 
         // Enter Fullscreen mode
@@ -125,25 +125,16 @@ export const StrictQuizInterface = () => {
 
       if (res.ok) {
         const data = await res.json();
-        setViolationCount(data.violationCount);
+        setViolationCount(data.violationsCount || data.violationCount || 1);
 
-        if (data.isActionTriggered) {
-          if (data.status === 'AUTO_SUBMITTED' || securitySettings.violation_action === 'auto_submit') {
-            const msg = 'Maximum security violations reached. Quiz is automatically submitting now.';
-            setWarningModalMsg(msg);
-            toast.error(msg);
-            setTimeout(() => handleSubmitQuiz(true), 2000);
-          } else {
-            setIsLocked(true);
-            const msg = 'VIOLATION DETECTED: You left the quiz screen. Your quiz has been terminated.';
-            setLockReason(msg);
-            toast.error(msg);
-          }
-        } else {
-          const msg = `WARNING: Prohibited action detected (${details}). Action recorded as violation.`;
-          setWarningModalMsg(msg);
-          toast.warning(msg);
-        }
+        // STRICT CHEAT DETECTION: Any violation = instant termination
+        setIsLocked(true);
+        const msg = 'VIOLATION DETECTED: A prohibited action was detected. Your quiz has been terminated immediately.';
+        setLockReason(msg);
+        toast.error(msg);
+        
+        // Auto-submit to ensure attempt is finalized on the backend
+        handleSubmitQuiz(true);
       }
     } catch (err) {
       console.error('Violation record error:', err);
@@ -178,26 +169,108 @@ export const StrictQuizInterface = () => {
     const handleKeyDown = (e) => {
       // Block Ctrl+C, Ctrl+V, Ctrl+X, Ctrl+U, Ctrl+Shift+I, F12, Alt+Left
       if (
-        (e.ctrlKey && ['c', 'v', 'x', 'u'].includes(e.key.toLowerCase())) ||
+        (e.ctrlKey && ['c', 'v', 'x', 'u', 'p', 's'].includes(e.key.toLowerCase())) ||
         (e.ctrlKey && e.shiftKey && ['i', 'j', 'c'].includes(e.key.toLowerCase())) ||
         e.key === 'F12' ||
-        (e.altKey && e.key === 'ArrowLeft')
+        (e.altKey && e.key === 'ArrowLeft') ||
+        e.key === 'Meta' // Windows/Command key
       ) {
         e.preventDefault();
         reportViolation('keyboard_shortcut', `Blocked restricted shortcut (${e.key})`);
       }
     };
 
+    // Mouse Leave (Cursor went out of window, likely looking at another screen/monitor)
+    const handleMouseLeave = (e) => {
+      if (e.clientY <= 0 || e.clientX <= 0 || (e.clientX >= window.innerWidth || e.clientY >= window.innerHeight)) {
+        reportViolation('mouse_leave', 'Mouse cursor left the browser window bounds');
+      }
+    };
+
+    // Right Click / Context Menu
+    const handleContextMenu = (e) => {
+      e.preventDefault();
+      reportViolation('context_menu', 'Right-click context menu attempted');
+    };
+
+    // Text Selection
+    const handleSelectStart = (e) => {
+      e.preventDefault();
+      reportViolation('text_selection', 'Attempted to select text');
+    };
+
+    // Copy / Cut / Paste
+    const handleClipboard = (e) => {
+      e.preventDefault();
+      reportViolation('clipboard_action', `Attempted to ${e.type} content`);
+    };
+
+    // Printing
+    const handleBeforePrint = () => {
+      reportViolation('print_attempt', 'Attempted to print or save page as PDF');
+    };
+
+    // Window Resizing (often used for split-screen)
+    let resizeTimer;
+    const handleResize = () => {
+      clearTimeout(resizeTimer);
+      resizeTimer = setTimeout(() => {
+        // Only trigger if fullscreen is strictly required
+        if (securitySettings.fullscreen_required !== false && !document.fullscreenElement) {
+          reportViolation('window_resize', 'Browser window was resized');
+        }
+      }, 500);
+    };
+
+    // Mobile: Long Press / Long Touch (Used to trigger Gemini/Copy)
+    let touchTimer;
+    const handleTouchStart = (e) => {
+      if (e.touches.length > 1) {
+        reportViolation('multi_touch', 'Multiple touch points detected');
+      }
+      touchTimer = setTimeout(() => {
+        reportViolation('long_press', 'Long press / Long touch detected');
+      }, 800); // 800ms threshold for long press
+    };
+
+    const handleTouchEnd = () => {
+      clearTimeout(touchTimer);
+    };
+
     document.addEventListener('visibilitychange', handleVisibilityChange);
     window.addEventListener('blur', handleWindowBlur);
     document.addEventListener('fullscreenchange', handleFullscreenChange);
     window.addEventListener('keydown', handleKeyDown);
+    document.addEventListener('mouseleave', handleMouseLeave);
+    document.addEventListener('contextmenu', handleContextMenu);
+    document.addEventListener('selectstart', handleSelectStart);
+    document.addEventListener('copy', handleClipboard);
+    document.addEventListener('cut', handleClipboard);
+    document.addEventListener('paste', handleClipboard);
+    window.addEventListener('beforeprint', handleBeforePrint);
+    window.addEventListener('resize', handleResize);
+    document.addEventListener('touchstart', handleTouchStart, { passive: false });
+    document.addEventListener('touchend', handleTouchEnd);
+    document.addEventListener('touchcancel', handleTouchEnd);
 
     return () => {
       document.removeEventListener('visibilitychange', handleVisibilityChange);
       window.removeEventListener('blur', handleWindowBlur);
       document.removeEventListener('fullscreenchange', handleFullscreenChange);
       window.removeEventListener('keydown', handleKeyDown);
+      document.removeEventListener('mouseleave', handleMouseLeave);
+      document.removeEventListener('contextmenu', handleContextMenu);
+      document.removeEventListener('selectstart', handleSelectStart);
+      document.removeEventListener('copy', handleClipboard);
+      document.removeEventListener('cut', handleClipboard);
+      document.removeEventListener('paste', handleClipboard);
+      window.removeEventListener('beforeprint', handleBeforePrint);
+      window.removeEventListener('resize', handleResize);
+      document.removeEventListener('touchstart', handleTouchStart);
+      document.removeEventListener('touchend', handleTouchEnd);
+      document.removeEventListener('touchcancel', handleTouchEnd);
+      clearTimeout(resizeTimer);
+      clearTimeout(touchTimer);
     };
   }, [isQuizStarted, isLocked, quizResult, attemptId, securitySettings]);
 
@@ -278,6 +351,27 @@ export const StrictQuizInterface = () => {
     );
   }
 
+  // TERMINATED / LOCKED SCREEN VIEW
+  if (isLocked) {
+    return (
+      <div className="max-w-md mx-auto my-20 p-8 basic-card text-center space-y-6">
+        <div className="w-16 h-16 bg-red-100 text-red-600 rounded-3xl flex items-center justify-center mx-auto">
+          <Lock className="w-8 h-8" />
+        </div>
+        <h2 className="text-2xl font-bold text-slate-900 dark:text-white">⚠ QUIZ TERMINATED</h2>
+        <p className="text-xs text-red-600 dark:text-red-400 font-semibold leading-relaxed">
+          {lockReason || 'A prohibited activity was detected. Your current quiz attempt has been terminated.'}
+        </p>
+        <p className="text-[11px] text-slate-500 dark:text-zinc-400">
+          You cannot restart unless the administrator grants retest permission.
+        </p>
+        <Button variant="primary" className="w-full" onClick={() => navigate('/participant/quizzes')}>
+          Return to My Quizzes
+        </Button>
+      </div>
+    );
+  }
+
   // RESULT SCREEN VIEW
   if (quizResult) {
     return (
@@ -307,7 +401,7 @@ export const StrictQuizInterface = () => {
               </div>
               <div>
                 <span className="text-xs text-slate-400 block font-semibold">Violations Logged</span>
-                <span className="text-2xl font-bold text-amber-500">{quizResult.violationsCount}</span>
+                <span className="text-2xl font-bold text-amber-500">{quizResult.violationsCount || violationCount}</span>
               </div>
               <div>
                 <span className="text-xs text-slate-400 block font-semibold">Attempt Status</span>
@@ -328,27 +422,6 @@ export const StrictQuizInterface = () => {
     );
   }
 
-  // TERMINATED / LOCKED SCREEN VIEW
-  if (isLocked) {
-    return (
-      <div className="max-w-md mx-auto my-20 p-8 basic-card text-center space-y-6">
-        <div className="w-16 h-16 bg-red-100 text-red-600 rounded-3xl flex items-center justify-center mx-auto">
-          <Lock className="w-8 h-8" />
-        </div>
-        <h2 className="text-2xl font-bold text-slate-900 dark:text-white">⚠ QUIZ TERMINATED</h2>
-        <p className="text-xs text-red-600 dark:text-red-400 font-semibold leading-relaxed">
-          {lockReason || 'A prohibited activity was detected. Your current quiz attempt has been terminated.'}
-        </p>
-        <p className="text-[11px] text-slate-500 dark:text-zinc-400">
-          You cannot restart unless the administrator grants retest permission.
-        </p>
-        <Button variant="primary" className="w-full" onClick={() => navigate('/participant/quizzes')}>
-          Return to My Quizzes
-        </Button>
-      </div>
-    );
-  }
-
   const currentQn = questions[currentQnIndex] || {};
   const currentSelectedAns = answers[currentQn.id] || '';
   const optionsCount = currentQn.optionsCount || 4;
@@ -356,52 +429,63 @@ export const StrictQuizInterface = () => {
   return (
     <div 
       ref={containerRef} 
-      className="min-h-screen bg-slate-900 text-slate-100 p-4 sm:p-8 flex flex-col justify-between select-none"
+      className="min-h-screen bg-[#0a0f1a] text-slate-100 p-4 sm:p-6 lg:p-8 flex flex-col justify-between selection:bg-transparent selection:text-transparent select-none relative overflow-hidden"
       onContextMenu={(e) => e.preventDefault()}
       onCopy={(e) => e.preventDefault()}
       onCut={(e) => e.preventDefault()}
       onPaste={(e) => e.preventDefault()}
+      style={{ userSelect: 'none', WebkitUserSelect: 'none' }}
     >
+      {/* Background Decor */}
+      <div className="absolute top-0 left-0 w-full h-96 bg-blue-900/10 blur-[120px] pointer-events-none" />
+      <div className="absolute bottom-0 right-0 w-96 h-96 bg-amber-900/5 blur-[120px] pointer-events-none" />
+
       {/* Strict Quiz Header Bar */}
-      <header className="max-w-5xl mx-auto w-full bg-slate-800/90 border border-slate-700 p-4 rounded-2xl flex items-center justify-between shadow-xl">
-        <div className="flex items-center gap-3">
-          <div className="p-2 bg-blue-600 rounded-xl text-white">
-            <ShieldAlert className="w-5 h-5" />
+      <header className="max-w-5xl mx-auto w-full bg-[#131b2c]/90 border border-slate-800 p-4 sm:p-5 rounded-2xl flex flex-col sm:flex-row items-start sm:items-center justify-between shadow-2xl relative z-10 gap-4 backdrop-blur-xl">
+        <div className="flex items-center gap-4">
+          <div className="p-2.5 bg-red-500/10 border border-red-500/20 rounded-xl text-red-500 flex items-center justify-center relative">
+            <ShieldAlert className="w-6 h-6" />
+            <span className="absolute top-0 right-0 w-2 h-2 rounded-full bg-red-500 animate-ping" />
           </div>
           <div>
-            <h3 className="font-bold text-sm text-white">{quizTitle}</h3>
-            <span className="text-[10px] text-amber-400 font-bold uppercase tracking-wider flex items-center gap-1">
-              <span className="w-1.5 h-1.5 rounded-full bg-amber-400 animate-ping"></span>
-              Violations: {violationCount} / {securitySettings.max_violations || 3}
+            <h3 className="font-extrabold text-sm sm:text-base text-white tracking-wide">{quizTitle}</h3>
+            <span className="text-[10px] sm:text-xs text-red-400 font-bold uppercase tracking-widest flex items-center gap-1.5 mt-0.5">
+              Strict Proctoring Active
             </span>
           </div>
         </div>
 
-        <div className="flex items-center gap-4">
+        <div className="flex items-center gap-3 sm:gap-5 w-full sm:w-auto justify-between sm:justify-end">
+          {/* Violations Badge */}
+          <div className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-amber-500/10 border border-amber-500/20 text-amber-500 text-xs font-bold">
+            <AlertTriangle className="w-3.5 h-3.5" />
+            <span>Violations: {violationCount} / {securitySettings.max_violations || 3}</span>
+          </div>
+
           {/* Server-authoritative Countdown Timer */}
-          <div className={`flex items-center gap-2 px-4 py-2 rounded-xl border font-mono font-bold text-sm ${
-            timerSeconds < 300 ? 'bg-red-950/80 text-red-400 border-red-800 animate-pulse' : 'bg-slate-900 text-blue-400 border-slate-700'
+          <div className={`flex items-center gap-2 px-4 py-2 rounded-xl border font-mono font-bold text-sm sm:text-base tracking-wider ${
+            timerSeconds < 300 ? 'bg-red-950/80 text-red-400 border-red-800 animate-pulse shadow-[0_0_15px_rgba(239,68,68,0.2)]' : 'bg-[#0a0f1a] text-blue-400 border-blue-900/50'
           }`}>
-            <Clock className="w-4 h-4" />
+            <Clock className="w-4 h-4 sm:w-5 sm:h-5" />
             <span>{formatTime(timerSeconds)}</span>
           </div>
 
           <button
             onClick={() => setIsConfirmSubmitOpen(true)}
             disabled={isSubmitting}
-            className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs rounded-xl shadow-md transition-all flex items-center gap-1.5 cursor-pointer"
+            className="hidden sm:flex px-5 py-2.5 bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs rounded-xl shadow-[0_0_15px_rgba(16,185,129,0.3)] hover:shadow-[0_0_20px_rgba(16,185,129,0.5)] transition-all items-center gap-2 cursor-pointer"
           >
-            <Send className="w-3.5 h-3.5" /> Submit Quiz
+            <Send className="w-4 h-4" /> Finish
           </button>
         </div>
       </header>
 
       {/* Main Question Execution Panel */}
-      <main className="max-w-4xl mx-auto w-full my-8 bg-slate-800/60 border border-slate-700/80 p-6 sm:p-10 rounded-3xl space-y-8 shadow-2xl backdrop-blur-md">
-        <div className="flex justify-between items-center text-xs font-bold text-slate-400 border-b border-slate-700 pb-4">
-          <span>Question {currentQnIndex + 1} / {questions.length}</span>
-          <span className="px-3 py-1 rounded-full bg-blue-950 text-blue-300 border border-blue-800">
-            +{currentQn.marks || 1} Mark(s) {currentQn.negative_marks > 0 ? `(-${currentQn.negative_marks} neg)` : ''}
+      <main className="max-w-4xl mx-auto w-full my-6 sm:my-10 bg-[#131b2c]/80 border border-slate-800/80 p-6 sm:p-10 rounded-[2rem] space-y-8 shadow-2xl backdrop-blur-xl relative z-10">
+        <div className="flex justify-between items-center text-xs font-bold text-slate-400 border-b border-slate-800 pb-5">
+          <span className="tracking-widest uppercase text-blue-400/80">Question {currentQnIndex + 1} of {questions.length}</span>
+          <span className="px-3 py-1 rounded-full bg-[#0a0f1a] text-emerald-400 border border-emerald-900/50">
+            +{currentQn.marks || 1} Mark(s) {currentQn.negative_marks > 0 ? <span className="text-red-400 ml-1">(-${currentQn.negative_marks} neg)</span> : ''}
           </span>
         </div>
 
@@ -417,27 +501,51 @@ export const StrictQuizInterface = () => {
         </div>
 
         {/* Dynamic MCQ Options List */}
-        <div className="grid grid-cols-1 gap-3 pt-2">
+        <div className="grid grid-cols-1 gap-4 pt-4">
           {['A', 'B', 'C', 'D'].slice(0, optionsCount).map((optKey) => {
             const optionText = currentQn[`option${optKey}`];
             const isSelected = currentSelectedAns === optKey;
 
             return (
-              <button
+              <div
                 key={optKey}
                 onClick={() => handleSelectOption(optKey)}
-                className={`p-4 rounded-2xl border text-left font-medium transition-all flex items-center justify-between cursor-pointer ${
+                className={`group relative p-4 sm:p-5 rounded-2xl border transition-all duration-200 cursor-pointer overflow-hidden ${
                   isSelected
-                    ? 'bg-blue-600 text-white border-blue-400 shadow-lg shadow-blue-600/30'
-                    : 'bg-slate-900/80 hover:bg-slate-800 text-slate-200 border-slate-700/80'
+                    ? 'bg-blue-600/10 border-blue-500 shadow-[0_0_20px_rgba(59,130,246,0.15)]'
+                    : 'bg-slate-900/60 hover:bg-slate-800 border-slate-700/80 hover:border-slate-600'
                 }`}
               >
-                <span className="text-xs sm:text-sm">
-                  <strong className="mr-2 uppercase">{optKey}.</strong> {optionText}
-                </span>
+                {/* Selection Indicator Background */}
+                <div 
+                  className={`absolute inset-0 bg-gradient-to-r from-blue-600/20 to-transparent transition-opacity duration-300 ${
+                    isSelected ? 'opacity-100' : 'opacity-0 group-hover:opacity-50'
+                  }`}
+                />
+                
+                <div className="relative flex items-center gap-4">
+                  {/* Option Letter Bubble */}
+                  <div className={`flex-shrink-0 w-10 h-10 rounded-xl flex items-center justify-center font-bold text-sm transition-all duration-300 ${
+                    isSelected 
+                      ? 'bg-blue-600 text-white shadow-md shadow-blue-600/40' 
+                      : 'bg-slate-800 text-slate-400 group-hover:bg-slate-700 group-hover:text-slate-200'
+                  }`}>
+                    {optKey}
+                  </div>
+                  
+                  {/* Option Text */}
+                  <div className={`flex-1 text-sm sm:text-base font-medium leading-relaxed transition-colors ${
+                    isSelected ? 'text-white' : 'text-slate-300 group-hover:text-slate-100'
+                  }`}>
+                    {optionText}
+                  </div>
 
-                {isSelected && <CheckCircle2 className="w-5 h-5 text-white shrink-0" />}
-              </button>
+                  {/* Check Icon */}
+                  <div className={`flex-shrink-0 transition-all duration-300 ${isSelected ? 'opacity-100 scale-100' : 'opacity-0 scale-50'}`}>
+                    <CheckCircle2 className="w-6 h-6 text-blue-500" />
+                  </div>
+                </div>
+              </div>
             );
           })}
         </div>
@@ -471,30 +579,30 @@ export const StrictQuizInterface = () => {
       </main>
 
       {/* Footer Navigation Bar */}
-      <footer className="max-w-4xl mx-auto w-full flex justify-between items-center">
+      <footer className="max-w-4xl mx-auto w-full flex justify-between items-center mt-6 relative z-10">
         <button
           disabled={currentQnIndex === 0}
           onClick={() => setCurrentQnIndex((prev) => Math.max(0, prev - 1))}
-          className="px-4 py-2.5 bg-slate-800 hover:bg-slate-700 disabled:opacity-40 text-slate-200 text-xs font-semibold rounded-xl border border-slate-700 flex items-center gap-2 cursor-pointer"
+          className="px-5 py-3 bg-[#131b2c]/80 hover:bg-[#1a243a] disabled:opacity-40 text-slate-300 text-sm font-bold rounded-xl border border-slate-700/50 flex items-center gap-2 cursor-pointer transition-all backdrop-blur-md"
         >
           <ArrowLeft className="w-4 h-4" /> Previous
         </button>
 
-        <span className="text-xs font-semibold text-slate-400">
-          Answered: {Object.keys(answers).length} / {questions.length}
+        <span className="text-xs sm:text-sm font-bold text-slate-500 tracking-widest uppercase">
+          Answered: <span className="text-blue-400">{Object.keys(answers).length}</span> / {questions.length}
         </span>
 
         {currentQnIndex < questions.length - 1 ? (
           <button
             onClick={() => setCurrentQnIndex((prev) => Math.min(questions.length - 1, prev + 1))}
-            className="px-4 py-2.5 bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold rounded-xl flex items-center gap-2 shadow-md cursor-pointer"
+            className="px-5 py-3 bg-blue-600 hover:bg-blue-500 text-white text-sm font-bold rounded-xl flex items-center gap-2 shadow-[0_0_15px_rgba(59,130,246,0.3)] hover:shadow-[0_0_20px_rgba(59,130,246,0.5)] transition-all cursor-pointer"
           >
             Next Question <ArrowRight className="w-4 h-4" />
           </button>
         ) : (
           <button
             onClick={() => setIsConfirmSubmitOpen(true)}
-            className="px-5 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold rounded-xl flex items-center gap-2 shadow-md cursor-pointer"
+            className="px-6 py-3 bg-emerald-600 hover:bg-emerald-500 text-white text-sm font-extrabold rounded-xl flex items-center gap-2 shadow-[0_0_15px_rgba(16,185,129,0.3)] hover:shadow-[0_0_20px_rgba(16,185,129,0.5)] transition-all cursor-pointer"
           >
             Submit Quiz <Send className="w-4 h-4" />
           </button>

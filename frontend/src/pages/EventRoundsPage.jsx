@@ -21,7 +21,8 @@ import {
   RefreshCw,
   BookOpen,
   ArrowRight,
-  ChevronRight
+  ChevronRight,
+  Search
 } from 'lucide-react';
 import { Button } from '../components/Button';
 import { Input } from '../components/Input';
@@ -29,10 +30,12 @@ import { API_ADMIN_URL } from '../config/apiConfig';
 import { useToast } from '../context/ToastContext';
 import { parseUserFile } from '../utils/fileParser';
 import { useNavigate } from 'react-router-dom';
+import { useAuth } from '../context/AuthContext';
 
 export const EventRoundsPage = () => {
   const { toast } = useToast();
   const navigate = useNavigate();
+  const { registeredUsers, fetchUsers } = useAuth();
 
   // Main Events & Quizzes Data
   const [quizzes, setQuizzes] = useState([]);
@@ -74,6 +77,12 @@ export const EventRoundsPage = () => {
   const [isViewStudentsModalOpen, setIsViewStudentsModalOpen] = useState(false);
   const [roundRegistrations, setRoundRegistrations] = useState([]);
   const [loadingRegistrations, setLoadingRegistrations] = useState(false);
+
+  // Select Registered Users for Round Access
+  const [accessModalTab, setAccessModalTab] = useState('enrolled'); // 'enrolled' | 'select'
+  const [roundUserSearch, setRoundUserSearch] = useState('');
+  const [roundSelectedUserIds, setRoundSelectedUserIds] = useState([]);
+  const [isGrantingRoundUsers, setIsGrantingRoundUsers] = useState(false);
 
   // New Event Modal
   const [isCreateEventModalOpen, setIsCreateEventModalOpen] = useState(false);
@@ -238,6 +247,40 @@ export const EventRoundsPage = () => {
       console.error('Fetch round registrations error:', err);
     } finally {
       setLoadingRegistrations(false);
+    }
+  };
+
+  // Grant Access to Selected Registered Users for a Round
+  const handleGrantSelectedUsersToRound = async () => {
+    if (!targetRoundQuiz || roundSelectedUserIds.length === 0) return;
+    setIsGrantingRoundUsers(true);
+    let successCount = 0;
+    try {
+      for (const userId of roundSelectedUserIds) {
+        const u = (registeredUsers || []).find((x) => x.id === userId);
+        if (!u) continue;
+        const res = await fetch(`${API_ADMIN_URL}/quizzes/${targetRoundQuiz.id}/access`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ participantId: u.id, accessStatus: 'Granted' })
+        });
+        if (res.ok) successCount++;
+      }
+      toast.success(`Granted access to ${successCount} student(s) for "${targetRoundQuiz.title}"!`);
+      setRoundSelectedUserIds([]);
+      setRoundUserSearch('');
+      setAccessModalTab('enrolled');
+      // Refresh the enrolled list
+      const refreshRes = await fetch(`${API_ADMIN_URL}/quizzes/${targetRoundQuiz.id}/registrations`);
+      if (refreshRes.ok) {
+        const data = await refreshRes.json();
+        setRoundRegistrations(data.registrations || []);
+      }
+    } catch (err) {
+      console.error('Grant round users error:', err);
+      toast.error('Network error granting round access.');
+    } finally {
+      setIsGrantingRoundUsers(false);
     }
   };
 
@@ -764,91 +807,198 @@ export const EventRoundsPage = () => {
       )}
 
       {/* MODAL 3: VIEW & MANAGE ENROLLED PARTICIPANTS FOR ROUND */}
-      {isViewStudentsModalOpen && targetRoundQuiz && (
-        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4 overflow-y-auto">
-          <div className="bg-white dark:bg-zinc-950 border border-slate-200 dark:border-zinc-800 rounded-3xl w-full max-w-3xl p-6 sm:p-8 space-y-6 shadow-2xl my-8">
-            <div className="flex items-center justify-between border-b border-slate-200 dark:border-zinc-800 pb-4">
-              <div>
-                <h3 className="text-xl font-bold text-slate-900 dark:text-white flex items-center gap-2">
-                  <Users className="w-5 h-5 text-blue-600 dark:text-blue-400" /> Authorized Participants
-                </h3>
-                <span className="text-xs text-blue-600 dark:text-blue-400 font-semibold">Round: {targetRoundQuiz.title}</span>
-              </div>
-              <button onClick={() => setIsViewStudentsModalOpen(false)} className="text-slate-400 hover:text-slate-600 dark:hover:text-white text-lg font-bold">✕</button>
-            </div>
-
-            <div className="space-y-4 text-xs">
-              {loadingRegistrations ? (
-                <div className="p-8 text-center text-slate-500 dark:text-zinc-400">Loading round participants...</div>
-              ) : roundRegistrations.length === 0 ? (
-                <div className="p-8 text-center text-slate-500 dark:text-zinc-400 space-y-2">
-                  <p>No participants have been given access to this round yet.</p>
-                  <Button
-                    size="sm"
-                    variant="primary"
-                    icon={Upload}
-                    onClick={() => {
-                      setIsViewStudentsModalOpen(false);
-                      setIsUploadStudentsModalOpen(true);
-                    }}
-                  >
-                    Upload Students File
-                  </Button>
+      {isViewStudentsModalOpen && targetRoundQuiz && (() => {
+        const alreadyGranted = new Set(roundRegistrations.map((r) => String(r.participant_id)));
+        const filteredRegUsers = (registeredUsers || []).filter((u) => {
+          if (u.role === 'admin') return false;
+          const term = roundUserSearch.toLowerCase();
+          return !term || (u.name && u.name.toLowerCase().includes(term)) || (u.email && u.email.toLowerCase().includes(term)) || (u.phone && u.phone.includes(term));
+        });
+        return (
+          <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4 overflow-y-auto">
+            <div className="bg-white dark:bg-zinc-950 border border-slate-200 dark:border-zinc-800 rounded-3xl w-full max-w-3xl p-6 sm:p-8 space-y-5 shadow-2xl my-8 max-h-[90vh] flex flex-col">
+              {/* Header */}
+              <div className="flex items-center justify-between border-b border-slate-200 dark:border-zinc-800 pb-4 shrink-0">
+                <div>
+                  <h3 className="text-xl font-bold text-slate-900 dark:text-white flex items-center gap-2">
+                    <Users className="w-5 h-5 text-blue-600 dark:text-blue-400" /> Participant Access Control
+                  </h3>
+                  <span className="text-xs text-blue-600 dark:text-blue-400 font-semibold">Round: {targetRoundQuiz.title}</span>
                 </div>
-              ) : (
-                <div className="max-h-72 overflow-y-auto rounded-2xl border border-slate-200 dark:border-zinc-800">
-                  <table className="w-full text-left text-xs border-collapse">
-                    <thead>
-                      <tr className="border-b border-slate-200 dark:border-zinc-800 text-slate-400 uppercase text-[10px] font-bold tracking-wider bg-slate-50 dark:bg-zinc-900">
-                        <th className="py-2.5 px-3">Participant Name</th>
-                        <th className="py-2.5 px-3">Email / ID</th>
-                        <th className="py-2.5 px-3">Access Status</th>
-                        <th className="py-2.5 px-3 text-right">Action</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-slate-200 dark:divide-zinc-800">
-                      {roundRegistrations.map((reg) => {
-                        const isGranted = reg.access_status === 'Granted';
-                        return (
-                          <tr key={reg.id} className="hover:bg-slate-50/50 dark:hover:bg-zinc-900/50">
-                            <td className="py-2.5 px-3 font-bold text-slate-900 dark:text-white">{reg.participantName}</td>
-                            <td className="py-2.5 px-3 text-slate-500 dark:text-zinc-400">{reg.participantEmail}</td>
-                            <td className="py-2.5 px-3">
-                              <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold uppercase border ${
-                                isGranted 
-                                  ? 'bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-950 dark:text-emerald-300' 
-                                  : 'bg-red-50 text-red-700 border-red-200 dark:bg-red-950 dark:text-red-300'
-                              }`}>
-                                {reg.access_status || 'Granted'}
-                              </span>
-                            </td>
-                            <td className="py-2.5 px-3 text-right">
-                              <button
-                                onClick={() => handleToggleAccess(reg.participant_id, reg.access_status)}
-                                className={`px-2.5 py-1 rounded-lg text-[11px] font-bold cursor-pointer transition-all ${
-                                  isGranted
-                                    ? 'bg-red-50 hover:bg-red-100 text-red-700 border border-red-200 dark:bg-red-950/60 dark:text-red-300'
-                                    : 'bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border border-emerald-200 dark:bg-emerald-950/60 dark:text-emerald-300'
-                                }`}
-                              >
-                                {isGranted ? 'Revoke' : 'Grant'}
-                              </button>
-                            </td>
+                <button onClick={() => { setIsViewStudentsModalOpen(false); setAccessModalTab('enrolled'); setRoundSelectedUserIds([]); setRoundUserSearch(''); }} className="text-slate-400 hover:text-slate-600 dark:hover:text-white text-lg font-bold cursor-pointer">✕</button>
+              </div>
+
+              {/* Tabs */}
+              <div className="flex gap-2 shrink-0">
+                <button
+                  onClick={() => setAccessModalTab('enrolled')}
+                  className={`px-4 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer ${accessModalTab === 'enrolled' ? 'bg-blue-600 text-white shadow-md' : 'bg-slate-100 dark:bg-zinc-900 text-slate-600 dark:text-zinc-400 border border-slate-200 dark:border-zinc-800 hover:bg-slate-200 dark:hover:bg-zinc-800'}`}
+                >
+                  Enrolled ({roundRegistrations.length})
+                </button>
+                <button
+                  onClick={() => { setAccessModalTab('select'); fetchUsers(); setRoundUserSearch(''); setRoundSelectedUserIds([]); }}
+                  className={`px-4 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer ${accessModalTab === 'select' ? 'bg-blue-600 text-white shadow-md' : 'bg-slate-100 dark:bg-zinc-900 text-slate-600 dark:text-zinc-400 border border-slate-200 dark:border-zinc-800 hover:bg-slate-200 dark:hover:bg-zinc-800'}`}
+                >
+                  + Add from Registered Users
+                </button>
+              </div>
+
+              {/* TAB: ENROLLED PARTICIPANTS */}
+              {accessModalTab === 'enrolled' && (
+                <div className="flex-1 overflow-y-auto space-y-4 min-h-0">
+                  {loadingRegistrations ? (
+                    <div className="p-8 text-center text-slate-500 dark:text-zinc-400">Loading round participants...</div>
+                  ) : roundRegistrations.length === 0 ? (
+                    <div className="p-8 text-center text-slate-500 dark:text-zinc-400 space-y-3">
+                      <p>No participants have been given access to this round yet.</p>
+                      <div className="flex items-center justify-center gap-2">
+                        <Button size="sm" variant="secondary" icon={Upload} onClick={() => { setIsViewStudentsModalOpen(false); setIsUploadStudentsModalOpen(true); }}>
+                          Upload File
+                        </Button>
+                        <Button size="sm" variant="primary" icon={Users} onClick={() => { setAccessModalTab('select'); fetchUsers(); }}>
+                          Select from Users
+                        </Button>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="rounded-2xl border border-slate-200 dark:border-zinc-800 overflow-hidden">
+                      <table className="w-full text-left text-xs border-collapse">
+                        <thead>
+                          <tr className="border-b border-slate-200 dark:border-zinc-800 text-slate-400 uppercase text-[10px] font-bold tracking-wider bg-slate-50 dark:bg-zinc-900">
+                            <th className="py-2.5 px-3">Participant Name</th>
+                            <th className="py-2.5 px-3">Email / ID</th>
+                            <th className="py-2.5 px-3">Access Status</th>
+                            <th className="py-2.5 px-3 text-right">Action</th>
                           </tr>
-                        );
-                      })}
-                    </tbody>
-                  </table>
+                        </thead>
+                        <tbody className="divide-y divide-slate-200 dark:divide-zinc-800">
+                          {roundRegistrations.map((reg) => {
+                            const isGranted = reg.access_status === 'Granted';
+                            return (
+                              <tr key={reg.id} className="hover:bg-slate-50/50 dark:hover:bg-zinc-900/50">
+                                <td className="py-2.5 px-3 font-bold text-slate-900 dark:text-white">{reg.participantName}</td>
+                                <td className="py-2.5 px-3 text-slate-500 dark:text-zinc-400">{reg.participantEmail}</td>
+                                <td className="py-2.5 px-3">
+                                  <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold uppercase border ${isGranted ? 'bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-950 dark:text-emerald-300' : 'bg-red-50 text-red-700 border-red-200 dark:bg-red-950 dark:text-red-300'}`}>
+                                    {reg.access_status || 'Granted'}
+                                  </span>
+                                </td>
+                                <td className="py-2.5 px-3 text-right">
+                                  <button
+                                    onClick={() => handleToggleAccess(reg.participant_id, reg.access_status)}
+                                    className={`px-2.5 py-1 rounded-lg text-[11px] font-bold cursor-pointer transition-all ${isGranted ? 'bg-red-50 hover:bg-red-100 text-red-700 border border-red-200 dark:bg-red-950/60 dark:text-red-300' : 'bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border border-emerald-200 dark:bg-emerald-950/60 dark:text-emerald-300'}`}
+                                  >
+                                    {isGranted ? 'Revoke' : 'Grant'}
+                                  </button>
+                                </td>
+                              </tr>
+                            );
+                          })}
+                        </tbody>
+                      </table>
+                    </div>
+                  )}
                 </div>
               )}
 
-              <div className="flex justify-end pt-4 border-t border-slate-200 dark:border-zinc-800">
-                <Button type="button" variant="secondary" onClick={() => setIsViewStudentsModalOpen(false)}>Close</Button>
+              {/* TAB: SELECT FROM REGISTERED USERS */}
+              {accessModalTab === 'select' && (
+                <div className="flex-1 flex flex-col gap-4 min-h-0">
+                  <div className="flex items-center gap-3 shrink-0">
+                    <div className="relative flex-1">
+                      <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+                      <input
+                        type="text"
+                        placeholder="Search registered students by name, phone, email..."
+                        value={roundUserSearch}
+                        onChange={(e) => setRoundUserSearch(e.target.value)}
+                        className="w-full pl-9 pr-4 py-2.5 bg-slate-50 dark:bg-zinc-900 border border-slate-200 dark:border-zinc-800 rounded-xl text-xs text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      />
+                    </div>
+                    <button
+                      onClick={() => {
+                        const notYet = filteredRegUsers.filter((u) => !alreadyGranted.has(String(u.id)));
+                        setRoundSelectedUserIds(roundSelectedUserIds.length === notYet.length ? [] : notYet.map((u) => u.id));
+                      }}
+                      className="text-xs font-bold text-blue-600 dark:text-blue-400 px-3 py-2 rounded-xl border border-blue-200 dark:border-blue-800 hover:bg-blue-50 dark:hover:bg-blue-950/50 whitespace-nowrap cursor-pointer"
+                    >
+                      {roundSelectedUserIds.length > 0 ? 'Deselect All' : 'Select All'}
+                    </button>
+                  </div>
+
+                  <div className="flex-1 overflow-y-auto rounded-2xl border border-slate-200 dark:border-zinc-800 min-h-0">
+                    {filteredRegUsers.length === 0 ? (
+                      <div className="p-8 text-center text-slate-500 dark:text-zinc-400 text-sm">No registered students found.</div>
+                    ) : (
+                      <table className="w-full text-left text-xs border-collapse">
+                        <thead>
+                          <tr className="border-b border-slate-200 dark:border-zinc-800 text-slate-400 uppercase text-[10px] font-bold tracking-wider bg-slate-50 dark:bg-zinc-900 sticky top-0">
+                            <th className="py-2.5 px-3 w-10">✓</th>
+                            <th className="py-2.5 px-3">Name</th>
+                            <th className="py-2.5 px-3">Phone</th>
+                            <th className="py-2.5 px-3">Email</th>
+                            <th className="py-2.5 px-3 text-right">Status</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-slate-200 dark:divide-zinc-800">
+                          {filteredRegUsers.map((u) => {
+                            const has = alreadyGranted.has(String(u.id));
+                            const checked = roundSelectedUserIds.includes(u.id);
+                            return (
+                              <tr
+                                key={u.id}
+                                onClick={() => { if (has) return; setRoundSelectedUserIds((p) => p.includes(u.id) ? p.filter((x) => x !== u.id) : [...p, u.id]); }}
+                                className={`transition-colors ${has ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer hover:bg-blue-50/50 dark:hover:bg-blue-950/20'} ${checked ? 'bg-blue-50 dark:bg-blue-950/30' : ''}`}
+                              >
+                                <td className="py-2.5 px-3">
+                                  <div className={`w-4 h-4 rounded border-2 flex items-center justify-center ${checked ? 'bg-blue-600 border-blue-600' : 'border-slate-300 dark:border-zinc-600'}`}>
+                                    {checked && <CheckCircle2 className="w-2.5 h-2.5 text-white" />}
+                                  </div>
+                                </td>
+                                <td className="py-2.5 px-3 font-bold text-slate-900 dark:text-white">{u.name}</td>
+                                <td className="py-2.5 px-3 text-slate-600 dark:text-zinc-400">{u.phone || '—'}</td>
+                                <td className="py-2.5 px-3 text-slate-500 dark:text-zinc-500 text-[11px]">{u.email || '—'}</td>
+                                <td className="py-2.5 px-3 text-right">
+                                  {has ? (
+                                    <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-50 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300">Already Granted</span>
+                                  ) : (
+                                    <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-slate-100 text-slate-600 dark:bg-zinc-800 dark:text-zinc-400">{u.status || 'Active'}</span>
+                                  )}
+                                </td>
+                              </tr>
+                            );
+                          })}
+                        </tbody>
+                      </table>
+                    )}
+                  </div>
+
+                  <div className="flex items-center justify-between pt-3 border-t border-slate-200 dark:border-zinc-800 shrink-0">
+                    <span className="text-xs text-slate-500 dark:text-zinc-400 font-semibold">
+                      {roundSelectedUserIds.length > 0 ? `${roundSelectedUserIds.length} student(s) selected` : 'No students selected'}
+                    </span>
+                    <Button
+                      type="button"
+                      variant="primary"
+                      icon={CheckCircle2}
+                      disabled={roundSelectedUserIds.length === 0 || isGrantingRoundUsers}
+                      onClick={handleGrantSelectedUsersToRound}
+                    >
+                      {isGrantingRoundUsers ? 'Granting...' : `Grant Access to ${roundSelectedUserIds.length} Student(s)`}
+                    </Button>
+                  </div>
+                </div>
+              )}
+
+              {/* Footer (Close) */}
+              <div className="flex justify-end pt-3 border-t border-slate-200 dark:border-zinc-800 shrink-0">
+                <Button type="button" variant="secondary" onClick={() => { setIsViewStudentsModalOpen(false); setAccessModalTab('enrolled'); setRoundSelectedUserIds([]); setRoundUserSearch(''); }}>Close</Button>
               </div>
             </div>
           </div>
-        </div>
-      )}
+        );
+      })()}
 
       {/* MODAL 4: CREATE NEW EVENT */}
       {isCreateEventModalOpen && (
