@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
+import { useToast } from '../context/ToastContext';
 import { Input } from '../components/Input';
 import { Button } from '../components/Button';
 import { ThemeToggle } from '../components/ThemeToggle';
@@ -10,6 +11,7 @@ import { Mail, Lock, Eye, EyeOff, Sparkles, User, ShieldCheck, AlertCircle, Brai
 export const LoginPage = () => {
   const navigate = useNavigate();
   const { login, loading: authLoading } = useAuth();
+  const { toast } = useToast();
 
   const [activeRole, setActiveRole] = useState('user'); // 'user' (participant) or 'admin'
   const [email, setEmail] = useState('student@eloquence.com');
@@ -50,9 +52,12 @@ export const LoginPage = () => {
     setIsSubmitting(false);
 
     if (result.success) {
+      toast.success(`Welcome back, ${result.user?.name || 'User'}!`);
       navigate('/dashboard');
     } else {
-      setError(result.error);
+      const errorMsg = result.message || result.error || 'Invalid credentials or login blocked.';
+      setError(errorMsg);
+      toast.error(errorMsg);
     }
   };
 

@@ -1,8 +1,8 @@
 import React from 'react';
 import { useAuth } from '../context/AuthContext';
 import { ThemeToggle } from './ThemeToggle';
-import { BrainCircuit, LogOut, User } from 'lucide-react';
-import { Link } from 'react-router-dom';
+import { BrainCircuit, LogOut, User, UserPlus, Sparkles, CalendarClock } from 'lucide-react';
+import { Link, NavLink } from 'react-router-dom';
 
 export const Navbar = () => {
   const { user, role, logout } = useAuth();
@@ -22,6 +22,53 @@ export const Navbar = () => {
             <p className="text-[10px] text-blue-600 dark:text-blue-400 font-bold tracking-wider uppercase">Quiz Platform</p>
           </div>
         </Link>
+
+        {/* Quick Nav for Admin */}
+        {role === 'admin' && (
+          <div className="hidden lg:flex items-center gap-2">
+            <NavLink
+              to="/users"
+              className={({ isActive }) =>
+                `px-3 py-1.5 rounded-xl text-xs font-semibold flex items-center gap-1.5 transition-all ${
+                  isActive
+                    ? 'bg-blue-50 text-blue-700 border border-blue-200 dark:bg-blue-950/80 dark:text-blue-300 dark:border-blue-800'
+                    : 'text-slate-600 dark:text-zinc-400 hover:text-blue-600 dark:hover:text-blue-400 hover:bg-slate-100 dark:hover:bg-zinc-900'
+                }`
+              }
+            >
+              <UserPlus className="w-3.5 h-3.5 text-blue-600 dark:text-blue-400" />
+              <span>User Register & Import</span>
+            </NavLink>
+
+            <NavLink
+              to="/event-quiz"
+              className={({ isActive }) =>
+                `px-3 py-1.5 rounded-xl text-xs font-semibold flex items-center gap-1.5 transition-all ${
+                  isActive
+                    ? 'bg-blue-50 text-blue-700 border border-blue-200 dark:bg-blue-950/80 dark:text-blue-300 dark:border-blue-800'
+                    : 'text-slate-600 dark:text-zinc-400 hover:text-blue-600 dark:hover:text-blue-400 hover:bg-slate-100 dark:hover:bg-zinc-900'
+                }`
+              }
+            >
+              <Sparkles className="w-3.5 h-3.5 text-blue-600 dark:text-blue-400" />
+              <span>Event Quiz</span>
+            </NavLink>
+
+            <NavLink
+              to="/quiz-schedule"
+              className={({ isActive }) =>
+                `px-3 py-1.5 rounded-xl text-xs font-semibold flex items-center gap-1.5 transition-all ${
+                  isActive
+                    ? 'bg-blue-50 text-blue-700 border border-blue-200 dark:bg-blue-950/80 dark:text-blue-300 dark:border-blue-800'
+                    : 'text-slate-600 dark:text-zinc-400 hover:text-blue-600 dark:hover:text-blue-400 hover:bg-slate-100 dark:hover:bg-zinc-900'
+                }`
+              }
+            >
+              <CalendarClock className="w-3.5 h-3.5 text-blue-600 dark:text-blue-400" />
+              <span>Quiz Schedule & Quiz</span>
+            </NavLink>
+          </div>
+        )}
 
         {/* User Info / Controls */}
         <div className="flex items-center gap-3">

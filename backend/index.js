@@ -1,8 +1,13 @@
 import express from 'express';
 import cors from 'cors';
 import morgan from 'morgan';
+// Admin Quiz Management Routes
 import dotenv from 'dotenv';
 import { supabase } from './config/supabase.js';
+import userRoutes from './routes/userRoutes.js';
+import quizRoutes from './routes/quizRoutes.js';
+import adminQuizRoutes from './routes/adminQuizRoutes.js';
+import participantQuizRoutes from './routes/participantQuizRoutes.js';
 
 dotenv.config();
 
@@ -15,6 +20,11 @@ app.use(morgan('dev'));
 app.use(express.json());
 
 // Routes
+app.use('/api/users', userRoutes);
+app.use('/api/quizzes', quizRoutes);
+app.use('/api/admin', adminQuizRoutes);
+app.use('/api/participant', participantQuizRoutes);
+
 app.get('/', (req, res) => {
   res.json({
     message: 'Welcome to Eloquence 2K26 Quiz API',

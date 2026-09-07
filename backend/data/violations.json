@@ -1,0 +1,12 @@
+[
+  {
+    "id": "viol_1788759366911_c4z",
+    "attempt_id": "att_1788759366896_cvaj",
+    "quiz_id": "quiz_1788759366865_qfc",
+    "participant_id": "user-demo-1",
+    "violation_type": "tab_switch",
+    "description": "Participant switched browser tab",
+    "timestamp": "2026-09-07T05:36:06.911Z",
+    "severity": "WARNING"
+  }
+]

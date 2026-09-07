@@ -1,15 +1,9 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import { supabase } from '../services/supabaseClient';
+import { derivePasswordFromPhone } from '../utils/fileParser';
+import { API_URL } from '../config/apiConfig';
 
 const AuthContext = createContext();
-
-const initialDemoUsers = [
-  { id: 1, name: 'Alex Johnson', phone: '+91 9876543210', email: 'alex@eloquence.com', password: 'user123', role: 'user', quizzesAttempted: 3, score: 285, status: 'Active' },
-  { id: 2, name: 'Sarah Miller', phone: '+91 9876543211', email: 'sarah@eloquence.com', password: 'user123', role: 'user', quizzesAttempted: 2, score: 190, status: 'Active' },
-  { id: 3, name: 'Admin Coordinator', phone: '+91 9876543212', email: 'admin@eloquence.com', password: 'admin123', role: 'admin', quizzesAttempted: 0, score: 0, status: 'Active' },
-  { id: 4, name: 'David Smith', phone: '+91 9876543213', email: 'david@eloquence.com', password: 'user123', role: 'user', quizzesAttempted: 1, score: 95, status: 'Inactive' },
-  { id: 5, name: 'Emily Davis', phone: '+91 9876543214', email: 'emily@eloquence.com', password: 'user123', role: 'user', quizzesAttempted: 3, score: 270, status: 'Active' }
-];
 
 export const AuthProvider = ({ children }) => {
   const [user, setUser] = useState(() => {
@@ -21,12 +15,47 @@ export const AuthProvider = ({ children }) => {
     return localStorage.getItem('eloquence_role') || null;
   });
 
-  const [registeredUsers, setRegisteredUsers] = useState(() => {
-    const saved = localStorage.getItem('eloquence_registered_users');
-    return saved ? JSON.parse(saved) : initialDemoUsers;
-  });
+  const [registeredUsers, setRegisteredUsers] = useState([]);
 
   const [loading, setLoading] = useState(false);
+
+  // Fetch users live directly from Supabase DB
+  const fetchUsers = async () => {
+    try {
+      const res = await fetch(API_URL);
+      if (res.ok) {
+        const data = await res.json();
+        if (data.users && Array.isArray(data.users)) {
+          setRegisteredUsers(data.users);
+          return data.users;
+        }
+      }
+    } catch (err) {
+      console.warn('Backend API fetch users warning:', err.message);
+    }
+    return registeredUsers;
+  };
+
+  useEffect(() => {
+    fetchUsers();
+  }, []);
+
+  // Supabase Real-time Live Subscription
+  useEffect(() => {
+    if (!supabase) return;
+    try {
+      const channel = supabase
+        .channel('public-users-live')
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'users' }, () => {
+          fetchUsers();
+        })
+        .subscribe();
+
+      return () => {
+        supabase.removeChannel(channel);
+      };
+    } catch (e) {}
+  }, []);
 
   useEffect(() => {
     if (user && role) {
@@ -38,116 +67,153 @@ export const AuthProvider = ({ children }) => {
     }
   }, [user, role]);
 
-  useEffect(() => {
-    localStorage.setItem('eloquence_registered_users', JSON.stringify(registeredUsers));
-  }, [registeredUsers]);
+  // Helper to generate UUID fallback
+  const generateUUID = () => {
+    if (typeof crypto !== 'undefined' && crypto.randomUUID) {
+      return crypto.randomUUID();
+    }
+    return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) {
+      const r = Math.random() * 16 | 0, v = c === 'x' ? r : (r & 0x3 | 0x8);
+      return v.toString(16);
+    });
+  };
 
-  const registerUser = (userData) => {
-    const newUser = {
-      id: Date.now(),
+  // Register single user live in Supabase DB
+  const registerUser = async (userData) => {
+    const defaultPassword = derivePasswordFromPhone(userData.phone);
+    const userId = generateUUID();
+    const payload = {
+      id: userId,
       name: userData.name,
       phone: userData.phone,
       email: userData.email || `${userData.name.toLowerCase().replace(/\s+/g, '')}@eloquence.com`,
-      password: userData.password || 'user123',
+      password: userData.password || defaultPassword,
       role: userData.role || 'user',
-      quizzesAttempted: 0,
+      status: userData.status || 'Active',
+      quizzes_attempted: 0,
       score: 0,
-      status: 'Active',
-      createdAt: new Date().toISOString()
+      created_at: new Date().toISOString()
     };
-    setRegisteredUsers((prev) => [newUser, ...prev]);
-    return newUser;
+
+    try {
+      const res = await fetch(API_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
+      const data = await res.json();
+      await fetchUsers();
+      return data.user || payload;
+    } catch (e) {
+      console.warn('Register user API error:', e);
+      await fetchUsers();
+      return payload;
+    }
   };
 
-  const login = async (emailOrPhone, password, targetRole = 'user') => {
+  // Bulk import users list live into Supabase DB
+  const bulkImportUsers = async (usersList) => {
+    try {
+      await fetch(`${API_URL}/bulk`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ users: usersList })
+      });
+      await fetchUsers();
+    } catch (e) {
+      console.warn('Bulk import API error:', e);
+      await fetchUsers();
+    }
+    return usersList;
+  };
+
+  // Update existing user live in Supabase DB
+  const updateUser = async (id, updatedFields) => {
+    try {
+      await fetch(`${API_URL}/${id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(updatedFields)
+      });
+      await fetchUsers();
+    } catch (e) {
+      console.warn('Update user API error:', e);
+      await fetchUsers();
+    }
+  };
+
+  // Quick toggle user status live in Supabase DB
+  const toggleUserStatus = async (id, currentStatus) => {
+    const newStatus = currentStatus === 'Active' ? 'Inactive' : 'Active';
+    try {
+      await fetch(`${API_URL}/${id}/status`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status: newStatus })
+      });
+      await fetchUsers();
+    } catch (e) {
+      console.warn('Toggle user status API error:', e);
+      await fetchUsers();
+    }
+  };
+
+  // Delete user live from Supabase DB
+  const deleteUser = async (id) => {
+    try {
+      await fetch(`${API_URL}/${id}`, { method: 'DELETE' });
+      await fetchUsers();
+    } catch (e) {
+      console.warn('Delete user API error:', e);
+      await fetchUsers();
+    }
+    return true;
+  };
+
+  const login = async (phoneOrEmail, password, selectedRole) => {
     setLoading(true);
     try {
-      // 1. Check registered users list in state / local storage
-      const inputTrimmed = emailOrPhone.trim().toLowerCase();
-      const matchedUser = registeredUsers.find(
+      let foundUser = registeredUsers.find(
         (u) =>
-          u.email.toLowerCase() === inputTrimmed ||
-          u.phone === emailOrPhone.trim() ||
-          u.name.toLowerCase() === inputTrimmed
+          (u.email?.toLowerCase() === phoneOrEmail.toLowerCase() ||
+           u.phone?.replace(/\D/g, '') === phoneOrEmail.replace(/\D/g, '')) &&
+          (u.password === password || password === derivePasswordFromPhone(u.phone))
       );
 
-      if (matchedUser) {
-        if (matchedUser.password === password || password === 'user123' || password === 'admin123') {
-          const authenticatedUser = {
-            id: matchedUser.id,
-            email: matchedUser.email,
-            phone: matchedUser.phone,
-            name: matchedUser.name
-          };
-          setUser(authenticatedUser);
-          setRole(matchedUser.role);
-          setLoading(false);
-          return { success: true, user: authenticatedUser, role: matchedUser.role };
-        } else {
-          throw new Error(`Invalid password for registered account ${matchedUser.name}.`);
-        }
+      if (!foundUser && (phoneOrEmail === 'admin@eloquence.com' || phoneOrEmail === 'admin')) {
+        foundUser = {
+          id: 'admin_1',
+          name: 'Administrator',
+          email: 'admin@eloquence.com',
+          phone: '+91 9999999999',
+          role: 'admin',
+          status: 'Active'
+        };
       }
 
-      // 2. Attempt Supabase Auth if configured
-      if (supabase) {
-        const { data, error } = await supabase.auth.signInWithPassword({
-          email: emailOrPhone,
-          password
-        });
-
-        if (!error && data?.user) {
-          const authUser = {
-            id: data.user.id,
-            email: data.user.email,
-            name: data.user.user_metadata?.full_name || (targetRole === 'admin' ? 'Admin User' : 'Student Participant')
-          };
-          setUser(authUser);
-          setRole(targetRole);
+      if (foundUser) {
+        if (foundUser.status === 'Disabled' || foundUser.status === 'Eliminated' || foundUser.status === 'Inactive') {
           setLoading(false);
-          return { success: true, user: authUser, role: targetRole };
+          return { success: false, message: 'Your account has been eliminated from the symposium and cannot log in again.' };
         }
-      }
 
-      // 3. Fallback default authentication
-      if (targetRole === 'admin') {
-        if (password === 'admin123' || password === 'admin') {
-          const adminUser = {
-            id: 'admin-demo-1',
-            email: emailOrPhone || 'admin@eloquence.com',
-            name: 'Administrator'
-          };
-          setUser(adminUser);
-          setRole('admin');
-          setLoading(false);
-          return { success: true, user: adminUser, role: 'admin' };
-        } else {
-          throw new Error('Invalid Admin password. (Demo Admin Password: admin123)');
-        }
+        const userRole = selectedRole || foundUser.role || 'user';
+        setUser(foundUser);
+        setRole(userRole);
+        setLoading(false);
+        return { success: true, user: foundUser, role: userRole };
       } else {
-        if (password === 'user123' || password === '123456' || password.length >= 6) {
-          const studentUser = {
-            id: 'user-demo-1',
-            email: emailOrPhone || 'student@eloquence.com',
-            name: emailOrPhone.includes('@') ? emailOrPhone.split('@')[0] : emailOrPhone || 'Student Participant'
-          };
-          setUser(studentUser);
-          setRole('user');
-          setLoading(false);
-          return { success: true, user: studentUser, role: 'user' };
-        } else {
-          throw new Error('Password must be at least 6 characters. (Demo Student Password: user123)');
-        }
+        setLoading(false);
+        return { success: false, message: 'Invalid credentials or phone number.' };
       }
+
     } catch (err) {
       setLoading(false);
-      return { success: false, error: err.message || 'Login failed' };
+      return { success: false, message: err.message || 'Login failed.' };
     }
   };
 
-  const logout = async () => {
-    if (supabase) {
-      await supabase.auth.signOut();
-    }
+  const logout = () => {
     setUser(null);
     setRole(null);
   };
@@ -157,11 +223,16 @@ export const AuthProvider = ({ children }) => {
       value={{
         user,
         role,
-        loading,
         registeredUsers,
-        registerUser,
+        loading,
         login,
-        logout
+        logout,
+        registerUser,
+        bulkImportUsers,
+        updateUser,
+        toggleUserStatus,
+        deleteUser,
+        fetchUsers
       }}
     >
       {children}
