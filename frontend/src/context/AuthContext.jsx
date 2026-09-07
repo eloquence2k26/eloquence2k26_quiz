@@ -71,22 +71,8 @@ export const AuthProvider = ({ children }) => {
     fetchUsers();
   }, []);
 
-  // Supabase Real-time Live Subscription
-  useEffect(() => {
-    if (!supabase) return;
-    try {
-      const channel = supabase
-        .channel('public-users-live')
-        .on('postgres_changes', { event: '*', schema: 'public', table: 'users' }, () => {
-          fetchUsers();
-        })
-        .subscribe();
-
-      return () => {
-        supabase.removeChannel(channel);
-      };
-    } catch (e) {}
-  }, []);
+  // Supabase Real-time Live Subscription removed to prevent WebSocket connection errors
+  // caused by React StrictMode instant mount/unmount cycle.
 
   useEffect(() => {
     if (user && role) {

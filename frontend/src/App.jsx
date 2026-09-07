@@ -11,6 +11,7 @@ import { RestartTestPage } from './pages/RestartTestPage';
 import { ParticipantQuizzesPage } from './pages/ParticipantQuizzesPage';
 import { StrictQuizInterface } from './pages/StrictQuizInterface';
 import { ScheduleEventsPage } from './pages/ScheduleEventsPage';
+import AdminResultsPage from './pages/AdminResultsPage';
 import { ProtectedRoute } from './components/ProtectedRoute';
 import { useAuth } from './context/AuthContext';
 
@@ -117,6 +118,17 @@ function App() {
       <Route
         path="/admin/retests"
         element={<Navigate to="/admin/restart-test" replace />}
+      />
+
+      <Route
+        path="/admin/results"
+        element={
+          <ProtectedRoute requiredRole="admin">
+            <AppLayout>
+              <AdminResultsPage />
+            </AppLayout>
+          </ProtectedRoute>
+        }
       />
 
       <Route

@@ -16,7 +16,8 @@ import {
   BookOpen,
   CalendarClock,
   UserCheck,
-  Layers
+  Layers,
+  Trophy
 } from 'lucide-react';
 
 export const Sidebar = () => {
@@ -64,6 +65,11 @@ export const Sidebar = () => {
       name: 'Restart Test',
       path: '/admin/restart-test',
       icon: RotateCcw
+    },
+    {
+      name: 'Results',
+      path: '/admin/results',
+      icon: Trophy
     },
     {
       name: 'User Register',

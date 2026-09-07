@@ -224,18 +224,35 @@ export const StrictQuizInterface = () => {
 
     // Mobile: Long Press / Long Touch (Used to trigger Gemini/Copy)
     let touchTimer;
+    let touchStarted = false;
+    
     const handleTouchStart = (e) => {
+      touchStarted = true;
       if (e.touches.length > 1) {
         reportViolation('multi_touch', 'Multiple touch points detected');
       }
+      
+      // Setup the long press timer
       touchTimer = setTimeout(() => {
-        reportViolation('long_press', 'Long press / Long touch detected');
-      }, 800); // 800ms threshold for long press
+        if (touchStarted) {
+          // Final violation triggers instant termination via reportViolation
+          reportViolation('long_press', 'Long press / AI Screen scan detected');
+        }
+      }, 700); // 700ms threshold for long press
     };
 
     const handleTouchEnd = () => {
+      touchStarted = false;
       clearTimeout(touchTimer);
     };
+
+    // Aggressive Focus Poller for Mobile OS Overlays (Gemini/Google Assistant)
+    // Mobile OS overlays often don't trigger reliable blur events but they do steal document focus
+    const focusPoller = setInterval(() => {
+      if (securitySettings.detect_focus_loss !== false && !document.hasFocus()) {
+        reportViolation('focus_lost_overlay', 'System overlay / AI Assistant detected over quiz');
+      }
+    }, 500); // Check every 500ms
 
     document.addEventListener('visibilitychange', handleVisibilityChange);
     window.addEventListener('blur', handleWindowBlur);
@@ -271,6 +288,7 @@ export const StrictQuizInterface = () => {
       document.removeEventListener('touchcancel', handleTouchEnd);
       clearTimeout(resizeTimer);
       clearTimeout(touchTimer);
+      clearInterval(focusPoller);
     };
   }, [isQuizStarted, isLocked, quizResult, attemptId, securitySettings]);
 
@@ -359,11 +377,14 @@ export const StrictQuizInterface = () => {
           <Lock className="w-8 h-8" />
         </div>
         <h2 className="text-2xl font-bold text-slate-900 dark:text-white">⚠ QUIZ TERMINATED</h2>
+        <div className="bg-slate-100 dark:bg-zinc-800/50 p-3 rounded-lg border border-slate-200 dark:border-zinc-700">
+          <p className="text-sm font-bold text-slate-800 dark:text-slate-200">Participant: {user?.name || user?.email || 'Unknown User'}</p>
+        </div>
         <p className="text-xs text-red-600 dark:text-red-400 font-semibold leading-relaxed">
           {lockReason || 'A prohibited activity was detected. Your current quiz attempt has been terminated.'}
         </p>
         <p className="text-[11px] text-slate-500 dark:text-zinc-400">
-          You cannot restart unless the administrator grants retest permission.
+          You cannot restart unless the administrator grants retest permission. Please contact your admin.
         </p>
         <Button variant="primary" className="w-full" onClick={() => navigate('/participant/quizzes')}>
           Return to My Quizzes

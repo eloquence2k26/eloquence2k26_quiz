@@ -1020,8 +1020,22 @@ export const getAllResults = async () => {
       .select('*')
       .order('started_at', { ascending: false });
 
-    const { data: quizzes } = await supabase.from('quizzes').select('id, title, category');
-    const { data: users } = await supabase.from('users').select('id, name, email, phone');
+    if (!attempts || attempts.length === 0) return [];
+
+    const quizIds = [...new Set(attempts.map(a => a.quiz_id))];
+    const participantIds = [...new Set(attempts.map(a => String(a.participant_id)))];
+
+    const [
+      { data: quizzes },
+      { data: users },
+      { data: violations }
+    ] = await Promise.all([
+      supabase.from('quizzes').select('id, title, category').in('id', quizIds),
+      supabase.from('users').select('id, name, email, phone'),
+        // Supabase has a max limit for .in(), but for typical usage this is extremely fast. 
+        // We fetch all users if there are too many, but for now we'll fetch all to ensure email/id mapping doesn't break
+      supabase.from('quiz_violations').select('*').in('attempt_id', attempts.map(a => a.id))
+    ]);
 
     const quizMap = new Map();
     (quizzes || []).forEach((q) => quizMap.set(String(q.id), q));
@@ -1031,6 +1045,14 @@ export const getAllResults = async () => {
       userMap.set(String(u.id), u);
       if (u.email) userMap.set(String(u.email).toLowerCase(), u);
     });
+    
+    const violationMap = new Map();
+    (violations || []).forEach((v) => {
+      if (!violationMap.has(v.attempt_id)) {
+        violationMap.set(v.attempt_id, []);
+      }
+      violationMap.get(v.attempt_id).push(v);
+    });
 
     return (attempts || []).map((att) => {
       const q = quizMap.get(String(att.quiz_id));
@@ -1038,6 +1060,7 @@ export const getAllResults = async () => {
       return {
         id: att.id,
         attemptId: att.id,
+        attemptNumber: att.attempt_number || 1,
         quizId: att.quiz_id,
         quizTitle: q?.title || att.quiz_id,
         category: q?.category || 'General',
@@ -1049,7 +1072,8 @@ export const getAllResults = async () => {
         status: att.status,
         startedAt: att.started_at,
         submittedAt: att.submitted_at,
-        violationsCount: att.violation_count || 0
+        violationsCount: att.violations_count || att.violation_count || 0,
+        violations: violationMap.get(att.id) || []
       };
     });
   } catch (err) {
@@ -1061,12 +1085,13 @@ export const getAllResults = async () => {
 // Get all violations log from Supabase DB
 export const getAllViolations = async () => {
   try {
-    const { data: violations } = await supabase
-      .from('quiz_violations')
-      .select('*')
-      .order('timestamp', { ascending: false });
-
-    const { data: users } = await supabase.from('users').select('id, name, email');
+    const [
+      { data: violations },
+      { data: users }
+    ] = await Promise.all([
+      supabase.from('quiz_violations').select('*').order('timestamp', { ascending: false }),
+      supabase.from('users').select('id, name, email')
+    ]);
     const userMap = new Map();
     (users || []).forEach((u) => {
       userMap.set(String(u.id), u);
@@ -1091,13 +1116,13 @@ export const getAllViolations = async () => {
 // Get quiz submissions for a specific quiz from Supabase DB
 export const getQuizSubmissions = async (quizId) => {
   try {
-    const { data: attempts } = await supabase
-      .from('quiz_attempts')
-      .select('*')
-      .eq('quiz_id', quizId)
-      .order('score', { ascending: false });
-
-    const { data: users } = await supabase.from('users').select('id, name, email');
+    const [
+      { data: attempts },
+      { data: users }
+    ] = await Promise.all([
+      supabase.from('quiz_attempts').select('*').eq('quiz_id', quizId).order('score', { ascending: false }),
+      supabase.from('users').select('id, name, email')
+    ]);
     const userMap = new Map();
     (users || []).forEach((u) => {
       userMap.set(String(u.id), u);
