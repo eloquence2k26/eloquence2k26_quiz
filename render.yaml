@@ -1,0 +1,48 @@
+# Render Blueprint for Eloquence 2K26 Quiz
+# Docs: https://render.com/docs/blueprint-spec
+
+services:
+  # ==========================================
+  # Backend API Web Service
+  # ==========================================
+  - type: web
+    name: eloquence-quiz-backend
+    runtime: node
+    plan: free
+    region: oregon
+    rootDir: backend
+    buildCommand: npm install
+    startCommand: npm start
+    healthCheckPath: /api/health
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: SUPABASE_URL
+        sync: false
+      - key: SUPABASE_ANON_KEY
+        sync: false
+
+  # ==========================================
+  # Frontend Static Site
+  # ==========================================
+  - type: static
+    name: eloquence-quiz-frontend
+    plan: free
+    region: oregon
+    rootDir: frontend
+    buildCommand: npm install && npm run build
+    staticPublishPath: dist
+    routes:
+      - type: rewrite
+        source: /*
+        destination: /index.html
+    envVars:
+      - key: VITE_API_BASE_URL
+        fromService:
+          type: web
+          name: eloquence-quiz-backend
+          property: host
+      - key: VITE_SUPABASE_URL
+        sync: false
+      - key: VITE_SUPABASE_ANON_KEY
+        sync: false
