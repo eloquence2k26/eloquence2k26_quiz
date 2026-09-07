@@ -55,7 +55,7 @@ export const Navbar = () => {
             </NavLink>
 
             <NavLink
-              to="/quiz-schedule"
+              to="/schedule"
               className={({ isActive }) =>
                 `px-3 py-1.5 rounded-xl text-xs font-semibold flex items-center gap-1.5 transition-all ${
                   isActive
@@ -65,7 +65,7 @@ export const Navbar = () => {
               }
             >
               <CalendarClock className="w-3.5 h-3.5 text-blue-600 dark:text-blue-400" />
-              <span>Quiz Schedule & Quiz</span>
+              <span>Schedule</span>
             </NavLink>
           </div>
         )}

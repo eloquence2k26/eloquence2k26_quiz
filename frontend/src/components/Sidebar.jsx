@@ -13,7 +13,8 @@ import {
   RotateCcw,
   Menu,
   X,
-  BookOpen
+  BookOpen,
+  CalendarClock
 } from 'lucide-react';
 
 export const Sidebar = () => {
@@ -31,6 +32,11 @@ export const Sidebar = () => {
       name: 'Dashboard',
       path: '/dashboard',
       icon: LayoutDashboard
+    },
+    {
+      name: 'Schedule',
+      path: '/schedule',
+      icon: CalendarClock
     },
     {
       name: 'Quiz Management',
@@ -59,6 +65,11 @@ export const Sidebar = () => {
       name: 'Dashboard',
       path: '/dashboard',
       icon: LayoutDashboard
+    },
+    {
+      name: 'Schedule',
+      path: '/schedule',
+      icon: CalendarClock
     },
     {
       name: 'My Quizzes',

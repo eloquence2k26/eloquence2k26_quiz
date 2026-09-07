@@ -8,6 +8,7 @@ import userRoutes from './routes/userRoutes.js';
 import quizRoutes from './routes/quizRoutes.js';
 import adminQuizRoutes from './routes/adminQuizRoutes.js';
 import participantQuizRoutes from './routes/participantQuizRoutes.js';
+import scheduleRoutes from './routes/scheduleRoutes.js';
 
 dotenv.config();
 
@@ -24,6 +25,7 @@ app.use('/api/users', userRoutes);
 app.use('/api/quizzes', quizRoutes);
 app.use('/api/admin', adminQuizRoutes);
 app.use('/api/participant', participantQuizRoutes);
+app.use('/api/schedule', scheduleRoutes);
 
 app.get('/', (req, res) => {
   res.json({

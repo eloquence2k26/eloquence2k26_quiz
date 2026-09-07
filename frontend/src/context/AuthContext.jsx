@@ -1,7 +1,7 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import { supabase } from '../services/supabaseClient';
 import { derivePasswordFromPhone } from '../utils/fileParser';
-import { API_URL } from '../config/apiConfig';
+import { API_URL, API_SCHEDULE_URL } from '../config/apiConfig';
 
 const AuthContext = createContext();
 
@@ -18,6 +18,37 @@ export const AuthProvider = ({ children }) => {
   const [registeredUsers, setRegisteredUsers] = useState([]);
 
   const [loading, setLoading] = useState(false);
+
+  // Periodic presence heartbeat for active logged-in users
+  useEffect(() => {
+    if (!user) return;
+
+    const sendHeartbeat = async () => {
+      try {
+        await fetch(`${API_SCHEDULE_URL}/presence`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            userId: user.id,
+            name: user.name,
+            username: user.name || (user.email ? user.email.split('@')[0] : 'User'),
+            email: user.email,
+            phone: user.phone,
+            role: role || user.role || 'user'
+          })
+        });
+      } catch (err) {
+        // Silently ignore heartbeat failure in offline or retry mode
+      }
+    };
+
+    // Immediate ping on mount / login
+    sendHeartbeat();
+
+    // Heartbeat interval every 12 seconds
+    const interval = setInterval(sendHeartbeat, 12000);
+    return () => clearInterval(interval);
+  }, [user, role]);
 
   // Fetch users live directly from Supabase DB
   const fetchUsers = async () => {

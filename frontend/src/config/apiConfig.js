@@ -14,4 +14,5 @@ export const API_BASE_URL = formatBaseUrl(rawBaseUrl);
 export const API_URL = `${API_BASE_URL}/api/users`;
 export const API_ADMIN_URL = `${API_BASE_URL}/api/admin`;
 export const API_PARTICIPANT_URL = `${API_BASE_URL}/api/participant`;
+export const API_SCHEDULE_URL = `${API_BASE_URL}/api/schedule`;
 

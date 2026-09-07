@@ -9,6 +9,7 @@ import { NextRoundFilterPage } from './pages/NextRoundFilterPage';
 import { RestartTestPage } from './pages/RestartTestPage';
 import { ParticipantQuizzesPage } from './pages/ParticipantQuizzesPage';
 import { StrictQuizInterface } from './pages/StrictQuizInterface';
+import { ScheduleEventsPage } from './pages/ScheduleEventsPage';
 import { ProtectedRoute } from './components/ProtectedRoute';
 import { useAuth } from './context/AuthContext';
 
@@ -108,6 +109,18 @@ function App() {
         }
       />
 
+      {/* Schedule Management Route */}
+      <Route
+        path="/schedule"
+        element={
+          <ProtectedRoute>
+            <AppLayout>
+              <ScheduleEventsPage />
+            </AppLayout>
+          </ProtectedRoute>
+        }
+      />
+
       {/* Legacy route redirects to consolidated quiz management */}
       <Route
         path="/event-quiz"
@@ -115,7 +128,7 @@ function App() {
       />
       <Route
         path="/quiz-schedule"
-        element={<Navigate to={role === 'admin' ? "/admin/quizzes" : "/participant/quizzes"} replace />}
+        element={<Navigate to="/schedule" replace />}
       />
       <Route
         path="/add-question"
