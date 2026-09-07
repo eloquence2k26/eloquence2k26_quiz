@@ -7,7 +7,8 @@ import {
   recordQuizViolation, 
   submitQuizAttempt,
   requestRetest,
-  getParticipantQualification
+  getParticipantQualification,
+  getParticipantDashboardStats
 } from '../config/db.js';
 
 // GET /api/participant/quizzes - Fetch participant's registered & authorized quizzes
@@ -41,7 +42,14 @@ export const getParticipantQuizzes = async (req, res) => {
       })
     );
 
-    res.json({ quizzes: evaluatedQuizzes });
+    const isUserAdmin = participantId === 'admin_1' || participantId === 'admin@eloquence.com';
+
+    // If student/participant (non-admin), ONLY return the specific quizzes they have been granted access to!
+    const filteredQuizzes = isUserAdmin 
+      ? evaluatedQuizzes 
+      : evaluatedQuizzes.filter((q) => q.accessStatus !== 'not_registered' && q.accessStatus !== 'access_revoked');
+
+    res.json({ quizzes: filteredQuizzes });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
@@ -163,3 +171,15 @@ export const requestRetestPermission = async (req, res) => {
     res.status(500).json({ error: err.message });
   }
 };
+
+// GET /api/participant/stats - Fetch participant's real dashboard stats
+export const getParticipantStats = async (req, res) => {
+  try {
+    const participantId = req.headers['x-user-id'] || 'user-demo-1';
+    const stats = getParticipantDashboardStats(participantId);
+    res.json(stats);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+};
+

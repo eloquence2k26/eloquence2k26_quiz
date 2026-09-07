@@ -22,7 +22,8 @@ import {
   rejectRetestLegacy,
   getSubmissions,
   qualifyNextRound,
-  toggleQualification
+  toggleQualification,
+  bulkUploadParticipantsToQuiz
 } from '../controllers/adminQuizController.js';
 
 const router = express.Router();
@@ -50,6 +51,7 @@ router.get('/quizzes/:quizId/registrations', getRegistrations);
 router.post('/registrations/:id/grant-access', grantAccess);
 router.post('/registrations/:id/revoke-access', revokeAccess);
 router.post('/quizzes/:quizId/access', toggleAccessDirect);
+router.post('/quizzes/:quizId/upload-participants', bulkUploadParticipantsToQuiz);
 
 // Results & Security Audit
 router.get('/results', getResults);

@@ -599,7 +599,18 @@ export const checkParticipantQuizAccess = async (participantId, quizId) => {
 
   // 1. Registration & Access Verification
   const regs = loadRegistrations();
-  const reg = regs.find((r) => String(r.quiz_id) === String(quizId) && String(r.participant_id) === String(participantId));
+  const users = loadLocalUsers();
+  const matchedUser = users.find((u) => 
+    String(u.id) === String(participantId) || 
+    String(u.email).toLowerCase() === String(participantId).toLowerCase() || 
+    String(u.phone) === String(participantId)
+  );
+
+  const reg = regs.find((r) => 
+    String(r.quiz_id) === String(quizId) && 
+    (String(r.participant_id) === String(participantId) || 
+     (matchedUser && (String(r.participant_id) === String(matchedUser.id) || String(r.participant_id).toLowerCase() === String(matchedUser.email).toLowerCase())))
+  );
 
   // If user is admin, allow access
   const isUserAdmin = participantId === 'admin_1' || participantId === 'admin@eloquence.com';
@@ -1190,3 +1201,82 @@ export const getAllViolations = () => {
     };
   });
 };
+
+export const getParticipantDashboardStats = (participantId) => {
+  const users = loadLocalUsers();
+  const matchedUser = users.find((u) => 
+    String(u.id) === String(participantId) || 
+    String(u.email).toLowerCase() === String(participantId).toLowerCase() || 
+    String(u.phone) === String(participantId)
+  );
+
+  const userIds = new Set([
+    String(participantId),
+    matchedUser ? String(matchedUser.id) : null,
+    matchedUser ? String(matchedUser.email).toLowerCase() : null
+  ].filter(Boolean));
+
+  const regs = loadRegistrations().filter((r) => 
+    r.access_status === 'Granted' && (userIds.has(String(r.participant_id)) || userIds.has(String(r.participant_id).toLowerCase()))
+  );
+
+  const assignedQuizIds = new Set(regs.map((r) => String(r.quiz_id)));
+  const assignedQuizzesCount = assignedQuizIds.size;
+
+  const allAttempts = loadAttempts();
+  const userAttempts = allAttempts.filter((a) => 
+    userIds.has(String(a.participant_id)) || userIds.has(String(a.participant_id).toLowerCase())
+  );
+
+  const completedAttempts = userAttempts.filter((a) => a.status === 'SUBMITTED' || a.status === 'AUTO_SUBMITTED' || a.status === 'submitted');
+  const attendedQuizIds = new Set(completedAttempts.map((a) => String(a.quiz_id)));
+
+  let totalScore = 0;
+  let totalPossibleMarks = 0;
+  let certificates = 0;
+
+  completedAttempts.forEach((a) => {
+    totalScore += (a.score || 0);
+    totalPossibleMarks += (a.total_marks || 0);
+    if (a.total_marks > 0 && (a.score / a.total_marks) >= 0.5) {
+      certificates++;
+    }
+  });
+
+  const accuracy = totalPossibleMarks > 0 ? Math.round((totalScore / totalPossibleMarks) * 100) : 0;
+
+  // Real Leaderboard Rank calculation
+  const leaderboardMap = {};
+  allAttempts.forEach((a) => {
+    if (a.status === 'SUBMITTED' || a.status === 'AUTO_SUBMITTED' || a.status === 'submitted') {
+      const pid = String(a.participant_id);
+      leaderboardMap[pid] = (leaderboardMap[pid] || 0) + (a.score || 0);
+    }
+  });
+
+  const sortedLeaderboard = Object.entries(leaderboardMap).sort((a, b) => b[1] - a[1]);
+  let rank = 'Unranked';
+  if (completedAttempts.length > 0) {
+    const userRankIndex = sortedLeaderboard.findIndex(([pid]) => userIds.has(pid));
+    if (userRankIndex !== -1) {
+      rank = `#${userRankIndex + 1}`;
+    } else {
+      rank = `#${sortedLeaderboard.length + 1}`;
+    }
+  }
+
+  return {
+    participantId,
+    name: matchedUser ? matchedUser.name : 'Student Participant',
+    email: matchedUser ? matchedUser.email : participantId,
+    attendedCount: attendedQuizIds.size,
+    totalQuizzesCount: assignedQuizzesCount,
+    totalScore,
+    totalPossibleMarks,
+    accuracy,
+    certificates,
+    rank,
+    completedAttemptsCount: completedAttempts.length
+  };
+};
+

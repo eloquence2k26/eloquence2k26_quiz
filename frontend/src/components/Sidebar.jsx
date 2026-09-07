@@ -13,7 +13,8 @@ import {
   RotateCcw,
   Menu,
   X,
-  BookOpen
+  BookOpen,
+  UserCheck
 } from 'lucide-react';
 
 export const Sidebar = () => {
@@ -36,6 +37,11 @@ export const Sidebar = () => {
       name: 'Quiz Management',
       path: '/admin/quizzes',
       icon: Settings
+    },
+    {
+      name: 'Participant Access',
+      path: '/admin/participant-access',
+      icon: UserCheck
     },
     {
       name: 'Next Round Filter',

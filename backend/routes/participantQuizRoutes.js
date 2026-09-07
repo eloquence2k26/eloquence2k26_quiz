@@ -1,6 +1,7 @@
 import express from 'express';
 import { 
   getParticipantQuizzes, 
+  getParticipantStats,
   registerParticipant, 
   checkQuizAccess, 
   startAttempt, 
@@ -13,8 +14,9 @@ import {
 
 const router = express.Router();
 
-// GET /api/participant/quizzes
+// GET /api/participant/quizzes & /api/participant/stats
 router.get('/quizzes', getParticipantQuizzes);
+router.get('/stats', getParticipantStats);
 
 // POST /api/participant/quizzes/:id/register
 router.post('/quizzes/:id/register', registerParticipant);

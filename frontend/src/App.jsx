@@ -59,6 +59,22 @@ function App() {
       />
 
       <Route
+        path="/admin/participant-access"
+        element={
+          <ProtectedRoute requiredRole="admin">
+            <AppLayout>
+              <AdminQuizManagement initialTab="registrations" />
+            </AppLayout>
+          </ProtectedRoute>
+        }
+      />
+
+      <Route
+        path="/admin/access"
+        element={<Navigate to="/admin/participant-access" replace />}
+      />
+
+      <Route
         path="/admin/next-round-filter"
         element={
           <ProtectedRoute requiredRole="admin">

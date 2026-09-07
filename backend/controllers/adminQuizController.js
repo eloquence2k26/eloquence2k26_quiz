@@ -17,7 +17,8 @@ import {
   getAllViolations,
   getQuizSubmissions,
   filterAndQualifyNextRound,
-  toggleParticipantQualification
+  toggleParticipantQualification,
+  insertUserToDB
 } from '../config/db.js';
 
 // GET /api/admin/quizzes - List all event quizzes
@@ -416,4 +417,48 @@ export const toggleQualification = async (req, res) => {
     res.status(500).json({ error: err.message });
   }
 };
+
+// POST /api/admin/quizzes/:quizId/upload-participants - Bulk upload participant access
+export const bulkUploadParticipantsToQuiz = async (req, res) => {
+  try {
+    const { quizId } = req.params;
+    const students = req.body.students || req.body;
+
+    if (!Array.isArray(students) || students.length === 0) {
+      return res.status(400).json({ error: 'Students list array is required' });
+    }
+
+    const registered = [];
+    for (const s of students) {
+      if (s.email || s.phone || s.name) {
+        const email = s.email || `${(s.name || 'student').toLowerCase().replace(/[^a-z0-9]/g, '')}@eloquence.com`;
+        const phone = s.phone || '0000000000';
+        const userId = s.id || `user_${Date.now()}_${Math.random().toString(36).substring(2, 5)}`;
+
+        const userObj = {
+          id: userId,
+          name: s.name || 'Student Participant',
+          email,
+          phone,
+          password: s.password || (phone.replace(/\D/g, '').substring(0, 4) || '1234'),
+          role: s.role || 'user',
+          status: 'Active',
+          created_at: new Date().toISOString()
+        };
+
+        await insertUserToDB(userObj);
+
+        // Register and grant access for both user ID and email
+        const reg1 = setParticipantAccessByQuizAndUser(quizId, userObj.id, 'Granted');
+        const reg2 = setParticipantAccessByQuizAndUser(quizId, userObj.email, 'Granted');
+        registered.push({ user: userObj, reg: reg1 });
+      }
+    }
+
+    res.status(201).json({ success: true, count: registered.length, registered });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+};
+
 
