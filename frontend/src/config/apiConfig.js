@@ -1,7 +1,7 @@
-const rawBaseUrl = import.meta.env.VITE_API_BASE_URL || 'http://localhost:5001';
+const rawBaseUrl = import.meta.env.VITE_API_BASE_URL;
 
 const formatBaseUrl = (url) => {
-  if (!url) return 'http://localhost:5001';
+  if (!url) return '';
   let formatted = String(url).trim().replace(/\/+$/, '');
   if (!formatted.startsWith('http://') && !formatted.startsWith('https://')) {
     formatted = `https://${formatted}`;
