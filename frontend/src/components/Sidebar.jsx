@@ -14,7 +14,9 @@ import {
   Menu,
   X,
   BookOpen,
-  CalendarClock
+  CalendarClock,
+  UserCheck,
+  Layers
 } from 'lucide-react';
 
 export const Sidebar = () => {
@@ -42,6 +44,16 @@ export const Sidebar = () => {
       name: 'Quiz Management',
       path: '/admin/quizzes',
       icon: Settings
+    },
+    {
+      name: 'Event Rounds',
+      path: '/admin/rounds',
+      icon: Layers
+    },
+    {
+      name: 'Participant Access',
+      path: '/admin/participant-access',
+      icon: UserCheck
     },
     {
       name: 'Next Round Filter',

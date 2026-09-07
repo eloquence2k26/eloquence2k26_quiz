@@ -38,7 +38,7 @@ import { Button } from '../components/Button';
 import { Input } from '../components/Input';
 import { API_ADMIN_URL } from '../config/apiConfig';
 import { useToast } from '../context/ToastContext';
-import { parseQuestionFile } from '../utils/fileParser';
+import { parseQuestionFile, parseUserFile } from '../utils/fileParser';
 
 export const AdminQuizManagement = ({ initialTab = 'quizzes' }) => {
   const { user } = useAuth();
@@ -84,6 +84,12 @@ export const AdminQuizManagement = ({ initialTab = 'quizzes' }) => {
   const [parsedQuestionsPreview, setParsedQuestionsPreview] = useState([]);
   const [isParsingQuestions, setIsParsingQuestions] = useState(false);
   const [importFileName, setImportFileName] = useState('');
+
+  // Import Student Access Modal States
+  const [isImportStudentsModalOpen, setIsImportStudentsModalOpen] = useState(false);
+  const [parsedStudentsPreview, setParsedStudentsPreview] = useState([]);
+  const [isParsingStudents, setIsParsingStudents] = useState(false);
+  const [importStudentFileName, setImportStudentFileName] = useState('');
 
   // Form States - Quiz Event
   const [quizForm, setQuizForm] = useState({
@@ -486,6 +492,70 @@ export const AdminQuizManagement = ({ initialTab = 'quizzes' }) => {
     } catch (err) {
       console.error('Import questions bulk error:', err);
       toast.error('Network error during bulk import.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Handle student file upload & parsing
+  const handleStudentFileUpload = async (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setImportStudentFileName(file.name);
+    setIsParsingStudents(true);
+    try {
+      const studentsExtracted = await parseUserFile(file);
+      if (Array.isArray(studentsExtracted) && studentsExtracted.length > 0) {
+        setParsedStudentsPreview(studentsExtracted);
+        toast.success(`Parsed ${studentsExtracted.length} student(s) from ${file.name}`);
+      } else {
+        toast.error('No valid student records found in file. Ensure file contains student names, emails, or phone numbers.');
+        setParsedStudentsPreview([]);
+      }
+    } catch (err) {
+      console.error('Parse student file error:', err);
+      toast.error(err.message || 'Failed to parse student file.');
+    } finally {
+      setIsParsingStudents(false);
+    }
+  };
+
+  // Confirm and Save Bulk Student Access to DB
+  const handleConfirmImportStudents = async () => {
+    if (!selectedQuiz) {
+      toast.error('Please select a Quiz Event first.');
+      return;
+    }
+    if (!parsedStudentsPreview.length) {
+      toast.error('No parsed student records to import.');
+      return;
+    }
+
+    setLoading(true);
+    try {
+      const res = await fetch(`${API_ADMIN_URL}/quizzes/${selectedQuiz.id}/upload-participants`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ students: parsedStudentsPreview })
+      });
+
+      if (res.ok) {
+        const data = await res.json();
+        const msg = `Successfully granted access to ${data.count || parsedStudentsPreview.length} student(s) for "${selectedQuiz.title}"!`;
+        setStatusMsg(msg);
+        toast.success(msg);
+        setIsImportStudentsModalOpen(false);
+        setParsedStudentsPreview([]);
+        setImportStudentFileName('');
+        fetchRegistrations(selectedQuiz.id);
+        setTimeout(() => setStatusMsg(''), 4000);
+      } else {
+        const errData = await res.json();
+        toast.error(errData.error || 'Failed to grant student access.');
+      }
+    } catch (err) {
+      console.error('Import students bulk error:', err);
+      toast.error('Network error during bulk student upload.');
     } finally {
       setLoading(false);
     }
@@ -1088,9 +1158,21 @@ export const AdminQuizManagement = ({ initialTab = 'quizzes' }) => {
                     Registrations & Access for "{selectedQuiz.title}"
                   </h3>
                   <p className="text-xs text-slate-500 dark:text-zinc-400 mt-1">
-                    Grant or Revoke access per student for this specific quiz event.
+                    Grant or Revoke access per student or upload student lists (PDF/DOC/CSV/JSON) for direct access.
                   </p>
                 </div>
+
+                <Button
+                  variant="primary"
+                  icon={Upload}
+                  onClick={() => {
+                    setParsedStudentsPreview([]);
+                    setImportStudentFileName('');
+                    setIsImportStudentsModalOpen(true);
+                  }}
+                >
+                  Upload Students File (PDF/DOC/CSV/JSON)
+                </Button>
               </div>
 
               {/* Registrations Table */}
@@ -1109,8 +1191,19 @@ export const AdminQuizManagement = ({ initialTab = 'quizzes' }) => {
                   <tbody className="divide-y divide-slate-200 dark:divide-zinc-800">
                     {registrations.length === 0 ? (
                       <tr>
-                        <td colSpan={6} className="py-8 text-center text-slate-500 dark:text-zinc-400">
-                          No registered participants found for this quiz event yet.
+                        <td colSpan={6} className="py-12 text-center text-slate-500 dark:text-zinc-400 space-y-3">
+                          <p>No registered participants found for this quiz event yet.</p>
+                          <Button
+                            variant="secondary"
+                            icon={Upload}
+                            onClick={() => {
+                              setParsedStudentsPreview([]);
+                              setImportStudentFileName('');
+                              setIsImportStudentsModalOpen(true);
+                            }}
+                          >
+                            Upload Student Access File
+                          </Button>
                         </td>
                       </tr>
                     ) : (
@@ -1786,6 +1879,108 @@ export const AdminQuizManagement = ({ initialTab = 'quizzes' }) => {
                   onClick={handleConfirmImportQuestions}
                 >
                   {loading ? 'Importing...' : `Confirm & Import ${parsedQuestionsPreview.length} Question(s)`}
+                </Button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL 4: UPLOAD STUDENT ACCESS FILE */}
+      {isImportStudentsModalOpen && selectedQuiz && (
+        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4 overflow-y-auto">
+          <div className="bg-white dark:bg-zinc-950 border border-slate-200 dark:border-zinc-800 rounded-3xl w-full max-w-3xl p-6 sm:p-8 space-y-6 shadow-2xl my-8">
+            <div className="flex items-center justify-between border-b border-slate-200 dark:border-zinc-800 pb-4">
+              <div>
+                <h3 className="text-xl font-bold text-slate-900 dark:text-white flex items-center gap-2">
+                  <Upload className="w-5 h-5 text-blue-600 dark:text-blue-400" /> Upload Student Access File
+                </h3>
+                <span className="text-xs text-blue-600 dark:text-blue-400 font-semibold">Target Event: {selectedQuiz.title}</span>
+              </div>
+              <button onClick={() => setIsImportStudentsModalOpen(false)} className="text-slate-400 hover:text-slate-600 dark:hover:text-white text-lg font-bold">✕</button>
+            </div>
+
+            <div className="space-y-4 text-xs">
+              <p className="text-slate-600 dark:text-zinc-300">
+                Upload a student list in <strong>PDF, DOC/DOCX, CSV, TXT, or JSON</strong> format. Uploaded students will be automatically registered and granted access to attempt <strong>"{selectedQuiz.title}"</strong> without requiring manual registration.
+              </p>
+
+              {/* Upload Dropzone */}
+              <div className="border-2 border-dashed border-slate-300 dark:border-zinc-800 rounded-2xl p-6 text-center hover:border-blue-500 transition-colors bg-slate-50/50 dark:bg-zinc-900/50 relative">
+                <input
+                  type="file"
+                  accept=".pdf,.doc,.docx,.csv,.txt,.json"
+                  onChange={handleStudentFileUpload}
+                  className="absolute inset-0 opacity-0 cursor-pointer w-full h-full"
+                />
+                <div className="space-y-2 pointer-events-none">
+                  <UploadCloud className="w-10 h-10 mx-auto text-blue-600 dark:text-blue-400" />
+                  <p className="text-sm font-bold text-slate-900 dark:text-white">
+                    {importStudentFileName ? `Selected: ${importStudentFileName}` : 'Click or Drag file to Upload Student List'}
+                  </p>
+                  <p className="text-xs text-slate-500 dark:text-zinc-400">
+                    Supports .pdf, .docx, .doc, .csv, .txt, .json
+                  </p>
+                </div>
+              </div>
+
+              {isParsingStudents && (
+                <div className="p-4 rounded-xl bg-blue-50 dark:bg-blue-950/60 text-blue-700 dark:text-blue-300 flex items-center gap-2 font-semibold">
+                  <RefreshCw className="w-4 h-4 animate-spin" /> Parsing student file... Please wait.
+                </div>
+              )}
+
+              {/* Students Preview List */}
+              {parsedStudentsPreview.length > 0 && (
+                <div className="space-y-3 pt-2">
+                  <div className="flex justify-between items-center">
+                    <h4 className="text-sm font-bold text-slate-900 dark:text-white">
+                      Extracted Students ({parsedStudentsPreview.length} records found)
+                    </h4>
+                    <span className="text-[11px] text-emerald-600 dark:text-emerald-400 font-semibold">Ready to Grant Access</span>
+                  </div>
+
+                  <div className="max-h-64 overflow-y-auto rounded-2xl border border-slate-200 dark:border-zinc-800">
+                    <table className="w-full text-left text-xs border-collapse">
+                      <thead>
+                        <tr className="border-b border-slate-200 dark:border-zinc-800 text-slate-400 uppercase text-[10px] font-bold tracking-wider bg-slate-50 dark:bg-zinc-900">
+                          <th className="py-2.5 px-3">#</th>
+                          <th className="py-2.5 px-3">Name</th>
+                          <th className="py-2.5 px-3">Phone</th>
+                          <th className="py-2.5 px-3">Email</th>
+                          <th className="py-2.5 px-3 text-right">Access Status</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-slate-200 dark:divide-zinc-800">
+                        {parsedStudentsPreview.map((s, idx) => (
+                          <tr key={idx} className="hover:bg-slate-50/50 dark:hover:bg-zinc-900/50">
+                            <td className="py-2.5 px-3 font-bold text-slate-500">{idx + 1}</td>
+                            <td className="py-2.5 px-3 font-bold text-slate-900 dark:text-white">{s.name}</td>
+                            <td className="py-2.5 px-3 text-slate-600 dark:text-zinc-400">{s.phone}</td>
+                            <td className="py-2.5 px-3 text-slate-600 dark:text-zinc-400">{s.email}</td>
+                            <td className="py-2.5 px-3 text-right">
+                              <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-50 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300">
+                                Granted
+                              </span>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              )}
+
+              <div className="flex items-center gap-3 pt-4 border-t border-slate-200 dark:border-zinc-800">
+                <Button type="button" variant="secondary" className="flex-1" onClick={() => setIsImportStudentsModalOpen(false)}>Cancel</Button>
+                <Button
+                  type="button"
+                  variant="primary"
+                  className="flex-1"
+                  disabled={parsedStudentsPreview.length === 0 || loading}
+                  onClick={handleConfirmImportStudents}
+                >
+                  {loading ? 'Processing...' : `Confirm & Grant Access to ${parsedStudentsPreview.length} Student(s)`}
                 </Button>
               </div>
             </div>

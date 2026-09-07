@@ -1,1192 +1,1382 @@
-import fs from 'fs';
-import path from 'path';
-import { fileURLToPath } from 'url';
+import crypto from 'crypto';
 import { supabase } from './supabase.js';
 
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
+// Helper to generate UUIDs
+const generateUUID = () => {
+  if (typeof crypto !== 'undefined' && crypto.randomUUID) {
+    return crypto.randomUUID();
+  }
+  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) {
+    const r = Math.random() * 16 | 0, v = c === 'x' ? r : (r & 0x3 | 0x8);
+    return v.toString(16);
+  });
+};
 
-const DATA_DIR = path.join(__dirname, '../data');
-const USERS_DB_FILE = path.join(DATA_DIR, 'users.json');
-const QUIZZES_DB_FILE = path.join(DATA_DIR, 'quizzes.json');
-const REGISTRATIONS_DB_FILE = path.join(DATA_DIR, 'registrations.json');
-const ATTEMPTS_DB_FILE = path.join(DATA_DIR, 'attempts.json');
-const VIOLATIONS_DB_FILE = path.join(DATA_DIR, 'violations.json');
-const RETESTS_DB_FILE = path.join(DATA_DIR, 'retests.json');
+/* =========================================================================
+   1. USERS TABLE MANAGEMENT (public.users)
+   ========================================================================= */
 
-// Helper to safely load JSON file
-const loadFile = (filePath, fallback = []) => {
+// Fetch all users directly from Supabase DB
+export const getUsersFromDB = async () => {
   try {
-    if (!fs.existsSync(filePath)) {
-      if (!fs.existsSync(DATA_DIR)) {
-        fs.mkdirSync(DATA_DIR, { recursive: true });
-      }
-      fs.writeFileSync(filePath, JSON.stringify(fallback, null, 2), 'utf-8');
-      return fallback;
+    const { data, error } = await supabase
+      .from('users')
+      .select('*')
+      .order('created_at', { ascending: false });
+
+    if (error) {
+      console.error('Supabase getUsersFromDB error:', error.message);
+      return [];
     }
-    const data = fs.readFileSync(filePath, 'utf-8');
-    return JSON.parse(data || '[]');
+    return data || [];
   } catch (err) {
-    console.error(`Error reading ${filePath}:`, err);
-    return fallback;
+    console.error('Supabase getUsersFromDB exception:', err.message);
+    return [];
   }
 };
 
-// Helper to safely save JSON file
-const saveFile = (filePath, data) => {
+// Insert or upsert single user in Supabase DB
+export const insertUserToDB = async (userObj) => {
   try {
-    if (!fs.existsSync(DATA_DIR)) {
-      fs.mkdirSync(DATA_DIR, { recursive: true });
+    const isValidUUID = userObj.id && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(userObj.id);
+    const userPayload = {
+      id: isValidUUID ? userObj.id : generateUUID(),
+      name: userObj.name || 'Participant',
+      phone: String(userObj.phone || ''),
+      email: userObj.email || `${(userObj.name || 'user').toLowerCase().replace(/\s+/g, '')}@eloquence.com`,
+      password: userObj.password || '1234',
+      role: userObj.role || 'user',
+      status: userObj.status || 'Active',
+      quizzes_attempted: userObj.quizzes_attempted || 0,
+      score: userObj.score || 0,
+      created_at: userObj.created_at || new Date().toISOString()
+    };
+
+    const { data, error } = await supabase
+      .from('users')
+      .upsert([userPayload], { onConflict: 'id' })
+      .select()
+      .single();
+
+    if (error) {
+      console.error('Supabase insertUserToDB error:', error.message);
+      // If error on conflict with email, try update by email
+      const { data: updated, error: uErr } = await supabase
+        .from('users')
+        .update(userPayload)
+        .eq('email', userPayload.email)
+        .select()
+        .single();
+      if (!uErr && updated) return updated;
+      return userPayload;
     }
-    fs.writeFileSync(filePath, JSON.stringify(data, null, 2), 'utf-8');
+    return data || userPayload;
+  } catch (err) {
+    console.error('Supabase insertUserToDB exception:', err.message);
+    return userObj;
+  }
+};
+
+// Bulk insert/upsert users in Supabase DB
+export const bulkInsertUsersToDB = async (userList) => {
+  try {
+    if (!Array.isArray(userList) || userList.length === 0) return [];
+
+    const prepared = userList.map((u) => {
+      const isValidUUID = u.id && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(u.id);
+      return {
+        id: isValidUUID ? u.id : generateUUID(),
+        name: u.name || 'Participant',
+        phone: String(u.phone || '0000000000'),
+        email: u.email || `${(u.name || 'user').toLowerCase().replace(/\s+/g, '')}@eloquence.com`,
+        password: u.password || '1234',
+        role: u.role || 'user',
+        status: u.status || 'Active',
+        quizzes_attempted: u.quizzes_attempted || 0,
+        score: u.score || 0,
+        created_at: u.created_at || new Date().toISOString()
+      };
+    });
+
+    const { data, error } = await supabase
+      .from('users')
+      .upsert(prepared, { onConflict: 'id' })
+      .select();
+
+    if (error) {
+      console.error('Supabase bulkInsertUsersToDB error:', error.message);
+      return prepared;
+    }
+    return data || prepared;
+  } catch (err) {
+    console.error('Supabase bulkInsertUsersToDB exception:', err.message);
+    return userList;
+  }
+};
+
+// Update user by ID in Supabase DB
+export const updateUserInDB = async (id, updates) => {
+  try {
+    const { data, error } = await supabase
+      .from('users')
+      .update(updates)
+      .eq('id', id)
+      .select()
+      .single();
+
+    if (error) {
+      console.error('Supabase updateUserInDB error:', error.message);
+      return null;
+    }
+    return data;
+  } catch (err) {
+    console.error('Supabase updateUserInDB exception:', err.message);
+    return null;
+  }
+};
+
+// Delete user by ID in Supabase DB
+export const deleteUserFromDB = async (id) => {
+  try {
+    const { error } = await supabase.from('users').delete().eq('id', id);
+    if (error) {
+      console.error('Supabase deleteUserFromDB error:', error.message);
+      return false;
+    }
     return true;
   } catch (err) {
-    console.error(`Error saving ${filePath}:`, err);
+    console.error('Supabase deleteUserFromDB exception:', err.message);
     return false;
   }
 };
 
-// Empty Initial Data - All records managed live via Supabase DB only
-const initialQuizzes = [];
-const initialRegistrations = [];
+// Find user by ID, email, or phone
+export const findUserInDB = async (identifier) => {
+  if (!identifier) return null;
+  try {
+    const { data, error } = await supabase
+      .from('users')
+      .select('*')
+      .or(`id.eq.${identifier},email.ilike.${identifier},phone.eq.${identifier}`)
+      .limit(1)
+      .maybeSingle();
 
-// Initialize files
-loadFile(USERS_DB_FILE, []);
-loadFile(QUIZZES_DB_FILE, []);
-loadFile(REGISTRATIONS_DB_FILE, []);
-loadFile(ATTEMPTS_DB_FILE, []);
-loadFile(VIOLATIONS_DB_FILE, []);
-loadFile(RETESTS_DB_FILE, []);
-
-/* ================= USERS MANAGEMENT ================= */
-
-export const loadLocalUsers = () => loadFile(USERS_DB_FILE, []);
-export const saveLocalUsers = (users) => saveFile(USERS_DB_FILE, users);
-
-let isUsersSyncing = false;
-const triggerUsersBackgroundSync = () => {
-  if (!supabase || isUsersSyncing) return;
-  isUsersSyncing = true;
-  supabase
-    .from('users')
-    .select('*')
-    .order('created_at', { ascending: false })
-    .then(({ data, error }) => {
-      isUsersSyncing = false;
-      if (!error && Array.isArray(data) && data.length > 0) {
-        saveLocalUsers(data);
-      }
-    })
-    .catch(() => {
-      isUsersSyncing = false;
-    });
-};
-
-export const getUsersFromDB = async () => {
-  if (supabase) {
-    try {
-      const { data, error } = await supabase
-        .from('users')
-        .select('*')
-        .order('created_at', { ascending: false });
-      if (!error && Array.isArray(data) && data.length > 0) {
-        saveLocalUsers(data);
-        return data;
-      }
-      if (error) {
-        console.warn('Supabase getUsersFromDB error:', error.message);
-      }
-    } catch (err) {
-      console.warn('Supabase getUsersFromDB exception:', err.message);
-    }
+    if (error || !data) return null;
+    return data;
+  } catch (err) {
+    return null;
   }
-  return loadLocalUsers();
 };
 
-export const insertUserToDB = async (userObj) => {
-  const currentUsers = loadLocalUsers();
-  const updated = [userObj, ...currentUsers.filter((u) => String(u.id) !== String(userObj.id))];
-  saveLocalUsers(updated);
+/* =========================================================================
+   2. QUIZZES & QUESTIONS MANAGEMENT (public.quizzes & public.quiz_questions)
+   ========================================================================= */
 
-  if (supabase) {
-    try {
-      const { error } = await supabase.from('users').upsert([userObj], { onConflict: 'id' });
-      if (error) {
-        console.error('Supabase insertUserToDB error:', error.message);
-      }
-    } catch (err) {
-      console.error('Supabase insertUserToDB exception:', err.message);
-    }
-  }
-  return userObj;
-};
+// Format question from Supabase row to frontend format
+const formatQuestionRow = (qn) => ({
+  id: qn.id,
+  quiz_id: qn.quiz_id,
+  prompt: qn.prompt,
+  questionText: qn.prompt,
+  option_a: qn.option_a || '',
+  optionA: qn.option_a || '',
+  option_b: qn.option_b || '',
+  optionB: qn.option_b || '',
+  option_c: qn.option_c || '',
+  optionC: qn.option_c || '',
+  option_d: qn.option_d || '',
+  optionD: qn.option_d || '',
+  optionsCount: qn.option_d ? 4 : (qn.option_c ? 3 : 2),
+  options_count: qn.option_d ? 4 : (qn.option_c ? 3 : 2),
+  correct_answer: qn.correct_option || 'A',
+  correctOption: qn.correct_option || 'A',
+  correct_option: qn.correct_option || 'A',
+  marks: Number(qn.marks) || 1,
+  negative_marks: Number(qn.negative_marks) || 0,
+  image_url: qn.image_url || '',
+  question_image: qn.image_url || '',
+  explanation: '',
+  question_order: qn.question_order || 1,
+  created_at: qn.created_at
+});
 
-export const bulkInsertUsersToDB = async (userList) => {
-  const currentUsers = loadLocalUsers();
-  const newMap = new Map();
-  userList.forEach((u) => newMap.set(u.id || u.email || u.phone, u));
-  currentUsers.forEach((u) => {
-    if (!newMap.has(u.id || u.email || u.phone)) {
-      newMap.set(u.id || u.email || u.phone, u);
-    }
-  });
-
-  const merged = Array.from(newMap.values());
-  saveLocalUsers(merged);
-
-  if (supabase) {
-    try {
-      const { error } = await supabase.from('users').upsert(userList, { onConflict: 'id' });
-      if (error) {
-        console.error('Supabase bulkInsertUsersToDB error:', error.message);
-      }
-    } catch (err) {
-      console.error('Supabase bulkInsertUsersToDB exception:', err.message);
-    }
-  }
-  return merged;
-};
-
-export const updateUserInDB = async (id, updates) => {
-  const currentUsers = loadLocalUsers();
-  let updatedUser = null;
-
-  const newUsers = currentUsers.map((u) => {
-    if (String(u.id) === String(id)) {
-      updatedUser = { ...u, ...updates };
-      return updatedUser;
-    }
-    return u;
-  });
-
-  saveLocalUsers(newUsers);
-
-  if (supabase && updatedUser) {
-    try {
-      const { error } = await supabase.from('users').update(updates).eq('id', id);
-      if (error) {
-        console.error('Supabase updateUserInDB error:', error.message);
-      }
-    } catch (err) {
-      console.error('Supabase updateUserInDB exception:', err.message);
-    }
-  }
-  return updatedUser;
-};
-
-export const deleteUserFromDB = async (id) => {
-  const currentUsers = loadLocalUsers();
-  const newUsers = currentUsers.filter((u) => String(u.id) !== String(id));
-  saveLocalUsers(newUsers);
-
-  if (supabase) {
-    try {
-      const { error } = await supabase.from('users').delete().eq('id', id);
-      if (error) {
-        console.error('Supabase deleteUserFromDB error:', error.message);
-      }
-    } catch (err) {
-      console.error('Supabase deleteUserFromDB exception:', err.message);
-    }
-  }
-  return true;
-};
-
-/* ================= QUIZZES & QUESTIONS MANAGEMENT ================= */
-
-export const loadLocalQuizzes = () => loadFile(QUIZZES_DB_FILE, initialQuizzes);
-export const saveLocalQuizzes = (quizzes) => saveFile(QUIZZES_DB_FILE, quizzes);
-
+// Fetch all quizzes with their child questions from Supabase DB
 export const getQuizzesFromDB = async () => {
-  if (supabase) {
-    try {
-      const { data: quizzesData, error: qErr } = await supabase.from('quizzes').select('*').order('created_at', { ascending: false });
-      const { data: questionsData, error: qnErr } = await supabase.from('quiz_questions').select('*').order('question_order', { ascending: true });
+  try {
+    const { data: quizzesData, error: qErr } = await supabase
+      .from('quizzes')
+      .select('*')
+      .order('created_at', { ascending: false });
 
-      if (!qErr && Array.isArray(quizzesData) && quizzesData.length > 0) {
-        const questionsMap = {};
-        (questionsData || []).forEach((qn) => {
-          if (!questionsMap[qn.quiz_id]) questionsMap[qn.quiz_id] = [];
-          questionsMap[qn.quiz_id].push({
-            ...qn,
-            optionA: qn.option_a || qn.optionA,
-            optionB: qn.option_b || qn.optionB,
-            optionC: qn.option_c || qn.optionC,
-            optionD: qn.option_d || qn.optionD,
-            optionsCount: qn.options_count || qn.optionsCount || 4
-          });
-        });
-
-        const fullQuizzes = quizzesData.map((q) => ({
-          ...q,
-          questions: questionsMap[q.id] || []
-        }));
-        saveLocalQuizzes(fullQuizzes);
-        return fullQuizzes;
-      }
-    } catch (e) {
-      console.warn('Supabase getQuizzesFromDB warning:', e.message);
+    if (qErr) {
+      console.error('Supabase getQuizzesFromDB error:', qErr.message);
+      return [];
     }
+
+    if (!Array.isArray(quizzesData) || quizzesData.length === 0) {
+      return [];
+    }
+
+    const { data: questionsData, error: qnErr } = await supabase
+      .from('quiz_questions')
+      .select('*')
+      .order('question_order', { ascending: true });
+
+    const questionsMap = {};
+    if (!qnErr && Array.isArray(questionsData)) {
+      questionsData.forEach((qn) => {
+        if (!questionsMap[qn.quiz_id]) questionsMap[qn.quiz_id] = [];
+        questionsMap[qn.quiz_id].push(formatQuestionRow(qn));
+      });
+    }
+
+    return quizzesData.map((q) => {
+      const qns = questionsMap[q.id] || [];
+      return {
+        ...q,
+        questions: qns,
+        questions_count: qns.length,
+        total_questions: qns.length || 30,
+        marks_per_question: qns.length > 0 ? (qns[0].marks || 1) : 1
+      };
+    });
+  } catch (err) {
+    console.error('Supabase getQuizzesFromDB exception:', err.message);
+    return [];
   }
-  return loadLocalQuizzes();
 };
 
+// Fetch single quiz by ID with questions from Supabase DB
+export const getQuizByIdFromDB = async (quizId) => {
+  try {
+    const { data: quiz, error: qErr } = await supabase
+      .from('quizzes')
+      .select('*')
+      .eq('id', quizId)
+      .maybeSingle();
+
+    if (qErr || !quiz) return null;
+
+    const { data: questions, error: qnErr } = await supabase
+      .from('quiz_questions')
+      .select('*')
+      .eq('quiz_id', quizId)
+      .order('question_order', { ascending: true });
+
+    const formattedQuestions = (!qnErr && Array.isArray(questions))
+      ? questions.map(formatQuestionRow)
+      : [];
+
+    return {
+      ...quiz,
+      questions: formattedQuestions,
+      questions_count: formattedQuestions.length,
+      total_questions: formattedQuestions.length || 30,
+      marks_per_question: formattedQuestions.length > 0 ? (formattedQuestions[0].marks || 1) : 1
+    };
+  } catch (err) {
+    console.error('Supabase getQuizByIdFromDB exception:', err.message);
+    return null;
+  }
+};
+
+// Insert new Quiz into Supabase DB
 export const insertQuizToDB = async (quizObj) => {
-  const currentQuizzes = loadLocalQuizzes();
-  const newQuiz = {
-    id: quizObj.id || `quiz_${Date.now()}_${Math.random().toString(36).substring(2, 5)}`,
-    title: quizObj.title || 'Untitled Symposium Quiz',
-    description: quizObj.description || '',
-    event_id: quizObj.event_id || 'evt_eloquence_2026',
-    category: quizObj.category || 'General Technology',
-    start_date_time: quizObj.start_date_time || quizObj.start_time || new Date().toISOString(),
-    end_date_time: quizObj.end_date_time || quizObj.end_time || new Date(Date.now() + 86400000).toISOString(),
-    duration: parseInt(quizObj.duration, 10) || 30,
-    max_participants: parseInt(quizObj.max_participants, 10) || 100,
-    total_questions: parseInt(quizObj.total_questions || quizObj.number_of_questions, 10) || 30,
-    marks_per_question: parseFloat(quizObj.marks_per_question) || 1,
-    negative_marking: Boolean(quizObj.negative_marking),
-    negative_marks_value: parseFloat(quizObj.negative_marks_value) || 0,
-    status: quizObj.status || 'Published',
-    instructions: quizObj.instructions || '',
-    max_attempts: parseInt(quizObj.max_attempts, 10) || 1,
-    strict_mode: quizObj.strict_mode ?? true,
-    fullscreen_required: quizObj.fullscreen_required ?? true,
-    detect_visibility_change: quizObj.detect_visibility_change ?? true,
-    detect_tab_switch: quizObj.detect_tab_switch ?? true,
-    detect_focus_loss: quizObj.detect_focus_loss ?? true,
-    detect_fullscreen_exit: quizObj.detect_fullscreen_exit ?? true,
-    max_violations: parseInt(quizObj.max_violations, 10) || 3,
-    violation_action: quizObj.violation_action || 'lock',
-    show_score: quizObj.show_score ?? true,
-    show_correct_answers: quizObj.show_correct_answers ?? false,
-    show_ranking: quizObj.show_ranking ?? false,
-    allow_retest: quizObj.allow_retest ?? true,
-    created_by: quizObj.created_by || 'admin',
-    created_at: new Date().toISOString(),
-    questions: quizObj.questions || []
-  };
+  try {
+    const quizId = quizObj.id || `quiz_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`;
+    
+    // Only pass exact columns that exist in the quizzes table
+    const dbQuiz = {
+      id: quizId,
+      title: quizObj.title || 'Untitled Symposium Quiz',
+      description: quizObj.description || '',
+      event_id: quizObj.event_id || 'evt_eloquence_2026',
+      category: quizObj.category || 'General Technology',
+      start_date_time: quizObj.start_date_time || quizObj.start_time || new Date().toISOString(),
+      end_date_time: quizObj.end_date_time || quizObj.end_time || new Date(Date.now() + 86400000).toISOString(),
+      duration: parseInt(quizObj.duration, 10) || 30,
+      max_attempts: parseInt(quizObj.max_attempts, 10) || 1,
+      status: quizObj.status || 'Published',
+      fullscreen_required: quizObj.fullscreen_required ?? true,
+      detect_visibility_change: quizObj.detect_visibility_change ?? true,
+      detect_tab_switch: quizObj.detect_tab_switch ?? true,
+      detect_focus_loss: quizObj.detect_focus_loss ?? true,
+      detect_fullscreen_exit: quizObj.detect_fullscreen_exit ?? true,
+      max_violations: parseInt(quizObj.max_violations, 10) || 3,
+      violation_action: quizObj.violation_action || 'lock',
+      allow_retest: quizObj.allow_retest ?? true,
+      created_at: new Date().toISOString()
+    };
 
-  const updated = [newQuiz, ...currentQuizzes];
-  saveLocalQuizzes(updated);
+    const { data: createdQuiz, error: qErr } = await supabase
+      .from('quizzes')
+      .upsert([dbQuiz], { onConflict: 'id' })
+      .select()
+      .single();
 
-  if (supabase) {
-    const { questions, ...dbQuiz } = newQuiz;
-    supabase.from('quizzes').upsert([dbQuiz]).then().catch((e) => console.warn('Supabase insert quiz warning:', e.message));
-  }
-
-  return newQuiz;
-};
-
-export const updateQuizInDB = async (id, updates) => {
-  const currentQuizzes = loadLocalQuizzes();
-  let updatedQuiz = null;
-
-  const newQuizzes = currentQuizzes.map((q) => {
-    if (String(q.id) === String(id)) {
-      updatedQuiz = { ...q, ...updates };
-      return updatedQuiz;
+    if (qErr) {
+      console.error('Supabase insertQuizToDB error:', qErr.message);
+      return dbQuiz;
     }
-    return q;
-  });
 
-  saveLocalQuizzes(newQuizzes);
+    // Insert questions if provided
+    let savedQuestions = [];
+    if (Array.isArray(quizObj.questions) && quizObj.questions.length > 0) {
+      const qnPayloads = quizObj.questions.map((qn, idx) => ({
+        id: qn.id || `qn_${Date.now()}_${idx}_${Math.random().toString(36).substring(2, 5)}`,
+        quiz_id: quizId,
+        prompt: qn.prompt || qn.questionText || qn.question || 'Question',
+        option_a: qn.option_a || qn.optionA || '',
+        option_b: qn.option_b || qn.optionB || '',
+        option_c: qn.option_c || qn.optionC || '',
+        option_d: qn.option_d || qn.optionD || '',
+        correct_option: (qn.correct_option || qn.correct_answer || qn.correctOption || 'A').toUpperCase(),
+        marks: parseFloat(qn.marks) || 1,
+        negative_marks: parseFloat(qn.negative_marks) || 0,
+        image_url: qn.image_url || qn.question_image || '',
+        question_order: parseInt(qn.question_order, 10) || (idx + 1),
+        created_at: new Date().toISOString()
+      }));
 
-  if (supabase && updatedQuiz) {
-    const { questions, ...dbQuiz } = updatedQuiz;
-    supabase.from('quizzes').update(dbQuiz).eq('id', id).then().catch((e) => console.warn('Supabase update quiz warning:', e.message));
+      const { data: qnData, error: qnErr } = await supabase
+        .from('quiz_questions')
+        .upsert(qnPayloads, { onConflict: 'id' })
+        .select();
+
+      if (!qnErr && Array.isArray(qnData)) {
+        savedQuestions = qnData.map(formatQuestionRow);
+      }
+    }
+
+    return {
+      ...(createdQuiz || dbQuiz),
+      questions: savedQuestions,
+      questions_count: savedQuestions.length
+    };
+  } catch (err) {
+    console.error('Supabase insertQuizToDB exception:', err.message);
+    return quizObj;
   }
-
-  return updatedQuiz;
 };
 
+// Update Quiz in Supabase DB
+export const updateQuizInDB = async (id, updates) => {
+  try {
+    const validCols = [
+      'title', 'description', 'event_id', 'category', 'start_date_time', 'end_date_time',
+      'duration', 'max_attempts', 'status', 'fullscreen_required', 'detect_visibility_change',
+      'detect_tab_switch', 'detect_focus_loss', 'detect_fullscreen_exit', 'max_violations',
+      'violation_action', 'allow_retest'
+    ];
+
+    const dbFields = {};
+    for (const key of Object.keys(updates)) {
+      if (validCols.includes(key)) {
+        dbFields[key] = updates[key];
+      }
+    }
+
+    if (updates.start_time && !dbFields.start_date_time) dbFields.start_date_time = updates.start_time;
+    if (updates.end_time && !dbFields.end_date_time) dbFields.end_date_time = updates.end_time;
+
+    const { error } = await supabase
+      .from('quizzes')
+      .update(dbFields)
+      .eq('id', id);
+
+    if (error) {
+      console.error('Supabase updateQuizInDB error:', error.message);
+    }
+
+    return await getQuizByIdFromDB(id);
+  } catch (err) {
+    console.error('Supabase updateQuizInDB exception:', err.message);
+    return null;
+  }
+};
+
+// Update Quiz Schedule in Supabase DB
 export const updateQuizScheduleInDB = async (id, startTime, endTime) => {
   return updateQuizInDB(id, { 
     start_date_time: startTime, 
-    end_date_time: endTime,
-    start_time: startTime,
-    end_time: endTime
+    end_date_time: endTime 
   });
 };
 
+// Delete Quiz in Supabase DB (Cascade cleans questions & registrations)
 export const deleteQuizFromDB = async (id) => {
-  const currentQuizzes = loadLocalQuizzes();
-  const newQuizzes = currentQuizzes.filter((q) => String(q.id) !== String(id));
-  saveLocalQuizzes(newQuizzes);
+  try {
+    // Delete registrations, questions, attempts first if foreign key cascade not default
+    await supabase.from('quiz_questions').delete().eq('quiz_id', id);
+    await supabase.from('quiz_registrations').delete().eq('quiz_id', id);
+    await supabase.from('quiz_attempts').delete().eq('quiz_id', id);
+    await supabase.from('retest_permissions').delete().eq('quiz_id', id);
 
-  // Clean up registrations
-  const currentRegs = loadRegistrations();
-  saveRegistrations(currentRegs.filter((r) => String(r.quiz_id) !== String(id)));
-
-  if (supabase) {
-    supabase.from('quizzes').delete().eq('id', id).then().catch((e) => console.warn('Supabase delete quiz warning:', e.message));
+    const { error } = await supabase.from('quizzes').delete().eq('id', id);
+    if (error) {
+      console.error('Supabase deleteQuizFromDB error:', error.message);
+      return false;
+    }
+    return true;
+  } catch (err) {
+    console.error('Supabase deleteQuizFromDB exception:', err.message);
+    return false;
   }
-
-  return true;
 };
 
-// Question Management inside Quiz ONLY
+/* =========================================================================
+   3. QUESTION MANAGEMENT (public.quiz_questions)
+   ========================================================================= */
+
+// Add single question to a quiz in Supabase DB
 export const addQuestionToQuizInDB = async (quizId, questionObj) => {
-  const currentQuizzes = loadLocalQuizzes();
-  let updatedQuiz = null;
-
-  const optionsCount = parseInt(questionObj.optionsCount || questionObj.options_count, 10) || 4;
-
-  const newQuestion = {
-    id: `q_${Date.now()}_${Math.random().toString(36).substring(2, 5)}`,
-    quiz_id: quizId,
-    prompt: questionObj.prompt || questionObj.questionText || questionObj.question,
-    optionA: questionObj.optionA || questionObj.option_a || '',
-    optionB: questionObj.optionB || questionObj.option_b || '',
-    optionC: optionsCount >= 3 ? (questionObj.optionC || questionObj.option_c || '') : '',
-    optionD: optionsCount >= 4 ? (questionObj.optionD || questionObj.option_d || '') : '',
-    options_count: optionsCount,
-    correct_answer: (questionObj.correct_answer || questionObj.correctOption || questionObj.correct_option || 'A').toUpperCase(),
-    marks: parseFloat(questionObj.marks) || 1,
-    negative_marks: parseFloat(questionObj.negative_marks || questionObj.negativeMarks) || 0,
-    question_image: questionObj.question_image || questionObj.image_url || '',
-    explanation: questionObj.explanation || '',
-    question_order: parseInt(questionObj.question_order, 10) || 1,
-    created_at: new Date().toISOString()
-  };
-
-  const newQuizzes = currentQuizzes.map((q) => {
-    if (String(q.id) === String(quizId)) {
-      const questions = q.questions || [];
-      updatedQuiz = {
-        ...q,
-        questions: [...questions, newQuestion],
-        total_questions: questions.length + 1
-      };
-      return updatedQuiz;
-    }
-    return q;
-  });
-
-  saveLocalQuizzes(newQuizzes);
-
-  if (supabase) {
-    const dbQn = {
-      id: newQuestion.id,
-      quiz_id: newQuestion.quiz_id,
-      prompt: newQuestion.prompt,
-      option_a: newQuestion.optionA,
-      option_b: newQuestion.optionB,
-      option_c: newQuestion.optionC,
-      option_d: newQuestion.optionD,
-      options_count: newQuestion.options_count,
-      correct_answer: newQuestion.correct_answer,
-      marks: newQuestion.marks,
-      negative_marks: newQuestion.negative_marks,
-      question_image: newQuestion.question_image,
-      explanation: newQuestion.explanation,
-      question_order: newQuestion.question_order,
-      created_at: newQuestion.created_at
+  try {
+    const questionId = questionObj.id || `qn_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`;
+    const qnPayload = {
+      id: questionId,
+      quiz_id: quizId,
+      prompt: questionObj.prompt || questionObj.questionText || questionObj.question || '',
+      option_a: questionObj.option_a || questionObj.optionA || '',
+      option_b: questionObj.option_b || questionObj.optionB || '',
+      option_c: questionObj.option_c || questionObj.optionC || '',
+      option_d: questionObj.option_d || questionObj.optionD || '',
+      correct_option: (questionObj.correct_option || questionObj.correct_answer || questionObj.correctOption || 'A').toUpperCase(),
+      marks: parseFloat(questionObj.marks) || 1,
+      negative_marks: parseFloat(questionObj.negative_marks || questionObj.negativeMarks) || 0,
+      image_url: questionObj.image_url || questionObj.question_image || '',
+      question_order: parseInt(questionObj.question_order, 10) || 1,
+      created_at: new Date().toISOString()
     };
-    supabase.from('quiz_questions').insert([dbQn]).then().catch((e) => console.warn('Supabase insert question warning:', e.message));
-  }
 
-  return { quiz: updatedQuiz, question: newQuestion };
+    const { data, error } = await supabase
+      .from('quiz_questions')
+      .upsert([qnPayload], { onConflict: 'id' })
+      .select()
+      .single();
+
+    if (error) {
+      console.error('Supabase addQuestionToQuizInDB error:', error.message);
+      return { question: formatQuestionRow(qnPayload) };
+    }
+
+    const fullQuiz = await getQuizByIdFromDB(quizId);
+    return { question: formatQuestionRow(data || qnPayload), quiz: fullQuiz };
+  } catch (err) {
+    console.error('Supabase addQuestionToQuizInDB exception:', err.message);
+    return { question: questionObj };
+  }
 };
 
+// Update question in Supabase DB
 export const updateQuestionInQuizInDB = async (quizId, questionId, updates) => {
-  const currentQuizzes = loadLocalQuizzes();
-  let updatedQuiz = null;
-  let updatedQn = null;
+  try {
+    const dbUpdates = {};
+    if (updates.prompt !== undefined) dbUpdates.prompt = updates.prompt;
+    if (updates.questionText !== undefined) dbUpdates.prompt = updates.questionText;
+    if (updates.optionA !== undefined) dbUpdates.option_a = updates.optionA;
+    if (updates.option_a !== undefined) dbUpdates.option_a = updates.option_a;
+    if (updates.optionB !== undefined) dbUpdates.option_b = updates.optionB;
+    if (updates.option_b !== undefined) dbUpdates.option_b = updates.option_b;
+    if (updates.optionC !== undefined) dbUpdates.option_c = updates.optionC;
+    if (updates.option_c !== undefined) dbUpdates.option_c = updates.option_c;
+    if (updates.optionD !== undefined) dbUpdates.option_d = updates.optionD;
+    if (updates.option_d !== undefined) dbUpdates.option_d = updates.option_d;
+    if (updates.correct_option !== undefined) dbUpdates.correct_option = updates.correct_option.toUpperCase();
+    if (updates.correct_answer !== undefined) dbUpdates.correct_option = updates.correct_answer.toUpperCase();
+    if (updates.correctOption !== undefined) dbUpdates.correct_option = updates.correctOption.toUpperCase();
+    if (updates.marks !== undefined) dbUpdates.marks = parseFloat(updates.marks);
+    if (updates.negative_marks !== undefined) dbUpdates.negative_marks = parseFloat(updates.negative_marks);
+    if (updates.image_url !== undefined) dbUpdates.image_url = updates.image_url;
+    if (updates.question_image !== undefined) dbUpdates.image_url = updates.question_image;
+    if (updates.question_order !== undefined) dbUpdates.question_order = parseInt(updates.question_order, 10);
 
-  const newQuizzes = currentQuizzes.map((q) => {
-    if (String(q.id) === String(quizId)) {
-      const questions = (q.questions || []).map((qn) => {
-        if (String(qn.id) === String(questionId)) {
-          updatedQn = { ...qn, ...updates };
-          if (updates.correctOption) updatedQn.correct_answer = updates.correctOption.toUpperCase();
-          if (updates.correct_option) updatedQn.correct_answer = updates.correct_option.toUpperCase();
-          return updatedQn;
-        }
-        return qn;
-      });
-      updatedQuiz = { ...q, questions };
-      return updatedQuiz;
+    const { error } = await supabase
+      .from('quiz_questions')
+      .update(dbUpdates)
+      .eq('id', questionId);
+
+    if (error) {
+      console.error('Supabase updateQuestionInQuizInDB error:', error.message);
     }
-    return q;
-  });
 
-  saveLocalQuizzes(newQuizzes);
-
-  if (supabase && updatedQn) {
-    const dbQn = {
-      prompt: updatedQn.prompt,
-      option_a: updatedQn.optionA || updatedQn.option_a,
-      option_b: updatedQn.optionB || updatedQn.option_b,
-      option_c: updatedQn.optionC || updatedQn.option_c,
-      option_d: updatedQn.optionD || updatedQn.option_d,
-      options_count: updatedQn.options_count || updatedQn.optionsCount,
-      correct_answer: updatedQn.correct_answer,
-      marks: updatedQn.marks,
-      negative_marks: updatedQn.negative_marks,
-      question_image: updatedQn.question_image,
-      explanation: updatedQn.explanation
-    };
-    supabase.from('quiz_questions').update(dbQn).eq('id', questionId).then().catch((e) => console.warn('Supabase update question warning:', e.message));
+    return await getQuizByIdFromDB(quizId);
+  } catch (err) {
+    console.error('Supabase updateQuestionInQuizInDB exception:', err.message);
+    return null;
   }
-
-  return updatedQuiz;
 };
 
+// Delete question from Supabase DB
 export const deleteQuestionFromQuizInDB = async (quizId, questionId) => {
-  const currentQuizzes = loadLocalQuizzes();
-  let updatedQuiz = null;
+  try {
+    const { error } = await supabase
+      .from('quiz_questions')
+      .delete()
+      .eq('id', questionId);
 
-  const newQuizzes = currentQuizzes.map((q) => {
-    if (String(q.id) === String(quizId)) {
-      const questions = (q.questions || []).filter((qn) => String(qn.id) !== String(questionId));
-      updatedQuiz = { ...q, questions, total_questions: questions.length };
-      return updatedQuiz;
+    if (error) {
+      console.error('Supabase deleteQuestionFromQuizInDB error:', error.message);
     }
-    return q;
-  });
 
-  saveLocalQuizzes(newQuizzes);
-
-  if (supabase) {
-    supabase.from('quiz_questions').delete().eq('id', questionId).then().catch((e) => console.warn('Supabase delete question warning:', e.message));
+    return await getQuizByIdFromDB(quizId);
+  } catch (err) {
+    console.error('Supabase deleteQuestionFromQuizInDB exception:', err.message);
+    return null;
   }
-
-  return updatedQuiz;
 };
 
-/* ================= PARTICIPANT REGISTRATIONS & ACCESS CONTROL ================= */
+/* =========================================================================
+   4. QUIZ REGISTRATIONS & PARTICIPANT ACCESS (public.quiz_registrations)
+   ========================================================================= */
 
-export const loadRegistrations = () => loadFile(REGISTRATIONS_DB_FILE, initialRegistrations);
-export const saveRegistrations = (regs) => saveFile(REGISTRATIONS_DB_FILE, regs);
+// Fetch all registrations for a quiz with participant user details
+export const getQuizRegistrations = async (quizId) => {
+  try {
+    const { data: regs, error: rErr } = await supabase
+      .from('quiz_registrations')
+      .select('*')
+      .eq('quiz_id', quizId)
+      .order('registered_at', { ascending: false });
 
-export const registerParticipantForQuiz = (participantId, quizId) => {
-  const regs = loadRegistrations();
-  let existing = regs.find((r) => String(r.participant_id) === String(participantId) && String(r.quiz_id) === String(quizId));
+    if (rErr) {
+      console.error('Supabase getQuizRegistrations error:', rErr.message);
+      return [];
+    }
 
-  if (!existing) {
-    existing = {
-      id: `reg_${Date.now()}_${Math.random().toString(36).substring(2, 5)}`,
+    if (!Array.isArray(regs) || regs.length === 0) return [];
+
+    const { data: usersData } = await supabase.from('users').select('id, name, email, phone');
+    const userMap = new Map();
+    if (Array.isArray(usersData)) {
+      usersData.forEach((u) => {
+        userMap.set(String(u.id), u);
+        if (u.email) userMap.set(String(u.email).toLowerCase(), u);
+        if (u.phone) userMap.set(String(u.phone), u);
+      });
+    }
+
+    return regs.map((r) => {
+      const u = userMap.get(String(r.participant_id)) || userMap.get(String(r.participant_id).toLowerCase());
+      return {
+        ...r,
+        participantName: u?.name || r.participant_id,
+        participantEmail: u?.email || r.participant_id,
+        participantPhone: u?.phone || ''
+      };
+    });
+  } catch (err) {
+    console.error('Supabase getQuizRegistrations exception:', err.message);
+    return [];
+  }
+};
+
+// Register participant for a quiz in Supabase DB
+export const registerParticipantForQuiz = async (participantId, quizId) => {
+  try {
+    const regId = `reg_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`;
+    const regObj = {
+      id: regId,
       quiz_id: quizId,
-      participant_id: participantId,
+      participant_id: String(participantId),
       registration_status: 'Approved',
-      access_status: 'Granted', // Default to Granted on registration
+      access_status: 'Granted',
+      qualification_status: 'PENDING',
       registered_at: new Date().toISOString(),
       approved_at: new Date().toISOString()
     };
-    regs.unshift(existing);
-    saveRegistrations(regs);
-  }
 
-  if (supabase && existing) {
-    supabase.from('quiz_registrations').upsert([{
-      id: existing.id,
-      quiz_id: existing.quiz_id,
-      participant_id: existing.participant_id,
-      registration_status: existing.registration_status,
-      access_status: existing.access_status,
-      registered_at: existing.registered_at,
-      approved_at: existing.approved_at
-    }], { onConflict: 'id' }).then().catch((e) => console.warn('Supabase upsert registration warning:', e.message));
-  }
+    const { data, error } = await supabase
+      .from('quiz_registrations')
+      .upsert([regObj], { onConflict: 'quiz_id,participant_id' })
+      .select()
+      .single();
 
-  return existing;
+    if (error) {
+      console.error('Supabase registerParticipantForQuiz error:', error.message);
+      return regObj;
+    }
+    return data || regObj;
+  } catch (err) {
+    console.error('Supabase registerParticipantForQuiz exception:', err.message);
+    return null;
+  }
 };
 
-export const getQuizRegistrations = (quizId) => {
-  const regs = loadRegistrations().filter((r) => String(r.quiz_id) === String(quizId));
-  const users = loadLocalUsers();
+// Grant quiz access in Supabase DB
+export const grantParticipantAccess = async (registrationId) => {
+  try {
+    const { data, error } = await supabase
+      .from('quiz_registrations')
+      .update({ access_status: 'Granted', approved_at: new Date().toISOString() })
+      .eq('id', registrationId)
+      .select()
+      .single();
 
-  return regs.map((r) => {
-    const userObj = users.find((u) => String(u.id) === String(r.participant_id) || String(u.email) === String(r.participant_id));
-    return {
-      ...r,
-      participantName: userObj ? userObj.name : (r.participant_id === 'admin_1' ? 'Administrator' : 'Student Participant'),
-      participantEmail: userObj ? userObj.email : r.participant_id,
-      participantPhone: userObj ? userObj.phone : ''
-    };
-  });
-};
-
-export const grantParticipantAccess = (registrationIdOrQuizUserId) => {
-  const regs = loadRegistrations();
-  const reg = regs.find((r) => String(r.id) === String(registrationIdOrQuizUserId) || String(r.participant_id) === String(registrationIdOrQuizUserId));
-
-  if (!reg) throw new Error('Registration record not found');
-  reg.access_status = 'Granted';
-  reg.approved_at = new Date().toISOString();
-  saveRegistrations(regs);
-
-  if (supabase) {
-    supabase.from('quiz_registrations').update({ access_status: 'Granted', approved_at: reg.approved_at }).eq('id', reg.id).then().catch((e) => console.warn('Supabase grant access warning:', e.message));
+    if (error) {
+      console.error('Supabase grantParticipantAccess error:', error.message);
+      return null;
+    }
+    return data;
+  } catch (err) {
+    console.error('Supabase grantParticipantAccess exception:', err.message);
+    return null;
   }
-
-  return reg;
 };
 
-export const revokeParticipantAccess = (registrationIdOrQuizUserId) => {
-  const regs = loadRegistrations();
-  const reg = regs.find((r) => String(r.id) === String(registrationIdOrQuizUserId) || String(r.participant_id) === String(registrationIdOrQuizUserId));
+// Revoke quiz access in Supabase DB
+export const revokeParticipantAccess = async (registrationId) => {
+  try {
+    const { data, error } = await supabase
+      .from('quiz_registrations')
+      .update({ access_status: 'Revoked' })
+      .eq('id', registrationId)
+      .select()
+      .single();
 
-  if (!reg) throw new Error('Registration record not found');
-  reg.access_status = 'Revoked';
-  saveRegistrations(regs);
-
-  if (supabase) {
-    supabase.from('quiz_registrations').update({ access_status: 'Revoked' }).eq('id', reg.id).then().catch((e) => console.warn('Supabase revoke access warning:', e.message));
+    if (error) {
+      console.error('Supabase revokeParticipantAccess error:', error.message);
+      return null;
+    }
+    return data;
+  } catch (err) {
+    console.error('Supabase revokeParticipantAccess exception:', err.message);
+    return null;
   }
-
-  return reg;
 };
 
-export const setParticipantAccessByQuizAndUser = (quizId, participantId, accessStatus) => {
-  const regs = loadRegistrations();
-  let reg = regs.find((r) => String(r.quiz_id) === String(quizId) && String(r.participant_id) === String(participantId));
-
-  if (!reg) {
-    reg = {
-      id: `reg_${Date.now()}_${Math.random().toString(36).substring(2, 5)}`,
+// Set participant access status by quiz ID and participant ID in Supabase DB
+export const setParticipantAccessByQuizAndUser = async (quizId, participantId, accessStatus) => {
+  try {
+    const regId = `reg_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`;
+    const regObj = {
+      id: regId,
       quiz_id: quizId,
-      participant_id: participantId,
-      registration_status: 'Approved',
+      participant_id: String(participantId),
+      registration_status: accessStatus === 'Granted' ? 'Approved' : 'Rejected',
       access_status: accessStatus,
+      qualification_status: 'PENDING',
       registered_at: new Date().toISOString(),
       approved_at: new Date().toISOString()
     };
-    regs.unshift(reg);
-  } else {
-    reg.access_status = accessStatus;
-  }
 
-  saveRegistrations(regs);
+    const { data, error } = await supabase
+      .from('quiz_registrations')
+      .upsert([regObj], { onConflict: 'quiz_id,participant_id' })
+      .select()
+      .single();
 
-  if (supabase) {
-    supabase.from('quiz_registrations').upsert([{
-      id: reg.id,
-      quiz_id: reg.quiz_id,
-      participant_id: reg.participant_id,
-      registration_status: reg.registration_status,
-      access_status: reg.access_status,
-      registered_at: reg.registered_at,
-      approved_at: reg.approved_at
-    }], { onConflict: 'id' }).then().catch((e) => console.warn('Supabase set access warning:', e.message));
-  }
-
-  return reg;
-};
-
-/* ================= PARTICIPANT QUIZ ACCESS & ATTEMPTS ================= */
-
-export const loadAttempts = () => loadFile(ATTEMPTS_DB_FILE, []);
-export const saveAttempts = (attempts) => saveFile(ATTEMPTS_DB_FILE, attempts);
-
-export const loadViolations = () => loadFile(VIOLATIONS_DB_FILE, []);
-export const saveViolations = (violations) => saveFile(VIOLATIONS_DB_FILE, violations);
-
-export const loadRetests = () => loadFile(RETESTS_DB_FILE, []);
-export const saveRetests = (retests) => saveFile(RETESTS_DB_FILE, retests);
-
-/**
- * Server-Enforced Availability Check for Participant
- */
-export const checkParticipantQuizAccess = async (participantId, quizId) => {
-  const quizzes = loadLocalQuizzes();
-  const quiz = quizzes.find((q) => String(q.id) === String(quizId));
-
-  if (!quiz) {
-    return { canStart: false, status: 'not_found', reason: 'Quiz not found' };
-  }
-
-  // 1. Registration & Access Verification
-  const regs = loadRegistrations();
-  const reg = regs.find((r) => String(r.quiz_id) === String(quizId) && String(r.participant_id) === String(participantId));
-
-  // If user is admin, allow access
-  const isUserAdmin = participantId === 'admin_1' || participantId === 'admin@eloquence.com';
-
-  if (!reg && !isUserAdmin) {
-    return {
-      canStart: false,
-      status: 'not_registered',
-      reason: 'You are not registered for this quiz event.',
-      quizTitle: quiz.title
-    };
-  }
-
-  if (reg && reg.access_status === 'Revoked' && !isUserAdmin) {
-    return {
-      canStart: false,
-      status: 'access_revoked',
-      reason: 'Access to this quiz has been revoked by the administrator.',
-      quizTitle: quiz.title
-    };
-  }
-
-  // 2. Schedule Timing Verification
-  const now = new Date();
-  const start = new Date(quiz.start_date_time || quiz.start_time);
-  const end = new Date(quiz.end_date_time || quiz.end_time);
-
-  if (now < start) {
-    return { 
-      canStart: false, 
-      status: 'upcoming', 
-      reason: `Quiz Not Started. This quiz will start at: ${start.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}. Please wait.`,
-      startTime: start.toISOString(),
-      formattedStartTime: start.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-      quizTitle: quiz.title
-    };
-  }
-
-  if (now > end) {
-    return {
-      canStart: false,
-      status: 'closed',
-      reason: 'Quiz event schedule window has closed.',
-      quizTitle: quiz.title
-    };
-  }
-
-  // 3. Attempt Limit & Approved Retests Verification
-  const attempts = loadAttempts().filter((a) => String(a.participant_id) === String(participantId) && String(a.quiz_id) === String(quizId));
-  const approvedRetest = loadRetests().find((r) => String(r.participant_id) === String(participantId) && String(r.quiz_id) === String(quizId) && r.status === 'granted');
-
-  const maxAllowedAttempts = (quiz.max_attempts || 1) + (approvedRetest ? 1 : 0);
-
-  if (attempts.length >= maxAllowedAttempts) {
-    const isTerminated = attempts.some((a) => a.status === 'TERMINATED' || a.status === 'locked');
-    return {
-      canStart: false,
-      status: isTerminated ? 'terminated' : 'completed',
-      reason: isTerminated 
-        ? 'Your previous quiz attempt was terminated due to security violations. Retest permission is required from administrator.'
-        : 'You have already used your allowed attempt for this quiz.',
-      approvedRetest: approvedRetest || null,
-      quizTitle: quiz.title
-    };
-  }
-
-  return { 
-    canStart: true, 
-    status: 'granted', 
-    quiz, 
-    attemptNumber: attempts.length + 1,
-    approvedRetest: approvedRetest || null,
-    quizTitle: quiz.title
-  };
-};
-
-/**
- * Server-Authoritative Quiz Attempt Start
- * SANITIZES QUESTIONS: Correct answer is strictly stripped out before returning to frontend!
- */
-export const startQuizAttempt = async (participantId, quizId) => {
-  const check = await checkParticipantQuizAccess(participantId, quizId);
-  if (!check.canStart) {
-    throw new Error(check.reason);
-  }
-
-  const quiz = check.quiz;
-  const attempts = loadAttempts();
-
-  const newAttempt = {
-    id: `att_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
-    quiz_id: quiz.id,
-    participant_id: participantId,
-    attempt_number: check.attemptNumber,
-    status: 'IN_PROGRESS',
-    started_at: new Date().toISOString(),
-    submitted_at: null,
-    score: 0,
-    total_marks: (quiz.questions || []).reduce((acc, q) => acc + (parseFloat(q.marks) || 1), 0),
-    violations_count: 0,
-    answers: {}
-  };
-
-  attempts.unshift(newAttempt);
-  saveAttempts(attempts);
-
-  // SANITIZE QUESTIONS: Keep correct answer hidden on server!
-  const sanitizedQuestions = (quiz.questions || []).map((q, idx) => ({
-    id: q.id,
-    prompt: q.prompt,
-    optionA: q.optionA || q.option_a,
-    optionB: q.optionB || q.option_b,
-    optionC: q.optionC || q.option_c || '',
-    optionD: q.optionD || q.option_d || '',
-    optionsCount: q.options_count || 4,
-    marks: q.marks || 1,
-    negative_marks: q.negative_marks || 0,
-    question_image: q.question_image || q.image_url || '',
-    question_order: q.question_order || (idx + 1)
-  }));
-
-  return {
-    attemptId: newAttempt.id,
-    quizTitle: quiz.title,
-    instructions: quiz.instructions,
-    durationMinutes: quiz.duration || 30,
-    startedAt: newAttempt.started_at,
-    securitySettings: {
-      strict_mode: quiz.strict_mode ?? true,
-      fullscreen_required: quiz.fullscreen_required ?? true,
-      detect_visibility_change: quiz.detect_visibility_change ?? true,
-      detect_tab_switch: quiz.detect_tab_switch ?? true,
-      detect_focus_loss: quiz.detect_focus_loss ?? true,
-      detect_fullscreen_exit: quiz.detect_fullscreen_exit ?? true,
-      max_violations: quiz.max_violations || 3,
-      violation_action: quiz.violation_action || 'lock'
-    },
-    questions: sanitizedQuestions
-  };
-};
-
-/**
- * Save Participant Answer for attempt
- */
-export const saveParticipantAnswer = (attemptId, questionId, selectedAnswer) => {
-  const attempts = loadAttempts();
-  const attempt = attempts.find((a) => String(a.id) === String(attemptId));
-  if (!attempt) throw new Error('Attempt not found');
-  if (attempt.status !== 'IN_PROGRESS') throw new Error('Attempt is no longer in progress');
-
-  attempt.answers = attempt.answers || {};
-  attempt.answers[questionId] = selectedAnswer.toUpperCase();
-  saveAttempts(attempts);
-  return true;
-};
-
-/**
- * Record Security Violation
- */
-export const recordQuizViolation = (attemptId, participantId, violationType, details) => {
-  const attempts = loadAttempts();
-  const attempt = attempts.find((a) => String(a.id) === String(attemptId));
-  if (!attempt) throw new Error('Attempt not found');
-
-  const quizzes = loadLocalQuizzes();
-  const quiz = quizzes.find((q) => String(q.id) === String(attempt.quiz_id));
-  const maxViolations = quiz ? (quiz.max_violations || 3) : 3;
-  const action = quiz ? (quiz.violation_action || 'lock') : 'lock';
-
-  // Log violation record
-  const violations = loadViolations();
-  const newViolation = {
-    id: `viol_${Date.now()}_${Math.random().toString(36).substring(2, 5)}`,
-    attempt_id: attemptId,
-    quiz_id: attempt.quiz_id,
-    participant_id: participantId,
-    violation_type: violationType,
-    description: details || 'Security violation detected during quiz execution',
-    timestamp: new Date().toISOString(),
-    severity: attempt.violations_count + 1 >= maxViolations ? 'TERMINATION' : 'WARNING'
-  };
-  violations.unshift(newViolation);
-  saveViolations(violations);
-
-  // Increment attempt violation count
-  attempt.violations_count = (attempt.violations_count || 0) + 1;
-  let isActionTriggered = false;
-
-  if (attempt.violations_count >= maxViolations) {
-    isActionTriggered = true;
-    if (action === 'auto_submit') {
-      submitQuizAttempt(attemptId, participantId, true);
-    } else {
-      attempt.status = 'TERMINATED';
+    if (error) {
+      console.error('Supabase setParticipantAccessByQuizAndUser error:', error.message);
+      return regObj;
     }
+    return data || regObj;
+  } catch (err) {
+    console.error('Supabase setParticipantAccessByQuizAndUser exception:', err.message);
+    return null;
   }
-
-  saveAttempts(attempts);
-
-  return {
-    violationCount: attempt.violations_count,
-    maxViolations,
-    isActionTriggered,
-    status: attempt.status
-  };
 };
 
-/**
- * Server-Authoritative Quiz Submission & Grading Engine
- */
-export const submitQuizAttempt = (attemptId, participantId, isAutoSubmitted = false) => {
-  const attempts = loadAttempts();
-  const attempt = attempts.find((a) => String(a.id) === String(attemptId));
-  if (!attempt) throw new Error('Attempt not found');
+// Check participant access status for a quiz live in Supabase DB
+export const checkParticipantQuizAccess = async (participantId, quizId) => {
+  try {
+    const pid = String(participantId || '');
+    const isAdmin = pid === 'admin_1' || pid.toLowerCase() === 'admin@eloquence.com';
 
-  const quizzes = loadLocalQuizzes();
-  const quiz = quizzes.find((q) => String(q.id) === String(attempt.quiz_id));
+    // 1. Fetch Quiz from Supabase DB
+    const quiz = await getQuizByIdFromDB(quizId);
+    if (!quiz) {
+      return { canStart: false, reason: 'Quiz event not found', status: 'not_found' };
+    }
+
+    if (isAdmin) {
+      return { canStart: true, reason: 'Admin Access Granted', status: 'admin', quiz };
+    }
+
+    // 2. Lookup matched user
+    const { data: usersData } = await supabase.from('users').select('*');
+    const matchedUser = (usersData || []).find((u) =>
+      String(u.id) === pid ||
+      String(u.email).toLowerCase() === pid.toLowerCase() ||
+      String(u.phone) === pid
+    );
+
+    const identifiers = [pid];
+    if (matchedUser) {
+      if (matchedUser.id && !identifiers.includes(String(matchedUser.id))) identifiers.push(String(matchedUser.id));
+      if (matchedUser.email && !identifiers.includes(String(matchedUser.email).toLowerCase())) identifiers.push(String(matchedUser.email).toLowerCase());
+      if (matchedUser.phone && !identifiers.includes(String(matchedUser.phone))) identifiers.push(String(matchedUser.phone));
+    }
+
+    // 3. Check Registrations in Supabase DB
+    const { data: regData } = await supabase
+      .from('quiz_registrations')
+      .select('*')
+      .eq('quiz_id', quizId);
+
+    const reg = (regData || []).find((r) => identifiers.includes(String(r.participant_id)) || identifiers.includes(String(r.participant_id).toLowerCase()));
+
+    if (!reg) {
+      return { canStart: false, reason: 'Participant not registered or authorized by admin', status: 'not_registered' };
+    }
+
+    if (reg.access_status !== 'Granted') {
+      return { canStart: false, reason: 'Quiz access has been revoked by admin', status: 'access_revoked' };
+    }
+
+    // 4. Check Schedule Window
+    const now = new Date();
+    const startTime = new Date(quiz.start_date_time || quiz.start_time);
+    const endTime = new Date(quiz.end_date_time || quiz.end_time);
+
+    if (now < startTime) {
+      return { canStart: false, reason: `Quiz has not started yet. Scheduled for ${startTime.toLocaleString()}`, status: 'not_started_yet' };
+    }
+
+    if (now > endTime) {
+      return { canStart: false, reason: 'Quiz window has expired', status: 'expired' };
+    }
+
+    // 5. Check Retest Approvals
+    const { data: retestData } = await supabase
+      .from('retest_permissions')
+      .select('*')
+      .eq('quiz_id', quizId)
+      .eq('status', 'granted');
+
+    const approvedRetest = (retestData || []).find((r) => identifiers.includes(String(r.participant_id)));
+
+    // 6. Check Past Attempts
+    const { data: attemptsData } = await supabase
+      .from('quiz_attempts')
+      .select('*')
+      .eq('quiz_id', quizId);
+
+    const userAttempts = (attemptsData || []).filter((a) => identifiers.includes(String(a.participant_id)));
+    const terminatedAttempt = userAttempts.find((a) => a.status === 'TERMINATED');
+
+    if (terminatedAttempt && !approvedRetest) {
+      return { canStart: false, reason: 'Quiz terminated due to security violations. Request admin retest.', status: 'terminated' };
+    }
+
+    const completedAttempts = userAttempts.filter((a) => a.status === 'SUBMITTED' || a.status === 'AUTO_SUBMITTED');
+    const maxAttempts = parseInt(quiz.max_attempts, 10) || 1;
+
+    if (completedAttempts.length >= maxAttempts && !approvedRetest) {
+      return { canStart: false, reason: 'Maximum attempts reached for this event quiz', status: 'completed' };
+    }
+
+    return { 
+      canStart: true, 
+      reason: 'Access Authorized by Admin', 
+      status: 'authorized', 
+      approvedRetest: approvedRetest || null 
+    };
+  } catch (err) {
+    console.error('Supabase checkParticipantQuizAccess exception:', err.message);
+    return { canStart: false, reason: 'Database error verifying access', status: 'error' };
+  }
+};
+
+/* =========================================================================
+   5. QUIZ ATTEMPTS & ANSWERS (public.quiz_attempts & public.attempt_answers)
+   ========================================================================= */
+
+// Start a quiz attempt in Supabase DB
+export const startQuizAttempt = async (participantId, quizId) => {
+  const access = await checkParticipantQuizAccess(participantId, quizId);
+  if (!access.canStart) {
+    throw new Error(access.reason || 'Access denied');
+  }
+
+  const quiz = await getQuizByIdFromDB(quizId);
   if (!quiz) throw new Error('Quiz not found');
 
-  let calculatedScore = 0;
-  const questions = quiz.questions || [];
-  const userAnswers = attempt.answers || {};
-
-  const answerDetails = questions.map((q) => {
-    const selectedAns = (userAnswers[q.id] || '').toUpperCase();
-    const correctAns = (q.correct_answer || q.correct_option || 'A').toUpperCase();
-    const isCorrect = selectedAns !== '' && selectedAns === correctAns;
-    
-    let pointsAwarded = 0;
-    if (isCorrect) {
-      pointsAwarded = parseFloat(q.marks) || 1;
-    } else if (selectedAns !== '' && quiz.negative_marking) {
-      pointsAwarded = -(parseFloat(q.negative_marks_value || q.negative_marks) || 0);
-    }
-
-    calculatedScore += pointsAwarded;
-
-    return {
-      questionId: q.id,
-      prompt: q.prompt,
-      selectedAnswer: selectedAns,
-      correctAnswer: quiz.show_correct_answers ? correctAns : undefined,
-      isCorrect,
-      pointsAwarded
-    };
-  });
-
-  attempt.status = isAutoSubmitted ? 'AUTO_SUBMITTED' : 'SUBMITTED';
-  attempt.submitted_at = new Date().toISOString();
-  attempt.score = Math.max(0, calculatedScore);
-
-  saveAttempts(attempts);
-
-  return {
-    attemptId: attempt.id,
-    status: attempt.status,
-    score: attempt.score,
-    totalMarks: attempt.total_marks,
-    submittedAt: attempt.submitted_at,
-    violationsCount: attempt.violations_count,
-    showScore: quiz.show_score,
-    showCorrectAnswers: quiz.show_correct_answers,
-    answers: quiz.show_correct_answers ? answerDetails : []
-  };
-};
-
-/* ================= RETEST MANAGEMENT ================= */
-
-export const getRetestRequests = () => {
-  const retests = loadRetests();
-  const attempts = loadAttempts();
-  const users = loadLocalUsers();
-  const quizzes = loadLocalQuizzes();
-
-  return retests.map((r) => {
-    const userObj = users.find((u) => String(u.id) === String(r.participant_id) || String(u.email) === String(r.participant_id));
-    const quizObj = quizzes.find((q) => String(q.id) === String(r.quiz_id));
-    const userAttempts = attempts.filter((a) => String(a.participant_id) === String(r.participant_id) && String(a.quiz_id) === String(r.quiz_id));
-    const violations = loadViolations().filter((v) => userAttempts.some((a) => a.id === v.attempt_id));
-
-    return {
-      ...r,
-      userName: userObj ? userObj.name : 'Student Participant',
-      userEmail: userObj ? userObj.email : r.participant_id,
-      quizTitle: quizObj ? quizObj.title : 'Event Quiz',
-      violationsCount: violations.length,
-      violations
-    };
-  });
-};
-
-export const requestRetest = (participantId, quizId, reason) => {
-  const retests = loadRetests();
-  const existing = retests.find((r) => String(r.participant_id) === String(participantId) && String(r.quiz_id) === String(quizId) && r.status === 'pending');
-
-  if (existing) return existing;
-
-  const newRequest = {
-    id: `ret_${Date.now()}_${Math.random().toString(36).substring(2, 5)}`,
+  const attemptId = `att_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`;
+  const attemptObj = {
+    id: attemptId,
     quiz_id: quizId,
-    participant_id: participantId,
-    status: 'pending',
-    reason: reason || 'Requested another attempt due to technical issue / security lockout',
-    granted_at: null,
-    requested_at: new Date().toISOString()
+    participant_id: String(participantId),
+    attempt_number: 1,
+    status: 'IN_PROGRESS',
+    started_at: new Date().toISOString(),
+    score: 0,
+    total_marks: (quiz.questions || []).length * (quiz.marks_per_question || 1),
+    violation_count: 0
   };
 
-  retests.unshift(newRequest);
-  saveRetests(retests);
-  return newRequest;
+  const { data, error } = await supabase
+    .from('quiz_attempts')
+    .insert([attemptObj])
+    .select()
+    .single();
+
+  if (error) {
+    console.error('Supabase startQuizAttempt error:', error.message);
+  }
+
+  // Sanitize questions (hide correct_option from participant client during quiz take)
+  const sanitizedQuestions = (quiz.questions || []).map((q) => {
+    const { correct_option, correct_answer, correctOption, ...safe } = q;
+    return safe;
+  });
+
+  return {
+    attemptId,
+    quiz: {
+      ...quiz,
+      questions: sanitizedQuestions
+    },
+    duration: quiz.duration
+  };
 };
 
-export const grantRetest = (requestIdOrParticipantId, quizId, adminMessage) => {
-  const retests = loadRetests();
-  let request = retests.find((r) => String(r.id) === String(requestIdOrParticipantId) || (String(r.participant_id) === String(requestIdOrParticipantId) && String(r.quiz_id) === String(quizId)));
+// Save a participant answer in Supabase DB
+export const saveParticipantAnswer = async (attemptId, questionId, selectedAnswer) => {
+  try {
+    const answerId = `ans_${attemptId}_${questionId}`;
+    const { data: qn } = await supabase
+      .from('quiz_questions')
+      .select('correct_option, marks')
+      .eq('id', questionId)
+      .maybeSingle();
 
-  if (!request) {
-    request = {
-      id: `ret_${Date.now()}_${Math.random().toString(36).substring(2, 5)}`,
+    const isCorrect = qn ? (String(qn.correct_option).toUpperCase() === String(selectedAnswer).toUpperCase()) : false;
+    const marksAwarded = isCorrect ? (Number(qn?.marks) || 1) : 0;
+
+    const answerPayload = {
+      id: answerId,
+      attempt_id: attemptId,
+      question_id: questionId,
+      selected_answer: String(selectedAnswer).toUpperCase(),
+      is_correct: isCorrect,
+      marks_awarded: marksAwarded,
+      answered_at: new Date().toISOString()
+    };
+
+    const { data, error } = await supabase
+      .from('attempt_answers')
+      .upsert([answerPayload], { onConflict: 'id' })
+      .select()
+      .single();
+
+    if (error) {
+      console.error('Supabase saveParticipantAnswer error:', error.message);
+    }
+    return data || answerPayload;
+  } catch (err) {
+    console.error('Supabase saveParticipantAnswer exception:', err.message);
+    return null;
+  }
+};
+
+// Submit quiz attempt and compute live score in Supabase DB
+export const submitQuizAttempt = async (attemptId, participantId, isAutoSubmitted = false) => {
+  try {
+    // 1. Fetch attempt and answers
+    const { data: attempt } = await supabase
+      .from('quiz_attempts')
+      .select('*')
+      .eq('id', attemptId)
+      .maybeSingle();
+
+    if (!attempt) throw new Error('Attempt not found');
+
+    const { data: answers } = await supabase
+      .from('attempt_answers')
+      .select('*')
+      .eq('attempt_id', attemptId);
+
+    const { data: questions } = await supabase
+      .from('quiz_questions')
+      .select('*')
+      .eq('quiz_id', attempt.quiz_id);
+
+    let totalScore = 0;
+    const qnMap = new Map();
+    (questions || []).forEach((q) => qnMap.set(String(q.id), q));
+
+    (answers || []).forEach((ans) => {
+      const qn = qnMap.get(String(ans.question_id));
+      if (qn && String(ans.selected_answer).toUpperCase() === String(qn.correct_option).toUpperCase()) {
+        totalScore += Number(qn.marks || 1);
+      }
+    });
+
+    const status = isAutoSubmitted ? 'AUTO_SUBMITTED' : 'SUBMITTED';
+    const submittedAt = new Date().toISOString();
+
+    const { data: updatedAttempt, error } = await supabase
+      .from('quiz_attempts')
+      .update({
+        status,
+        submitted_at: submittedAt,
+        score: totalScore
+      })
+      .eq('id', attemptId)
+      .select()
+      .single();
+
+    if (error) {
+      console.error('Supabase submitQuizAttempt error:', error.message);
+    }
+
+    // Update user score in users table
+    const matchedUser = await findUserInDB(attempt.participant_id);
+    if (matchedUser) {
+      await supabase
+        .from('users')
+        .update({
+          quizzes_attempted: (matchedUser.quizzes_attempted || 0) + 1,
+          score: (matchedUser.score || 0) + totalScore
+        })
+        .eq('id', matchedUser.id);
+    }
+
+    return {
+      attemptId,
+      status,
+      score: totalScore,
+      totalQuestions: (questions || []).length,
+      submittedAt
+    };
+  } catch (err) {
+    console.error('Supabase submitQuizAttempt exception:', err.message);
+    throw err;
+  }
+};
+
+// Record a quiz violation in Supabase DB
+export const recordQuizViolation = async (attemptId, participantId, violationType, details = '') => {
+  try {
+    const { data: attempt } = await supabase
+      .from('quiz_attempts')
+      .select('*')
+      .eq('id', attemptId)
+      .maybeSingle();
+
+    const quizId = attempt?.quiz_id || '';
+    const violationId = `vio_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`;
+
+    const violationObj = {
+      id: violationId,
+      attempt_id: attemptId,
+      participant_id: String(participantId),
+      violation_type: violationType,
+      details: details || '',
+      timestamp: new Date().toISOString()
+    };
+
+    await supabase.from('quiz_violations').insert([violationObj]);
+
+    // Count violations for this attempt
+    const { count } = await supabase
+      .from('quiz_violations')
+      .select('*', { count: 'exact', head: true })
+      .eq('attempt_id', attemptId);
+
+    const currentViolations = count || 1;
+    let shouldTerminate = false;
+
+    if (quizId) {
+      const quiz = await getQuizByIdFromDB(quizId);
+      const maxAllowed = quiz?.max_violations || 3;
+      if (currentViolations >= maxAllowed) {
+        shouldTerminate = true;
+        await supabase
+          .from('quiz_attempts')
+          .update({
+            status: 'TERMINATED',
+            violation_count: currentViolations
+          })
+          .eq('id', attemptId);
+      } else {
+        await supabase
+          .from('quiz_attempts')
+          .update({ violation_count: currentViolations })
+          .eq('id', attemptId);
+      }
+    }
+
+    return {
+      violationsCount: currentViolations,
+      terminated: shouldTerminate,
+      violation: violationObj
+    };
+  } catch (err) {
+    console.error('Supabase recordQuizViolation exception:', err.message);
+    return { violationsCount: 1, terminated: false };
+  }
+};
+
+/* =========================================================================
+   6. ADMIN RESULTS, VIOLATIONS & RETESTS (public.quiz_violations & public.retest_permissions)
+   ========================================================================= */
+
+// Get all overall results from Supabase DB
+export const getAllResults = async () => {
+  try {
+    const { data: attempts } = await supabase
+      .from('quiz_attempts')
+      .select('*')
+      .order('started_at', { ascending: false });
+
+    const { data: quizzes } = await supabase.from('quizzes').select('id, title, category');
+    const { data: users } = await supabase.from('users').select('id, name, email, phone');
+
+    const quizMap = new Map();
+    (quizzes || []).forEach((q) => quizMap.set(String(q.id), q));
+
+    const userMap = new Map();
+    (users || []).forEach((u) => {
+      userMap.set(String(u.id), u);
+      if (u.email) userMap.set(String(u.email).toLowerCase(), u);
+    });
+
+    return (attempts || []).map((att) => {
+      const q = quizMap.get(String(att.quiz_id));
+      const u = userMap.get(String(att.participant_id)) || userMap.get(String(att.participant_id).toLowerCase());
+      return {
+        id: att.id,
+        attemptId: att.id,
+        quizId: att.quiz_id,
+        quizTitle: q?.title || att.quiz_id,
+        category: q?.category || 'General',
+        participantId: att.participant_id,
+        participantName: u?.name || att.participant_id,
+        participantEmail: u?.email || att.participant_id,
+        score: att.score || 0,
+        totalMarks: att.total_marks || 0,
+        status: att.status,
+        startedAt: att.started_at,
+        submittedAt: att.submitted_at,
+        violationsCount: att.violation_count || 0
+      };
+    });
+  } catch (err) {
+    console.error('Supabase getAllResults exception:', err.message);
+    return [];
+  }
+};
+
+// Get all violations log from Supabase DB
+export const getAllViolations = async () => {
+  try {
+    const { data: violations } = await supabase
+      .from('quiz_violations')
+      .select('*')
+      .order('timestamp', { ascending: false });
+
+    const { data: users } = await supabase.from('users').select('id, name, email');
+    const userMap = new Map();
+    (users || []).forEach((u) => {
+      userMap.set(String(u.id), u);
+      if (u.email) userMap.set(String(u.email).toLowerCase(), u);
+    });
+
+    return (violations || []).map((v) => {
+      const u = userMap.get(String(v.participant_id)) || userMap.get(String(v.participant_id).toLowerCase());
+      return {
+        ...v,
+        description: v.details || '',
+        participantName: u?.name || v.participant_id,
+        participantEmail: u?.email || v.participant_id
+      };
+    });
+  } catch (err) {
+    console.error('Supabase getAllViolations exception:', err.message);
+    return [];
+  }
+};
+
+// Get quiz submissions for a specific quiz from Supabase DB
+export const getQuizSubmissions = async (quizId) => {
+  try {
+    const { data: attempts } = await supabase
+      .from('quiz_attempts')
+      .select('*')
+      .eq('quiz_id', quizId)
+      .order('score', { ascending: false });
+
+    const { data: users } = await supabase.from('users').select('id, name, email');
+    const userMap = new Map();
+    (users || []).forEach((u) => {
+      userMap.set(String(u.id), u);
+      if (u.email) userMap.set(String(u.email).toLowerCase(), u);
+    });
+
+    return (attempts || []).map((att) => {
+      const u = userMap.get(String(att.participant_id)) || userMap.get(String(att.participant_id).toLowerCase());
+      return {
+        ...att,
+        participantName: u?.name || att.participant_id,
+        participantEmail: u?.email || att.participant_id
+      };
+    });
+  } catch (err) {
+    console.error('Supabase getQuizSubmissions exception:', err.message);
+    return [];
+  }
+};
+
+// Request retest permission in Supabase DB
+export const requestRetest = async (participantId, quizId, reason = '') => {
+  try {
+    const reqId = `ret_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`;
+    const retestObj = {
+      id: reqId,
       quiz_id: quizId,
-      participant_id: requestIdOrParticipantId,
-      status: 'granted',
-      reason: 'Admin manually granted retest',
-      admin_message: adminMessage || 'Retest permission granted by administrator.',
-      granted_at: new Date().toISOString()
+      participant_id: String(participantId),
+      status: 'pending',
+      admin_message: reason || 'Retest requested by participant'
     };
-    retests.unshift(request);
-  } else {
-    request.status = 'granted';
-    request.admin_message = adminMessage || 'Retest permission granted by administrator.';
-    request.granted_at = new Date().toISOString();
+
+    const { data, error } = await supabase
+      .from('retest_permissions')
+      .insert([retestObj])
+      .select()
+      .single();
+
+    if (error) {
+      console.error('Supabase requestRetest error:', error.message);
+      return retestObj;
+    }
+    return data || retestObj;
+  } catch (err) {
+    console.error('Supabase requestRetest exception:', err.message);
+    return null;
   }
-
-  saveRetests(retests);
-  return request;
 };
 
-export const revokeRetest = (requestIdOrParticipantId, quizId) => {
-  const retests = loadRetests();
-  const request = retests.find((r) => String(r.id) === String(requestIdOrParticipantId) || (String(r.participant_id) === String(requestIdOrParticipantId) && String(r.quiz_id) === String(quizId)));
+// Get all retest requests from Supabase DB
+export const getRetestRequests = async () => {
+  try {
+    const { data: retests } = await supabase
+      .from('retest_permissions')
+      .select('*');
 
-  if (!request) throw new Error('Retest request not found');
+    const { data: quizzes } = await supabase.from('quizzes').select('id, title');
+    const { data: users } = await supabase.from('users').select('id, name, email');
 
-  request.status = 'denied';
-  request.admin_message = 'Retest request denied by administrator.';
+    const quizMap = new Map();
+    (quizzes || []).forEach((q) => quizMap.set(String(q.id), q));
 
-  saveRetests(retests);
-  return request;
-};
-
-/* ================= RESULTS & VIOLATION LOGS ================= */
-
-/* ================= RESULTS & VIOLATION LOGS & QUALIFICATION ================= */
-
-export const getQuizSubmissions = (quizId) => {
-  const attempts = loadAttempts().filter((a) => String(a.quiz_id) === String(quizId));
-  const users = loadLocalUsers();
-  const quizzes = loadLocalQuizzes();
-  const quizObj = quizzes.find((q) => String(q.id) === String(quizId));
-  const questionsCount = (quizObj?.questions || []).length;
-  const registrations = loadRegistrations();
-
-  return attempts.map((a) => {
-    const userObj = users.find((u) => String(u.id) === String(a.participant_id) || String(u.email) === String(a.participant_id));
-    const regObj = registrations.find((r) => String(r.quiz_id) === String(quizId) && String(r.participant_id) === String(a.participant_id));
-    const violations = loadViolations().filter((v) => v.attempt_id === a.id);
-
-    // Calculate correct answer count
-    let correctCount = 0;
-    const userAnswers = a.answers || {};
-    (quizObj?.questions || []).forEach((q) => {
-      const selected = (userAnswers[q.id] || '').toUpperCase();
-      const correct = (q.correct_answer || q.correct_option || 'A').toUpperCase();
-      if (selected !== '' && selected === correct) {
-        correctCount++;
-      }
+    const userMap = new Map();
+    (users || []).forEach((u) => {
+      userMap.set(String(u.id), u);
+      if (u.email) userMap.set(String(u.email).toLowerCase(), u);
     });
 
-    return {
-      attemptId: a.id,
-      participantId: a.participant_id,
-      participantName: userObj ? userObj.name : 'Student Participant',
-      participantEmail: userObj ? userObj.email : a.participant_id,
-      participantPhone: userObj ? userObj.phone : '',
-      userAccountStatus: userObj ? userObj.status : 'Active',
-      quizId: a.quiz_id,
-      quizTitle: quizObj ? quizObj.title : 'Event Quiz',
-      attemptNumber: a.attempt_number,
-      score: a.score,
-      totalMarks: a.total_marks,
-      percentage: a.total_marks > 0 ? Math.round((a.score / a.total_marks) * 100) : 0,
-      correctCount,
-      totalQuestions: questionsCount,
-      status: a.status,
-      qualificationStatus: a.qualification_status || regObj?.qualification_status || 'PENDING',
-      startedAt: a.started_at,
-      submittedAt: a.submitted_at,
-      violationsCount: violations.length,
-      answers: a.answers || {}
-    };
-  });
-};
-
-export const filterAndQualifyNextRound = (quizId, topCount = 5, nextRoundQuizId = null) => {
-  const attempts = loadAttempts();
-  const quizAttempts = attempts.filter((a) => String(a.quiz_id) === String(quizId) && (a.status === 'SUBMITTED' || a.status === 'AUTO_SUBMITTED' || a.status === 'submitted'));
-
-  // Sort by score DESC, percentage DESC, then earliest submission time ASC
-  quizAttempts.sort((a, b) => {
-    if (b.score !== a.score) return b.score - a.score;
-    return new Date(a.submitted_at || 0) - new Date(b.submitted_at || 0);
-  });
-
-  const count = Math.max(1, parseInt(topCount, 10) || 1);
-  const qualifiedAttempts = quizAttempts.slice(0, count);
-  const eliminatedAttempts = quizAttempts.slice(count);
-
-  const qualifiedSet = new Set(qualifiedAttempts.map((a) => String(a.participant_id)));
-  const eliminatedSet = new Set(eliminatedAttempts.map((a) => String(a.participant_id)));
-
-  // 1. Update Attempts
-  attempts.forEach((a) => {
-    if (String(a.quiz_id) === String(quizId)) {
-      if (qualifiedSet.has(String(a.participant_id))) {
-        a.qualification_status = 'QUALIFIED';
-      } else if (eliminatedSet.has(String(a.participant_id))) {
-        a.qualification_status = 'ELIMINATED';
-      }
-    }
-  });
-  saveAttempts(attempts);
-
-  // 2. Update Registrations & Next Round Access
-  const regs = loadRegistrations();
-  regs.forEach((r) => {
-    if (String(r.quiz_id) === String(quizId)) {
-      if (qualifiedSet.has(String(r.participant_id))) {
-        r.qualification_status = 'QUALIFIED';
-        r.next_round_quiz_id = nextRoundQuizId || null;
-      } else if (eliminatedSet.has(String(r.participant_id))) {
-        r.qualification_status = 'ELIMINATED';
-      }
-    }
-  });
-
-  // Grant access to Next Round Quiz if specified
-  if (nextRoundQuizId) {
-    qualifiedSet.forEach((pid) => {
-      registerParticipantForQuiz(pid, nextRoundQuizId);
-      setParticipantAccessByQuizAndUser(nextRoundQuizId, pid, 'Granted');
+    return (retests || []).map((r) => {
+      const q = quizMap.get(String(r.quiz_id));
+      const u = userMap.get(String(r.participant_id)) || userMap.get(String(r.participant_id).toLowerCase());
+      return {
+        ...r,
+        requestId: r.id,
+        quizTitle: q?.title || r.quiz_id,
+        participantName: u?.name || r.participant_id,
+        participantEmail: u?.email || r.participant_id
+      };
     });
+  } catch (err) {
+    console.error('Supabase getRetestRequests exception:', err.message);
+    return [];
   }
-  saveRegistrations(regs);
+};
 
-  // 3. Update Users Database: Disable account for ELIMINATED participants
-  const users = loadLocalUsers();
-  const updatedUsers = users.map((u) => {
-    if (eliminatedSet.has(String(u.id)) || eliminatedSet.has(String(u.email))) {
-      const disabledUser = { ...u, status: 'Disabled' }; // Account locked so user cannot login again
-      if (supabase) {
-        supabase.from('users').update({ status: 'Disabled' }).eq('id', u.id).then().catch((e) => console.warn('Supabase disable user warning:', e.message));
+// Grant retest attempt in Supabase DB
+export const grantRetest = async (requestIdOrAttemptId, quizId, adminMessage = 'Retest approved by Admin') => {
+  try {
+    let retest = null;
+    if (requestIdOrAttemptId) {
+      const { data } = await supabase
+        .from('retest_permissions')
+        .update({ status: 'granted', admin_message: adminMessage, approved_at: new Date().toISOString() })
+        .eq('id', requestIdOrAttemptId)
+        .select()
+        .single();
+      retest = data;
+    }
+
+    if (requestIdOrAttemptId) {
+      await supabase
+        .from('quiz_attempts')
+        .update({ status: 'NOT_STARTED', violation_count: 0 })
+        .eq('id', requestIdOrAttemptId);
+    }
+
+    return retest || { success: true };
+  } catch (err) {
+    console.error('Supabase grantRetest exception:', err.message);
+    return { success: false };
+  }
+};
+
+// Revoke / Deny retest in Supabase DB
+export const revokeRetest = async (requestIdOrAttemptId, quizId) => {
+  try {
+    if (requestIdOrAttemptId) {
+      await supabase
+        .from('retest_permissions')
+        .update({ status: 'denied' })
+        .eq('id', requestIdOrAttemptId);
+    }
+    return { success: true };
+  } catch (err) {
+    console.error('Supabase revokeRetest exception:', err.message);
+    return { success: false };
+  }
+};
+
+/* =========================================================================
+   7. QUALIFICATION & DASHBOARD STATS (public.quiz_registrations & public.quiz_attempts)
+   ========================================================================= */
+
+// Filter top N and qualify for next round in Supabase DB
+export const filterAndQualifyNextRound = async (quizId, topCount = 5, nextRoundQuizId = null) => {
+  try {
+    const { data: attempts } = await supabase
+      .from('quiz_attempts')
+      .select('*')
+      .eq('quiz_id', quizId)
+      .order('score', { ascending: false });
+
+    if (!Array.isArray(attempts) || attempts.length === 0) {
+      return { qualifiedCount: 0, qualified: [], message: 'No completed attempts to qualify' };
+    }
+
+    // Deduplicate top scorers by participant_id
+    const seen = new Set();
+    const ranked = [];
+    for (const a of attempts) {
+      if (!seen.has(String(a.participant_id))) {
+        seen.add(String(a.participant_id));
+        ranked.push(a);
       }
-      return disabledUser;
     }
-    return u;
-  });
-  saveLocalUsers(updatedUsers);
 
-  return {
-    success: true,
-    quizId,
-    topCount: count,
-    qualifiedCount: qualifiedAttempts.length,
-    eliminatedCount: eliminatedAttempts.length,
-    qualifiedParticipants: Array.from(qualifiedSet),
-    eliminatedParticipants: Array.from(eliminatedSet)
-  };
-};
+    const qualifiedList = ranked.slice(0, topCount);
+    const qualifiedIds = qualifiedList.map((a) => String(a.participant_id));
 
-export const toggleParticipantQualification = (quizId, participantId, newQualificationStatus, nextRoundQuizId = null) => {
-  const attempts = loadAttempts();
-  const regs = loadRegistrations();
+    // Update quiz_registrations
+    for (const pid of qualifiedIds) {
+      await supabase
+        .from('quiz_registrations')
+        .update({
+          qualification_status: 'QUALIFIED',
+          next_round_quiz_id: nextRoundQuizId
+        })
+        .eq('quiz_id', quizId)
+        .eq('participant_id', pid);
 
-  attempts.forEach((a) => {
-    if (String(a.quiz_id) === String(quizId) && (String(a.participant_id) === String(participantId) || String(a.participant_id) === String(participantId))) {
-      a.qualification_status = newQualificationStatus;
+      // If next round exists, grant access to next round
+      if (nextRoundQuizId) {
+        await setParticipantAccessByQuizAndUser(nextRoundQuizId, pid, 'Granted');
+      }
     }
-  });
-  saveAttempts(attempts);
-
-  regs.forEach((r) => {
-    if (String(r.quiz_id) === String(quizId) && String(r.participant_id) === String(participantId)) {
-      r.qualification_status = newQualificationStatus;
-      r.next_round_quiz_id = newQualificationStatus === 'QUALIFIED' ? nextRoundQuizId : null;
-    }
-  });
-
-  if (newQualificationStatus === 'QUALIFIED' && nextRoundQuizId) {
-    registerParticipantForQuiz(participantId, nextRoundQuizId);
-    setParticipantAccessByQuizAndUser(nextRoundQuizId, participantId, 'Granted');
-  }
-  saveRegistrations(regs);
-
-  // Update User Account Status
-  const users = loadLocalUsers();
-  const updatedUsers = users.map((u) => {
-    if (String(u.id) === String(participantId) || String(u.email) === String(participantId)) {
-      return { ...u, status: newQualificationStatus === 'ELIMINATED' ? 'Disabled' : 'Active' };
-    }
-    return u;
-  });
-  saveLocalUsers(updatedUsers);
-
-  return { success: true, participantId, newQualificationStatus };
-};
-
-export const getParticipantQualification = (participantId) => {
-  const regs = loadRegistrations().filter((r) => String(r.participant_id) === String(participantId));
-  const quizzes = loadLocalQuizzes();
-
-  const isEliminated = regs.some((r) => r.qualification_status === 'ELIMINATED');
-  const qualifiedReg = regs.find((r) => r.qualification_status === 'QUALIFIED');
-
-  let nextQuizObj = null;
-  if (qualifiedReg && qualifiedReg.next_round_quiz_id) {
-    nextQuizObj = quizzes.find((q) => String(q.id) === String(qualifiedReg.next_round_quiz_id));
-  }
-
-  return {
-    participantId,
-    isEliminated,
-    isQualified: Boolean(qualifiedReg),
-    qualificationStatus: isEliminated ? 'ELIMINATED' : (qualifiedReg ? 'QUALIFIED' : 'PENDING'),
-    nextRoundQuiz: nextQuizObj ? { id: nextQuizObj.id, title: nextQuizObj.title, start: nextQuizObj.start_date_time } : null,
-    message: isEliminated 
-      ? 'SORRY, YOU HAVE NOT BEEN SELECTED FOR THE NEXT ROUND. Thank you for participating in Eloquence 2K26.'
-      : (qualifiedReg 
-        ? `CONGRATULATIONS! You have been selected for the Next Round (${nextQuizObj ? nextQuizObj.title : 'Next Quiz Event'})!`
-        : null)
-  };
-};
-
-export const getAllResults = () => {
-
-  const attempts = loadAttempts();
-  const users = loadLocalUsers();
-  const quizzes = loadLocalQuizzes();
-
-  return attempts.map((a) => {
-    const userObj = users.find((u) => String(u.id) === String(a.participant_id) || String(u.email) === String(a.participant_id));
-    const quizObj = quizzes.find((q) => String(q.id) === String(a.quiz_id));
-    const violations = loadViolations().filter((v) => v.attempt_id === a.id);
 
     return {
-      attemptId: a.id,
-      participantId: a.participant_id,
-      participantName: userObj ? userObj.name : 'Student Participant',
-      participantEmail: userObj ? userObj.email : a.participant_id,
-      quizId: a.quiz_id,
-      quizTitle: quizObj ? quizObj.title : 'Event Quiz',
-      attemptNumber: a.attempt_number,
-      score: a.score,
-      totalMarks: a.total_marks,
-      percentage: a.total_marks > 0 ? Math.round((a.score / a.total_marks) * 100) : 0,
-      status: a.status,
-      startedAt: a.started_at,
-      submittedAt: a.submitted_at,
-      violationsCount: violations.length,
-      violations
+      qualifiedCount: qualifiedList.length,
+      qualified: qualifiedList,
+      nextRoundQuizId
     };
-  });
+  } catch (err) {
+    console.error('Supabase filterAndQualifyNextRound exception:', err.message);
+    return { qualifiedCount: 0, qualified: [] };
+  }
 };
 
-export const getAllViolations = () => {
-  const violations = loadViolations();
-  const users = loadLocalUsers();
-  const quizzes = loadLocalQuizzes();
+// Toggle participant qualification in Supabase DB
+export const toggleParticipantQualification = async (quizId, participantId, newStatus, nextRoundQuizId = null) => {
+  try {
+    await supabase
+      .from('quiz_registrations')
+      .update({
+        qualification_status: newStatus,
+        next_round_quiz_id: nextRoundQuizId
+      })
+      .eq('quiz_id', quizId)
+      .eq('participant_id', String(participantId));
 
-  return violations.map((v) => {
-    const userObj = users.find((u) => String(u.id) === String(v.participant_id) || String(u.email) === String(v.participant_id));
-    const quizObj = quizzes.find((q) => String(q.id) === String(v.quiz_id));
+    if (newStatus === 'QUALIFIED' && nextRoundQuizId) {
+      await setParticipantAccessByQuizAndUser(nextRoundQuizId, String(participantId), 'Granted');
+    }
+
+    return { success: true, participantId, qualificationStatus: newStatus };
+  } catch (err) {
+    console.error('Supabase toggleParticipantQualification exception:', err.message);
+    return { success: false };
+  }
+};
+
+// Get participant qualification status from Supabase DB
+export const getParticipantQualification = async (participantId) => {
+  try {
+    const pid = String(participantId || '');
+    const { data: regs } = await supabase
+      .from('quiz_registrations')
+      .select('*')
+      .or(`participant_id.eq.${pid},participant_id.ilike.${pid}`);
+
+    const qualified = (regs || []).find((r) => r.qualification_status === 'QUALIFIED');
+    const eliminated = (regs || []).find((r) => r.qualification_status === 'ELIMINATED');
 
     return {
-      ...v,
-      participantName: userObj ? userObj.name : 'Student Participant',
-      participantEmail: userObj ? userObj.email : v.participant_id,
-      quizTitle: quizObj ? quizObj.title : 'Event Quiz'
+      isQualified: Boolean(qualified),
+      isEliminated: Boolean(eliminated) && !Boolean(qualified),
+      nextRoundQuizId: qualified?.next_round_quiz_id || null
     };
-  });
+  } catch (err) {
+    return { isQualified: false, isEliminated: false, nextRoundQuizId: null };
+  }
+};
+
+// Get participant dashboard live stats from Supabase DB
+export const getParticipantDashboardStats = async (participantId) => {
+  try {
+    const pid = String(participantId || '');
+    const { data: user } = await supabase
+      .from('users')
+      .select('*')
+      .or(`id.eq.${pid},email.ilike.${pid},phone.eq.${pid}`)
+      .maybeSingle();
+
+    const { data: attempts } = await supabase
+      .from('quiz_attempts')
+      .select('*')
+      .or(`participant_id.eq.${pid},participant_id.ilike.${pid}`);
+
+    const { count: totalQuizzesCount } = await supabase
+      .from('quizzes')
+      .select('*', { count: 'exact', head: true });
+
+    const attendedCount = (attempts || []).length;
+    let totalScore = 0;
+    let totalMaxMarks = 0;
+
+    (attempts || []).forEach((a) => {
+      totalScore += Number(a.score || 0);
+      totalMaxMarks += Number(a.total_marks || 100);
+    });
+
+    const accuracy = totalMaxMarks > 0 ? Math.round((totalScore / totalMaxMarks) * 100) : 0;
+    const certificates = (attempts || []).filter((a) => Number(a.score) >= 50).length;
+
+    return {
+      attendedCount,
+      totalQuizzesCount: totalQuizzesCount || 0,
+      totalScore: user?.score || totalScore,
+      accuracy,
+      certificates,
+      rank: totalScore > 0 ? '#1' : 'Unranked'
+    };
+  } catch (err) {
+    return {
+      attendedCount: 0,
+      totalQuizzesCount: 0,
+      totalScore: 0,
+      accuracy: 0,
+      certificates: 0,
+      rank: 'Unranked'
+    };
+  }
 };

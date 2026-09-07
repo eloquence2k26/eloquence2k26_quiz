@@ -83,6 +83,16 @@ export const ParticipantQuizzesPage = () => {
     }
   };
 
+  // Real-time clock tick for schedule synchronization
+  const [now, setNow] = useState(new Date());
+
+  useEffect(() => {
+    const timer = setInterval(() => {
+      setNow(new Date());
+    }, 2000);
+    return () => clearInterval(timer);
+  }, []);
+
   useEffect(() => {
     fetchParticipantQuizzes();
     fetchQualificationStatus();
@@ -92,29 +102,6 @@ export const ParticipantQuizzesPage = () => {
     setShowEliminatedModal(false);
     await logout();
     navigate('/login', { replace: true });
-  };
-
-  const handleRegisterForQuiz = async (quizId) => {
-    try {
-      const res = await fetch(`${API_PARTICIPANT_URL}/quizzes/${quizId}/register`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'x-user-id': user?.id || user?.email || 'user-demo-1'
-        },
-        body: JSON.stringify({
-          participantId: user?.id || user?.email || 'user-demo-1'
-        })
-      });
-
-      if (res.ok) {
-        setNotification('Successfully registered for quiz event!');
-        fetchParticipantQuizzes();
-        setTimeout(() => setNotification(''), 3000);
-      }
-    } catch (err) {
-      console.error('Register for quiz error:', err);
-    }
   };
 
   const handleConfirmStartQuiz = () => {
@@ -163,10 +150,10 @@ export const ParticipantQuizzesPage = () => {
               <Award className="w-3.5 h-3.5" /> Participant Dashboard
             </div>
             <h2 className="text-2xl sm:text-3xl font-bold text-slate-900 dark:text-white">
-              MY QUIZZES & SYMPOSIUM EVENTS
+              MY AUTHORIZED QUIZZES
             </h2>
             <p className="text-xs sm:text-sm text-slate-600 dark:text-zinc-400 mt-1">
-              Select an authorized event quiz to compete in Eloquence 2K26.
+              Your assigned symposium event quizzes authorized by the administrator.
             </p>
           </div>
 
@@ -191,13 +178,13 @@ export const ParticipantQuizzesPage = () => {
       <section className="space-y-4">
         <div className="flex justify-between items-center">
           <h3 className="text-xl font-bold text-slate-900 dark:text-white flex items-center gap-2">
-            <BookOpen className="w-5 h-5 text-blue-600 dark:text-blue-400" /> Registered Event Quizzes ({quizzes.length})
+            <BookOpen className="w-5 h-5 text-blue-600 dark:text-blue-400" /> Assigned Event Quizzes ({quizzes.length})
           </h3>
         </div>
 
         {loading ? (
           <div className="p-12 text-center text-slate-500 dark:text-zinc-400 text-sm font-semibold">
-            Loading symposium event quizzes...
+            Loading your assigned symposium quizzes...
           </div>
         ) : quizzes.length > 0 ? (
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
@@ -205,20 +192,36 @@ export const ParticipantQuizzesPage = () => {
               const startDate = new Date(quiz.start_date_time);
               const endDate = new Date(quiz.end_date_time);
 
+              const isUpcoming = now < startDate;
+              const isClosed = now > endDate;
+              const isLive = !isUpcoming && !isClosed;
+
               return (
                 <div key={quiz.id} className="basic-card p-6 space-y-5 transition-all flex flex-col justify-between hover:border-blue-400 dark:hover:border-blue-600">
                   <div className="space-y-3">
-                    <div className="flex justify-between items-center">
-                      <span className="text-[10px] font-bold uppercase tracking-wider px-2.5 py-1 rounded-full bg-blue-50 dark:bg-blue-950 text-blue-700 dark:text-blue-300 border border-blue-200 dark:border-blue-800">
-                        {quiz.category || 'Event Competition'}
-                      </span>
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <div className="flex items-center gap-2">
+                        <span className="text-[10px] font-bold uppercase tracking-wider px-2.5 py-1 rounded-full bg-blue-50 dark:bg-blue-950 text-blue-700 dark:text-blue-300 border border-blue-200 dark:border-blue-800 flex items-center gap-1">
+                          <Sparkles className="w-3 h-3" /> {quiz.category || 'Event Round'}
+                        </span>
+                        <span className="text-[10px] font-bold uppercase px-2 py-0.5 rounded-full bg-emerald-50 dark:bg-emerald-950 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800 flex items-center gap-1">
+                          <CheckCircle2 className="w-3 h-3 text-emerald-500" /> Admin Access Granted
+                        </span>
+                      </div>
 
                       <span className="text-xs text-slate-500 dark:text-zinc-400 flex items-center gap-1 font-semibold">
                         <Clock className="w-3.5 h-3.5" /> {quiz.duration} Mins
                       </span>
                     </div>
 
-                    <h4 className="text-xl font-bold text-slate-900 dark:text-white">{quiz.title}</h4>
+                    <div>
+                      {quiz.event_id && (
+                        <span className="text-[10px] font-bold text-blue-600 dark:text-blue-400 uppercase tracking-wider block mb-0.5">
+                          Event: {quiz.event_id.replace(/^evt_/, '').replace(/_/g, ' ').toUpperCase()}
+                        </span>
+                      )}
+                      <h4 className="text-xl font-bold text-slate-900 dark:text-white">{quiz.title}</h4>
+                    </div>
                     <p className="text-xs text-slate-600 dark:text-zinc-400">{quiz.description || 'Eloquence 2K26 Quiz Event'}</p>
 
                     <div className="p-3.5 rounded-xl bg-slate-50/80 dark:bg-zinc-900/80 border border-slate-200 dark:border-zinc-800 text-xs space-y-1.5">
@@ -248,34 +251,21 @@ export const ParticipantQuizzesPage = () => {
                         </p>
                       </div>
                     )}
-
-                    {/* Unregistered Status Notice */}
-                    {quiz.accessStatus === 'not_registered' && (
-                      <div className="p-3.5 rounded-xl bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-800 text-xs text-amber-800 dark:text-amber-300 space-y-2">
-                        <p className="font-semibold">You are not registered for this quiz event yet.</p>
-                        <button
-                          onClick={() => handleRegisterForQuiz(quiz.id)}
-                          className="w-full py-2 px-3 bg-amber-600 hover:bg-amber-700 text-white font-bold rounded-xl text-xs flex items-center justify-center gap-1.5 cursor-pointer"
-                        >
-                          <UserPlus className="w-3.5 h-3.5" /> Register for Quiz Event
-                        </button>
-                      </div>
-                    )}
                   </div>
 
                   <div className="pt-4 border-t border-slate-200 dark:border-zinc-800 flex items-center justify-between">
                     {/* Status Badges & Start Button */}
-                    {quiz.accessStatus === 'upcoming' ? (
+                    {isUpcoming ? (
                       <div className="w-full flex flex-col space-y-3">
                         <div className="p-3 rounded-xl bg-amber-50 dark:bg-amber-950/60 border border-amber-200 dark:border-amber-800 text-xs text-amber-800 dark:text-amber-300 space-y-1">
-                          <strong className="block font-bold">Quiz Not Started</strong>
-                          <p className="text-[11px]">This quiz will start at: <strong>{startDate.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</strong>. Please wait.</p>
+                          <strong className="block font-bold">Quiz Not Started Yet</strong>
+                          <p className="text-[11px]">This quiz is scheduled to start at: <strong>{startDate.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</strong>. The start button will activate automatically.</p>
                         </div>
                         <Button size="sm" variant="secondary" disabled className="w-full">
-                          NOT STARTED
+                          STARTS AT {startDate.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                         </Button>
                       </div>
-                    ) : quiz.accessStatus === 'closed' ? (
+                    ) : isClosed ? (
                       <div className="w-full flex items-center justify-between">
                         <span className="text-xs font-bold text-slate-400">Quiz Window Closed</span>
                         <Button size="sm" variant="secondary" disabled>Expired</Button>
@@ -331,7 +321,12 @@ export const ParticipantQuizzesPage = () => {
         ) : (
           <div className="p-12 text-center border-2 border-dashed border-slate-200 dark:border-zinc-800 rounded-3xl space-y-3">
             <BookOpen className="w-10 h-10 mx-auto text-slate-400" />
-            <p className="text-sm font-semibold text-slate-600 dark:text-zinc-400">No event quizzes currently available for registration.</p>
+            <p className="text-sm font-semibold text-slate-600 dark:text-zinc-400">
+              No event quizzes assigned to your account yet.
+            </p>
+            <p className="text-xs text-slate-500 dark:text-zinc-500">
+              When an administrator grants you access to a quiz, it will appear here automatically.
+            </p>
           </div>
         )}
       </section>

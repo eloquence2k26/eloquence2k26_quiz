@@ -1,7 +1,7 @@
 import express from 'express';
 import cors from 'cors';
 import morgan from 'morgan';
-// Admin Quiz Management Routes
+// 100% Direct Supabase PostgreSQL Connected Backend
 import dotenv from 'dotenv';
 import { supabase } from './config/supabase.js';
 import userRoutes from './routes/userRoutes.js';
@@ -15,12 +15,28 @@ dotenv.config();
 const app = express();
 let PORT = parseInt(process.env.PORT, 10) || 5001;
 
-// Middleware
-app.use(cors());
+// Bulletproof CORS Configuration (handles all origins, preflights, and headers)
+app.use((req, res, next) => {
+  res.header('Access-Control-Allow-Origin', '*');
+  res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, PATCH, OPTIONS');
+  res.header('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept, Authorization, x-user-id');
+  res.header('Access-Control-Expose-Headers', 'Content-Length, Content-Range');
+  if (req.method === 'OPTIONS') {
+    return res.sendStatus(200);
+  }
+  next();
+});
+
+app.use(cors({
+  origin: '*',
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
+  allowedHeaders: ['Origin', 'X-Requested-With', 'Content-Type', 'Accept', 'Authorization', 'x-user-id']
+}));
+
 app.use(morgan('dev'));
 app.use(express.json());
 
-// Routes
+// Primary API Routes
 app.use('/api/users', userRoutes);
 app.use('/api/quizzes', quizRoutes);
 app.use('/api/admin', adminQuizRoutes);
@@ -29,7 +45,7 @@ app.use('/api/schedule', scheduleRoutes);
 
 app.get('/', (req, res) => {
   res.json({
-    message: 'Welcome to Eloquence 2K26 Quiz API',
+    message: 'Welcome to Eloquence 2K26 Quiz API (Live Supabase DB)',
     status: 'online',
     version: '1.0.0'
   });
@@ -42,25 +58,6 @@ app.get('/api/health', (req, res) => {
     supabaseConnected: Boolean(supabase),
     port: PORT
   });
-});
-
-// Sample quiz route stub
-app.get('/api/quizzes', async (req, res) => {
-  try {
-    if (!supabase) {
-      return res.status(503).json({
-        error: 'Database connection not configured',
-        message: 'Please set SUPABASE_URL and SUPABASE_ANON_KEY in backend/.env'
-      });
-    }
-
-    const { data, error } = await supabase.from('quizzes').select('*');
-    if (error) throw error;
-
-    res.json({ quizzes: data });
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
 });
 
 // Start Server with fallback port attempt if EADDRINUSE in development
