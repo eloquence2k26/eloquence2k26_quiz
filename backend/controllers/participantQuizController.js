@@ -61,7 +61,7 @@ export const registerParticipant = async (req, res) => {
     const { id } = req.params;
     const participantId = req.body.participantId || req.body.userId || req.headers['x-user-id'] || 'user-demo-1';
 
-    const reg = registerParticipantForQuiz(participantId, id);
+    const reg = await registerParticipantForQuiz(participantId, id);
     res.status(201).json({ success: true, registration: reg });
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -104,7 +104,7 @@ export const saveAnswer = async (req, res) => {
       return res.status(400).json({ error: 'attemptId, questionId, and selectedAnswer are required' });
     }
 
-    saveParticipantAnswer(attemptId, questionId, selectedAnswer);
+    await saveParticipantAnswer(attemptId, questionId, selectedAnswer);
     res.json({ success: true });
   } catch (err) {
     res.status(400).json({ error: err.message });
@@ -122,7 +122,7 @@ export const recordViolation = async (req, res) => {
       return res.status(400).json({ error: 'attemptId and violationType are required' });
     }
 
-    const result = recordQuizViolation(attemptId, participantId, violationType, details);
+    const result = await recordQuizViolation(attemptId, participantId, violationType, details);
     res.json({ success: true, ...result });
   } catch (err) {
     res.status(400).json({ error: err.message });
@@ -140,7 +140,7 @@ export const submitAttempt = async (req, res) => {
       return res.status(400).json({ error: 'attemptId is required' });
     }
 
-    const result = submitQuizAttempt(attemptId, participantId, Boolean(isAutoSubmitted));
+    const result = await submitQuizAttempt(attemptId, participantId, Boolean(isAutoSubmitted));
     res.json({ success: true, result });
   } catch (err) {
     res.status(400).json({ error: err.message });
@@ -151,7 +151,7 @@ export const submitAttempt = async (req, res) => {
 export const checkQualification = async (req, res) => {
   try {
     const participantId = req.headers['x-user-id'] || 'user-demo-1';
-    const status = getParticipantQualification(participantId);
+    const status = await getParticipantQualification(participantId);
     res.json(status);
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -165,7 +165,7 @@ export const requestRetestPermission = async (req, res) => {
     const { reason } = req.body;
     const participantId = req.body.participantId || req.body.userId || req.headers['x-user-id'] || 'user-demo-1';
 
-    const request = requestRetest(participantId, id, reason);
+    const request = await requestRetest(participantId, id, reason);
     res.json({ success: true, retest: request });
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -176,7 +176,7 @@ export const requestRetestPermission = async (req, res) => {
 export const getParticipantStats = async (req, res) => {
   try {
     const participantId = req.headers['x-user-id'] || 'user-demo-1';
-    const stats = getParticipantDashboardStats(participantId);
+    const stats = await getParticipantDashboardStats(participantId);
     res.json(stats);
   } catch (err) {
     res.status(500).json({ error: err.message });

@@ -1,7 +1,7 @@
 import express from 'express';
 import cors from 'cors';
 import morgan from 'morgan';
-// Admin Quiz Management Routes
+// 100% Direct Supabase PostgreSQL Connected Backend
 import dotenv from 'dotenv';
 import { supabase } from './config/supabase.js';
 import userRoutes from './routes/userRoutes.js';

@@ -220,7 +220,7 @@ export const deleteQuestionFromQuiz = async (req, res) => {
 export const getRegistrations = async (req, res) => {
   try {
     const { quizId } = req.params;
-    const registrations = getQuizRegistrations(quizId);
+    const registrations = await getQuizRegistrations(quizId);
     res.json({ registrations });
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -231,7 +231,7 @@ export const getRegistrations = async (req, res) => {
 export const grantAccess = async (req, res) => {
   try {
     const { id } = req.params;
-    const reg = grantParticipantAccess(id);
+    const reg = await grantParticipantAccess(id);
     res.json({ success: true, registration: reg });
   } catch (err) {
     res.status(400).json({ error: err.message });
@@ -242,7 +242,7 @@ export const grantAccess = async (req, res) => {
 export const revokeAccess = async (req, res) => {
   try {
     const { id } = req.params;
-    const reg = revokeParticipantAccess(id);
+    const reg = await revokeParticipantAccess(id);
     res.json({ success: true, registration: reg });
   } catch (err) {
     res.status(400).json({ error: err.message });
@@ -257,7 +257,7 @@ export const toggleAccessDirect = async (req, res) => {
     if (!participantId || !accessStatus) {
       return res.status(400).json({ error: 'participantId and accessStatus are required' });
     }
-    const reg = setParticipantAccessByQuizAndUser(quizId, participantId, accessStatus);
+    const reg = await setParticipantAccessByQuizAndUser(quizId, participantId, accessStatus);
     res.json({ success: true, registration: reg });
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -267,7 +267,7 @@ export const toggleAccessDirect = async (req, res) => {
 // GET /api/admin/results - Get overall attempt scores
 export const getResults = async (req, res) => {
   try {
-    const results = getAllResults();
+    const results = await getAllResults();
     res.json({ results });
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -277,7 +277,7 @@ export const getResults = async (req, res) => {
 // GET /api/admin/violations - Get anti-cheating violation logs
 export const getViolations = async (req, res) => {
   try {
-    const violations = getAllViolations();
+    const violations = await getAllViolations();
     res.json({ violations });
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -287,7 +287,7 @@ export const getViolations = async (req, res) => {
 // GET /api/admin/retests - Get all retest requests
 export const getRetests = async (req, res) => {
   try {
-    const retests = getRetestRequests();
+    const retests = await getRetestRequests();
     res.json({ retests });
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -299,7 +299,7 @@ export const grantRetestAttempt = async (req, res) => {
   try {
     const { id } = req.params;
     const { quizId, adminMessage } = req.body;
-    const retest = grantRetest(id, quizId, adminMessage);
+    const retest = await grantRetest(id, quizId, adminMessage);
     res.json({ success: true, retest });
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -311,7 +311,7 @@ export const revokeRetestAttempt = async (req, res) => {
   try {
     const { id } = req.params;
     const { quizId } = req.body;
-    const retest = revokeRetest(id, quizId);
+    const retest = await revokeRetest(id, quizId);
     res.json({ success: true, retest });
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -322,7 +322,7 @@ export const revokeRetestAttempt = async (req, res) => {
 export const approveRetestLegacy = async (req, res) => {
   try {
     const { requestId, quizId, adminMessage } = req.body;
-    const retest = grantRetest(requestId, quizId, adminMessage);
+    const retest = await grantRetest(requestId, quizId, adminMessage);
     res.json({ success: true, retest });
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -332,7 +332,7 @@ export const approveRetestLegacy = async (req, res) => {
 export const rejectRetestLegacy = async (req, res) => {
   try {
     const { requestId, quizId } = req.body;
-    const retest = revokeRetest(requestId, quizId);
+    const retest = await revokeRetest(requestId, quizId);
     res.json({ success: true, retest });
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -343,7 +343,7 @@ export const rejectRetestLegacy = async (req, res) => {
 export const getSubmissions = async (req, res) => {
   try {
     const { quizId } = req.params;
-    const submissions = getQuizSubmissions(quizId);
+    const submissions = await getQuizSubmissions(quizId);
     res.json({ submissions });
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -356,7 +356,7 @@ export const qualifyNextRound = async (req, res) => {
     const { quizId } = req.params;
     const { topCount, nextRoundQuizId } = req.body;
 
-    const result = filterAndQualifyNextRound(quizId, topCount || 5, nextRoundQuizId || null);
+    const result = await filterAndQualifyNextRound(quizId, topCount || 5, nextRoundQuizId || null);
     res.json(result);
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -411,7 +411,7 @@ export const toggleQualification = async (req, res) => {
       return res.status(400).json({ error: 'participantId and newQualificationStatus are required' });
     }
 
-    const result = toggleParticipantQualification(quizId, participantId, newQualificationStatus, nextRoundQuizId);
+    const result = await toggleParticipantQualification(quizId, participantId, newQualificationStatus, nextRoundQuizId);
     res.json(result);
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -449,8 +449,8 @@ export const bulkUploadParticipantsToQuiz = async (req, res) => {
         await insertUserToDB(userObj);
 
         // Register and grant access for both user ID and email
-        const reg1 = setParticipantAccessByQuizAndUser(quizId, userObj.id, 'Granted');
-        const reg2 = setParticipantAccessByQuizAndUser(quizId, userObj.email, 'Granted');
+        const reg1 = await setParticipantAccessByQuizAndUser(quizId, userObj.id, 'Granted');
+        const reg2 = await setParticipantAccessByQuizAndUser(quizId, userObj.email, 'Granted');
         registered.push({ user: userObj, reg: reg1 });
       }
     }

@@ -14,7 +14,8 @@ import {
   Menu,
   X,
   BookOpen,
-  UserCheck
+  UserCheck,
+  Layers
 } from 'lucide-react';
 
 export const Sidebar = () => {
@@ -37,6 +38,11 @@ export const Sidebar = () => {
       name: 'Quiz Management',
       path: '/admin/quizzes',
       icon: Settings
+    },
+    {
+      name: 'Event Rounds',
+      path: '/admin/rounds',
+      icon: Layers
     },
     {
       name: 'Participant Access',

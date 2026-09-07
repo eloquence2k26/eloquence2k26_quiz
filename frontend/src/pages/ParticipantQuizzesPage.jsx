@@ -199,17 +199,29 @@ export const ParticipantQuizzesPage = () => {
               return (
                 <div key={quiz.id} className="basic-card p-6 space-y-5 transition-all flex flex-col justify-between hover:border-blue-400 dark:hover:border-blue-600">
                   <div className="space-y-3">
-                    <div className="flex justify-between items-center">
-                      <span className="text-[10px] font-bold uppercase tracking-wider px-2.5 py-1 rounded-full bg-blue-50 dark:bg-blue-950 text-blue-700 dark:text-blue-300 border border-blue-200 dark:border-blue-800">
-                        {quiz.category || 'Event Competition'}
-                      </span>
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <div className="flex items-center gap-2">
+                        <span className="text-[10px] font-bold uppercase tracking-wider px-2.5 py-1 rounded-full bg-blue-50 dark:bg-blue-950 text-blue-700 dark:text-blue-300 border border-blue-200 dark:border-blue-800 flex items-center gap-1">
+                          <Sparkles className="w-3 h-3" /> {quiz.category || 'Event Round'}
+                        </span>
+                        <span className="text-[10px] font-bold uppercase px-2 py-0.5 rounded-full bg-emerald-50 dark:bg-emerald-950 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800 flex items-center gap-1">
+                          <CheckCircle2 className="w-3 h-3 text-emerald-500" /> Admin Access Granted
+                        </span>
+                      </div>
 
                       <span className="text-xs text-slate-500 dark:text-zinc-400 flex items-center gap-1 font-semibold">
                         <Clock className="w-3.5 h-3.5" /> {quiz.duration} Mins
                       </span>
                     </div>
 
-                    <h4 className="text-xl font-bold text-slate-900 dark:text-white">{quiz.title}</h4>
+                    <div>
+                      {quiz.event_id && (
+                        <span className="text-[10px] font-bold text-blue-600 dark:text-blue-400 uppercase tracking-wider block mb-0.5">
+                          Event: {quiz.event_id.replace(/^evt_/, '').replace(/_/g, ' ').toUpperCase()}
+                        </span>
+                      )}
+                      <h4 className="text-xl font-bold text-slate-900 dark:text-white">{quiz.title}</h4>
+                    </div>
                     <p className="text-xs text-slate-600 dark:text-zinc-400">{quiz.description || 'Eloquence 2K26 Quiz Event'}</p>
 
                     <div className="p-3.5 rounded-xl bg-slate-50/80 dark:bg-zinc-900/80 border border-slate-200 dark:border-zinc-800 text-xs space-y-1.5">

@@ -5,6 +5,7 @@ import { LoginPage } from './pages/LoginPage';
 import { DashboardPage } from './pages/DashboardPage';
 import { UsersPage } from './pages/UsersPage';
 import { AdminQuizManagement } from './pages/AdminQuizManagement';
+import { EventRoundsPage } from './pages/EventRoundsPage';
 import { NextRoundFilterPage } from './pages/NextRoundFilterPage';
 import { RestartTestPage } from './pages/RestartTestPage';
 import { ParticipantQuizzesPage } from './pages/ParticipantQuizzesPage';
@@ -56,6 +57,22 @@ function App() {
             </AppLayout>
           </ProtectedRoute>
         }
+      />
+
+      <Route
+        path="/admin/rounds"
+        element={
+          <ProtectedRoute requiredRole="admin">
+            <AppLayout>
+              <EventRoundsPage />
+            </AppLayout>
+          </ProtectedRoute>
+        }
+      />
+
+      <Route
+        path="/admin/event-rounds"
+        element={<Navigate to="/admin/rounds" replace />}
       />
 
       <Route
