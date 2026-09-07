@@ -154,6 +154,13 @@ export const ScheduleEventsPage = () => {
     return () => clearInterval(interval);
   }, [selectedEventId, fetchActiveUsers]);
 
+  // Live ticking clock updated every second for real-time countdowns and automatic starting
+  const [currentTime, setCurrentTime] = useState(Date.now());
+  useEffect(() => {
+    const timer = setInterval(() => setCurrentTime(Date.now()), 1000);
+    return () => clearInterval(timer);
+  }, []);
+
   // Helper to format ISO to HTML datetime-local input string
   const formatForInput = (isoStr) => {
     if (!isoStr) return '';
@@ -165,6 +172,43 @@ export const ScheduleEventsPage = () => {
     } catch {
       return '';
     }
+  };
+
+  // Compute live event status dynamically with real-time clock
+  const getLiveEventStatus = (event) => {
+    if (!event) return 'Scheduled';
+    if (event.status === 'Closed') return 'Closed';
+
+    const start = event.start_date_time || event.start_time ? new Date(event.start_date_time || event.start_time).getTime() : 0;
+    const end = event.end_date_time || event.end_time ? new Date(event.end_date_time || event.end_time).getTime() : 0;
+
+    if (end && currentTime > end) return 'Closed';
+    // Automatically published / started when current time reaches scheduled start time!
+    if (start && currentTime >= start) return 'Published';
+    if (event.computedStatus === 'Published' || event.status === 'Published') return 'Published';
+    return 'Scheduled';
+  };
+
+  // Format live countdown to automatic start
+  const formatCountdown = (startIso) => {
+    if (!startIso) return null;
+    const startMs = new Date(startIso).getTime();
+    const diff = startMs - currentTime;
+    if (diff <= 0) return null;
+
+    const totalSeconds = Math.floor(diff / 1000);
+    const hours = Math.floor(totalSeconds / 3600);
+    const minutes = Math.floor((totalSeconds % 3600) / 60);
+    const seconds = totalSeconds % 60;
+
+    if (hours > 24) {
+      const days = Math.floor(hours / 24);
+      return `${days}d ${hours % 24}h`;
+    }
+    if (hours > 0) {
+      return `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
+    }
+    return `${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
   };
 
   // Helper to format human-readable date & time
@@ -365,7 +409,7 @@ export const ScheduleEventsPage = () => {
     }
   };
 
-  // Filtered Events
+  // Filtered Events with real-time live auto-start calculation
   const filteredEvents = events.filter((ev) => {
     const matchesSearch = 
       (ev.title && ev.title.toLowerCase().includes(searchTerm.toLowerCase())) ||
@@ -373,14 +417,15 @@ export const ScheduleEventsPage = () => {
 
     if (!matchesSearch) return false;
 
+    const liveStatus = getLiveEventStatus(ev);
     if (statusFilter === 'PUBLISHED') {
-      return ev.computedStatus === 'Published' || ev.status === 'Published';
+      return liveStatus === 'Published';
     }
     if (statusFilter === 'SCHEDULED') {
-      return ev.computedStatus === 'Scheduled' || ev.status === 'Scheduled';
+      return liveStatus === 'Scheduled';
     }
     if (statusFilter === 'CLOSED') {
-      return ev.computedStatus === 'Closed' || ev.status === 'Closed';
+      return liveStatus === 'Closed';
     }
     return true;
   });
@@ -396,9 +441,9 @@ export const ScheduleEventsPage = () => {
     );
   });
 
-  // Summary counts
-  const publishedCount = events.filter((e) => e.computedStatus === 'Published' || e.status === 'Published').length;
-  const scheduledCount = events.filter((e) => e.computedStatus === 'Scheduled' || e.status === 'Scheduled').length;
+  // Summary counts updated dynamically
+  const publishedCount = events.filter((e) => getLiveEventStatus(e) === 'Published').length;
+  const scheduledCount = events.filter((e) => getLiveEventStatus(e) === 'Scheduled').length;
   const currentSelectedEvent = events.find((e) => String(e.id) === String(selectedEventId));
 
   return (
@@ -585,8 +630,10 @@ export const ScheduleEventsPage = () => {
           ) : (
             <div className="space-y-4">
               {filteredEvents.map((event) => {
-                const isPublished = event.computedStatus === 'Published' || event.status === 'Published';
+                const liveStatus = getLiveEventStatus(event);
+                const isPublished = liveStatus === 'Published';
                 const isSelected = String(event.id) === String(selectedEventId);
+                const countdown = formatCountdown(event.start_date_time || event.start_time);
 
                 return (
                   <div
@@ -606,17 +653,26 @@ export const ScheduleEventsPage = () => {
                             {event.category || 'General'}
                           </span>
 
-                          {/* Dynamic Status Badge */}
+                          {/* Dynamic Status Badge with Auto-Start detection */}
                           {isPublished ? (
                             <span className="inline-flex items-center gap-1.5 px-3 py-0.5 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200 dark:bg-emerald-950/80 dark:text-emerald-300 dark:border-emerald-800 text-xs font-extrabold shadow-sm shadow-emerald-500/20 animate-pulse">
                               <span className="w-2 h-2 rounded-full bg-emerald-500"></span>
                               PUBLISHED (LIVE)
                             </span>
                           ) : (
-                            <span className="inline-flex items-center gap-1.5 px-3 py-0.5 rounded-full bg-blue-50 text-blue-700 border border-blue-200 dark:bg-blue-950/80 dark:text-blue-300 dark:border-blue-800 text-xs font-extrabold">
-                              <Clock className="w-3 h-3" />
-                              SCHEDULED
-                            </span>
+                            <div className="inline-flex items-center gap-2 flex-wrap">
+                              <span className="inline-flex items-center gap-1.5 px-3 py-0.5 rounded-full bg-blue-50 text-blue-700 border border-blue-200 dark:bg-blue-950/80 dark:text-blue-300 dark:border-blue-800 text-xs font-extrabold">
+                                <Clock className="w-3 h-3" />
+                                SCHEDULED
+                              </span>
+
+                              {countdown && (
+                                <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-amber-50 text-amber-700 border border-amber-200 dark:bg-amber-950/80 dark:text-amber-300 dark:border-amber-800 text-[10px] font-bold font-mono shadow-sm">
+                                  <Zap className="w-3 h-3 text-amber-500 animate-pulse" />
+                                  Auto-starts in {countdown}
+                                </span>
+                              )}
+                            </div>
                           )}
                         </div>
 
@@ -645,7 +701,9 @@ export const ScheduleEventsPage = () => {
                           <p className="font-semibold text-slate-900 dark:text-zinc-200">
                             {formatHumanDateTime(event.start_date_time || event.start_time)}
                           </p>
-                          <p className="text-[10px] text-slate-400 dark:text-zinc-500">Scheduled Start Time</p>
+                          <p className="text-[10px] text-slate-400 dark:text-zinc-500">
+                            {isPublished ? 'Live Since' : 'Auto-starts at mentioned time'}
+                          </p>
                         </div>
                       </div>
 
@@ -676,7 +734,7 @@ export const ScheduleEventsPage = () => {
                           {isPublished ? (
                             <button
                               onClick={() => handleManualStartEvent(event)}
-                              className="px-4 py-2 rounded-xl bg-emerald-600/10 hover:bg-emerald-600/20 text-emerald-700 dark:text-emerald-300 border border-emerald-500/40 text-xs font-bold flex items-center gap-1.5 transition-all cursor-pointer"
+                              className="px-4 py-2 rounded-xl bg-emerald-600/10 hover:bg-emerald-600/20 text-emerald-700 dark:text-emerald-300 border border-emerald-500/40 text-xs font-bold flex items-center gap-1.5 transition-all cursor-pointer shadow-sm shadow-emerald-500/10"
                             >
                               <span className="w-2 h-2 rounded-full bg-emerald-500 animate-ping"></span>
                               <span>Published (Live)</span>
@@ -685,10 +743,11 @@ export const ScheduleEventsPage = () => {
                             <button
                               onClick={() => handleManualStartEvent(event)}
                               disabled={actionLoading}
+                              title="Start immediately or let it start automatically at mentioned time"
                               className="px-4 py-2 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white text-xs font-bold flex items-center gap-1.5 shadow-md shadow-emerald-600/25 dark:shadow-[0_0_15px_rgba(16,185,129,0.3)] transition-all hover:scale-105 cursor-pointer disabled:opacity-50"
                             >
                               <Play className="w-3.5 h-3.5 fill-current" />
-                              <span>Start Event</span>
+                              <span>Start Event Now</span>
                             </button>
                           )}
 

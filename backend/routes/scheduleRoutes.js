@@ -1,11 +1,11 @@
 import express from 'express';
+import { supabase } from '../config/supabase.js';
 import { 
   getQuizzesFromDB, 
   insertQuizToDB, 
   updateQuizInDB, 
   deleteQuizFromDB,
-  getUsersFromDB,
-  loadAttempts
+  getUsersFromDB
 } from '../config/db.js';
 
 const router = express.Router();
@@ -28,36 +28,79 @@ setInterval(() => {
 
 /**
  * Helper to compute timing status
+ * Automatically starts / marks event as 'Published' when start time has arrived!
  */
 const computeStatus = (quiz) => {
   if (!quiz) return 'Scheduled';
-  if (quiz.status === 'Published' || quiz.status === 'Live') {
-    const now = new Date();
-    const end = quiz.end_date_time || quiz.end_time ? new Date(quiz.end_date_time || quiz.end_time) : null;
-    if (end && now > end) {
-      return 'Closed';
-    }
+
+  const now = new Date();
+  const start = quiz.start_date_time || quiz.start_time ? new Date(quiz.start_date_time || quiz.start_time) : null;
+  const end = quiz.end_date_time || quiz.end_time ? new Date(quiz.end_date_time || quiz.end_time) : null;
+
+  // If window has closed
+  if (end && now > end) {
+    return 'Closed';
+  }
+
+  // Auto-start: If current time has reached or passed the scheduled start time
+  if (start && now >= start && (!end || now <= end)) {
     return 'Published';
   }
+
+  // If manually started / published
+  if (quiz.status === 'Published' || quiz.status === 'Live') {
+    return 'Published';
+  }
+
   if (quiz.status === 'Closed') return 'Closed';
   if (quiz.status === 'Draft') return 'Draft';
   return 'Scheduled';
 };
 
+// Periodic auto-start worker: Automatically updates DB status to 'Published' when start time arrives
+setInterval(async () => {
+  try {
+    const quizzes = await getQuizzesFromDB();
+    const now = new Date();
+
+    for (const q of quizzes) {
+      if (q.status === 'Scheduled') {
+        const start = q.start_date_time || q.start_time ? new Date(q.start_date_time || q.start_time) : null;
+        const end = q.end_date_time || q.end_time ? new Date(q.end_date_time || q.end_time) : null;
+
+        if (start && now >= start && (!end || now <= end)) {
+          console.log(`⏱️ [Auto-Start] Scheduled time reached for "${q.title}". Automatically publishing!`);
+          await updateQuizInDB(q.id, { status: 'Published' });
+        }
+      }
+    }
+  } catch (err) {
+    console.error('Error in schedule auto-start background worker:', err);
+  }
+}, 10000);
+
 // GET /api/schedule - Fetch all scheduled events
 router.get('/', async (req, res) => {
   try {
     const quizzes = await getQuizzesFromDB();
+    const now = new Date();
     
     // Enrich with computed status and active participant count
-    const enriched = quizzes.map((q) => {
-      const liveStatus = computeStatus(q);
+    const enriched = await Promise.all(quizzes.map(async (q) => {
+      let liveStatus = computeStatus(q);
+
+      // If scheduled time has arrived but DB still says Scheduled, update DB to Published
+      if (liveStatus === 'Published' && q.status === 'Scheduled') {
+        updateQuizInDB(q.id, { status: 'Published' }).catch(() => {});
+      }
       
       // Count participants currently taking this quiz or active
-      const attempts = loadAttempts ? loadAttempts() : [];
-      const activeAttempts = attempts.filter(
-        (a) => String(a.quiz_id) === String(q.id) && (a.status === 'IN_PROGRESS' || !a.submitted_at)
-      );
+      let activeAttendeesCount = 0;
+      for (const [, session] of activeSessions.entries()) {
+        if (Date.now() - session.lastSeenTimestamp <= 90000 && String(session.currentQuizId) === String(q.id)) {
+          activeAttendeesCount++;
+        }
+      }
 
       return {
         ...q,
@@ -65,9 +108,9 @@ router.get('/', async (req, res) => {
         end_date_time: q.end_date_time || q.end_time || '',
         duration: parseInt(q.duration, 10) || 30,
         computedStatus: liveStatus,
-        activeAttendeesCount: activeAttempts.length
+        activeAttendeesCount
       };
-    });
+    }));
 
     res.json({ success: true, events: enriched });
   } catch (err) {
@@ -257,9 +300,18 @@ router.get('/:id/active-users', async (req, res) => {
     allUsers.forEach((u) => userMap.set(String(u.id), u));
 
     // 2. Fetch quiz attempts for this specific quiz
-    const attempts = loadAttempts ? loadAttempts() : [];
-    const quizAttempts = attempts.filter((a) => String(a.quiz_id) === String(id));
-    const attemptingUserIds = new Set(quizAttempts.map((a) => String(a.participant_id)));
+    let quizAttempts = [];
+    if (supabase) {
+      try {
+        const { data: attData } = await supabase
+          .from('quiz_attempts')
+          .select('*')
+          .eq('quiz_id', id);
+        quizAttempts = attData || [];
+      } catch (e) {
+        quizAttempts = [];
+      }
+    }
 
     // 3. Find active online users from presence within last 90 seconds
     const activeParticipants = [];
