@@ -61,16 +61,22 @@ app.get('/api/quizzes', async (req, res) => {
   }
 });
 
-// Start Server with fallback port attempt if EADDRINUSE
+// Start Server with fallback port attempt if EADDRINUSE in development
+const HOST = '0.0.0.0';
+
 function startServer(portToTry) {
-  const server = app.listen(portToTry, () => {
+  const server = app.listen(portToTry, HOST, () => {
     PORT = portToTry;
-    console.log(`🚀 Server running on http://localhost:${PORT}`);
-    console.log(`📊 Health check: http://localhost:${PORT}/api/health`);
+    console.log(`🚀 Server running on http://${HOST}:${PORT}`);
+    console.log(`📊 Health check: http://${HOST}:${PORT}/api/health`);
   });
 
   server.on('error', (err) => {
     if (err.code === 'EADDRINUSE') {
+      if (process.env.NODE_ENV === 'production' || process.env.RENDER) {
+        console.error(`❌ Port ${portToTry} is already in use in production environment. Exiting.`);
+        process.exit(1);
+      }
       console.warn(`⚠️  Port ${portToTry} is in use. Trying port ${portToTry + 1}...`);
       startServer(portToTry + 1);
     } else {
