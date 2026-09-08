@@ -267,8 +267,12 @@ export const toggleAccessDirect = async (req, res) => {
 // GET /api/admin/results - Get overall attempt scores
 export const getResults = async (req, res) => {
   try {
-    const results = await getAllResults();
-    res.json({ results });
+    const data = await getAllResults();
+    if (Array.isArray(data)) {
+      res.json({ results: data, quizzes: [] });
+    } else {
+      res.json({ results: data.results || [], quizzes: data.quizzes || [] });
+    }
   } catch (err) {
     res.status(500).json({ error: err.message });
   }

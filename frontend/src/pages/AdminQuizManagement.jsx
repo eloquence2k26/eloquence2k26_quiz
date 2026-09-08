@@ -48,12 +48,19 @@ export const AdminQuizManagement = ({ initialTab = 'quizzes' }) => {
 
   const tabQuery = searchParams.get('tab');
 
-  // Active Tab: 'quizzes' | 'questions' | 'registrations' | 'submissions' | 'results' | 'violations' | 'retests'
-  const [activeTab, setActiveTab] = useState(tabQuery || initialTab || 'quizzes');
+  // Active Tab: 'quizzes' | 'questions' | 'registrations' | 'retests'
+  const [activeTab, setActiveTab] = useState(() => {
+    if (tabQuery === 'results' || tabQuery === 'violations') return 'quizzes';
+    return tabQuery || initialTab || 'quizzes';
+  });
 
   useEffect(() => {
     if (tabQuery) {
-      setActiveTab(tabQuery);
+      if (tabQuery === 'results' || tabQuery === 'violations') {
+        setActiveTab('quizzes');
+      } else {
+        setActiveTab(tabQuery);
+      }
     } else if (initialTab) {
       setActiveTab(initialTab);
     }
@@ -1274,115 +1281,6 @@ export const AdminQuizManagement = ({ initialTab = 'quizzes' }) => {
               </div>
             </div>
           )}
-        </section>
-      )}
-
-      {/* TAB 5: ALL RESULTS OVERVIEW */}
-      {activeTab === 'results' && (
-        <section className="basic-card p-6 space-y-6">
-          <div className="flex justify-between items-center">
-            <div>
-              <h3 className="text-xl font-bold text-slate-900 dark:text-white">Participant Quiz Attempt Results</h3>
-              <p className="text-xs text-slate-500 dark:text-zinc-400 mt-0.5">Real-time attempt scores, percentage, status, and security violation counts.</p>
-            </div>
-          </div>
-
-          <div className="overflow-x-auto">
-            <table className="w-full text-left text-xs border-collapse">
-              <thead>
-                <tr className="border-b border-slate-200 dark:border-zinc-800 text-slate-400 uppercase text-[10px] font-bold tracking-wider">
-                  <th className="py-3 px-4">Participant</th>
-                  <th className="py-3 px-4">Quiz Event</th>
-                  <th className="py-3 px-4">Attempt #</th>
-                  <th className="py-3 px-4">Score</th>
-                  <th className="py-3 px-4">Percentage</th>
-                  <th className="py-3 px-4">Status</th>
-                  <th className="py-3 px-4">Violations</th>
-                  <th className="py-3 px-4 text-right">Submitted At</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-200 dark:divide-zinc-800">
-                {results.length === 0 ? (
-                  <tr>
-                    <td colSpan={8} className="py-8 text-center text-slate-500 dark:text-zinc-400">No quiz attempts recorded yet.</td>
-                  </tr>
-                ) : (
-                  results.map((res) => (
-                    <tr key={res.attemptId} className="hover:bg-slate-50/50 dark:hover:bg-zinc-900/50 transition-colors">
-                      <td className="py-3.5 px-4 font-bold text-slate-900 dark:text-white">
-                        {res.participantName}
-                        <span className="block text-[10px] font-normal text-slate-500 dark:text-zinc-400">{res.participantEmail}</span>
-                      </td>
-                      <td className="py-3.5 px-4 font-semibold text-slate-700 dark:text-zinc-300">{res.quizTitle}</td>
-                      <td className="py-3.5 px-4">Attempt #{res.attemptNumber || 1}</td>
-                      <td className="py-3.5 px-4 font-bold text-emerald-600 dark:text-emerald-400">{res.score} / {res.totalMarks}</td>
-                      <td className="py-3.5 px-4 font-bold text-slate-900 dark:text-white">{res.percentage}%</td>
-                      <td className="py-3.5 px-4">
-                        <span className={`px-2.5 py-1 rounded-full text-[10px] font-bold uppercase ${
-                          res.status === 'SUBMITTED' || res.status === 'submitted'
-                            ? 'bg-emerald-50 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300'
-                            : 'bg-red-50 text-red-700 dark:bg-red-950 dark:text-red-300'
-                        }`}>
-                          {res.status}
-                        </span>
-                      </td>
-                      <td className="py-3.5 px-4 font-bold text-amber-500">{res.violationsCount || 0}</td>
-                      <td className="py-3.5 px-4 text-right text-slate-500 dark:text-zinc-400">
-                        {res.submittedAt ? new Date(res.submittedAt).toLocaleTimeString() : 'N/A'}
-                      </td>
-                    </tr>
-                  ))
-                )}
-              </tbody>
-            </table>
-          </div>
-        </section>
-      )}
-
-      {/* TAB 6: SECURITY VIOLATIONS AUDIT LOG */}
-      {activeTab === 'violations' && (
-        <section className="basic-card p-6 space-y-6">
-          <div>
-            <h3 className="text-xl font-bold text-slate-900 dark:text-white">Anti-Cheating Security Audit Log</h3>
-            <p className="text-xs text-slate-500 dark:text-zinc-400 mt-0.5">Recorded browser-level security events (tab switches, window blur, fullscreen exits).</p>
-          </div>
-
-          <div className="overflow-x-auto">
-            <table className="w-full text-left text-xs border-collapse">
-              <thead>
-                <tr className="border-b border-slate-200 dark:border-zinc-800 text-slate-400 uppercase text-[10px] font-bold tracking-wider">
-                  <th className="py-3 px-4">Participant</th>
-                  <th className="py-3 px-4">Quiz Event</th>
-                  <th className="py-3 px-4">Violation Type</th>
-                  <th className="py-3 px-4">Description</th>
-                  <th className="py-3 px-4">Timestamp</th>
-                  <th className="py-3 px-4 text-right">Severity</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-200 dark:divide-zinc-800">
-                {violations.length === 0 ? (
-                  <tr>
-                    <td colSpan={6} className="py-8 text-center text-slate-500 dark:text-zinc-400">No security violations logged yet. Clean audit record!</td>
-                  </tr>
-                ) : (
-                  violations.map((v) => (
-                    <tr key={v.id} className="hover:bg-slate-50/50 dark:hover:bg-zinc-900/50 transition-colors">
-                      <td className="py-3.5 px-4 font-bold text-slate-900 dark:text-white">{v.participantName}</td>
-                      <td className="py-3.5 px-4 text-slate-700 dark:text-zinc-300">{v.quizTitle}</td>
-                      <td className="py-3.5 px-4 font-mono font-bold text-amber-600 dark:text-amber-400">{v.violation_type}</td>
-                      <td className="py-3.5 px-4 text-slate-600 dark:text-zinc-400">{v.description || v.details}</td>
-                      <td className="py-3.5 px-4 text-slate-500 dark:text-zinc-400">{new Date(v.timestamp).toLocaleTimeString()}</td>
-                      <td className="py-3.5 px-4 text-right">
-                        <span className="px-2 py-0.5 rounded-full text-[10px] font-bold uppercase bg-red-100 text-red-800 dark:bg-red-950 dark:text-red-300">
-                          {v.severity || 'WARNING'}
-                        </span>
-                      </td>
-                    </tr>
-                  ))
-                )}
-              </tbody>
-            </table>
-          </div>
         </section>
       )}
 

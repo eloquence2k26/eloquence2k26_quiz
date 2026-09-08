@@ -13,7 +13,7 @@ import scheduleRoutes from './routes/scheduleRoutes.js';
 dotenv.config();
 
 const app = express();
-// 5-minute joining window enabled
+// 5-minute joining window and event results filter enabled
 const PORT = process.env.PORT ? parseInt(process.env.PORT, 10) : 5001;
 
 // Bulletproof CORS Configuration (handles all origins, preflights, and headers)

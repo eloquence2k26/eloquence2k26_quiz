@@ -18,8 +18,7 @@ import {
   UserCheck,
   Layers,
   Trophy,
-  ChevronDown,
-  ShieldAlert
+  ChevronDown
 } from 'lucide-react';
 
 export const Sidebar = () => {
@@ -70,18 +69,6 @@ export const Sidebar = () => {
           path: '/admin/quizzes?tab=registrations',
           tabId: 'registrations',
           icon: UserCheck
-        },
-        {
-          name: 'All Results Overview',
-          path: '/admin/quizzes?tab=results',
-          tabId: 'results',
-          icon: Trophy
-        },
-        {
-          name: 'Security Violations Log',
-          path: '/admin/quizzes?tab=violations',
-          tabId: 'violations',
-          icon: ShieldAlert
         }
       ]
     },

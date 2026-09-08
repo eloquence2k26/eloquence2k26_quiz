@@ -1189,48 +1189,75 @@ export const recordQuizViolation = async (attemptId, participantId, violationTyp
 // Get all overall results from Supabase DB
 export const getAllResults = async () => {
   try {
-    const { data: attempts } = await supabase
-      .from('quiz_attempts')
-      .select('*')
-      .order('started_at', { ascending: false });
-
-    if (!attempts || attempts.length === 0) return [];
-
-    const quizIds = [...new Set(attempts.map(a => a.quiz_id))];
-    const participantIds = [...new Set(attempts.map(a => String(a.participant_id)))];
-
     const [
+      { data: attempts },
+      { data: registrations },
       { data: quizzes },
-      { data: users },
-      { data: violations }
+      { data: questions },
+      { data: users }
     ] = await Promise.all([
-      supabase.from('quizzes').select('id, title, category').in('id', quizIds),
-      supabase.from('users').select('id, name, email, phone'),
-        // Supabase has a max limit for .in(), but for typical usage this is extremely fast. 
-        // We fetch all users if there are too many, but for now we'll fetch all to ensure email/id mapping doesn't break
-      supabase.from('quiz_violations').select('*').in('attempt_id', attempts.map(a => a.id))
+      supabase.from('quiz_attempts').select('*').order('started_at', { ascending: false }),
+      supabase.from('quiz_registrations').select('*').order('registered_at', { ascending: false }),
+      supabase.from('quizzes').select('id, title, category, duration, status, event_id'),
+      supabase.from('quiz_questions').select('quiz_id'),
+      supabase.from('users').select('id, name, email, phone')
     ]);
 
+    const attemptsList = attempts || [];
+    const regsList = registrations || [];
+    const quizList = quizzes || [];
+    const userList = users || [];
+
+    const questionCountMap = new Map();
+    (questions || []).forEach(qn => {
+      const qid = String(qn.quiz_id);
+      questionCountMap.set(qid, (questionCountMap.get(qid) || 0) + 1);
+    });
+
     const quizMap = new Map();
-    (quizzes || []).forEach((q) => quizMap.set(String(q.id), q));
+    quizList.forEach((q) => {
+      quizMap.set(String(q.id), {
+        ...q,
+        total_questions: questionCountMap.get(String(q.id)) || 0
+      });
+    });
 
     const userMap = new Map();
-    (users || []).forEach((u) => {
+    userList.forEach((u) => {
       userMap.set(String(u.id), u);
       if (u.email) userMap.set(String(u.email).toLowerCase(), u);
-    });
-    
-    const violationMap = new Map();
-    (violations || []).forEach((v) => {
-      if (!violationMap.has(v.attempt_id)) {
-        violationMap.set(v.attempt_id, []);
-      }
-      violationMap.get(v.attempt_id).push(v);
+      if (u.phone) userMap.set(String(u.phone), u);
     });
 
-    return (attempts || []).map((att) => {
+    let violationMap = new Map();
+    if (attemptsList.length > 0) {
+      try {
+        const { data: violations } = await supabase
+          .from('quiz_violations')
+          .select('*')
+          .in('attempt_id', attemptsList.map(a => a.id));
+        (violations || []).forEach((v) => {
+          if (!violationMap.has(v.attempt_id)) {
+            violationMap.set(v.attempt_id, []);
+          }
+          violationMap.get(v.attempt_id).push(v);
+        });
+      } catch (e) {
+        console.warn('Violations query warning in getAllResults:', e.message);
+      }
+    }
+
+    const processedAttempts = attemptsList.map((att) => {
       const q = quizMap.get(String(att.quiz_id));
       const u = userMap.get(String(att.participant_id)) || userMap.get(String(att.participant_id).toLowerCase());
+      
+      let normalizedStatus = att.status;
+      const statusUpper = String(att.status || '').toUpperCase();
+      if (statusUpper === 'IN_PROGRESS') normalizedStatus = 'Ongoing';
+      else if (['SUBMITTED', 'AUTO_SUBMITTED', 'COMPLETED'].includes(statusUpper)) normalizedStatus = 'Completed';
+      else if (statusUpper === 'TERMINATED') normalizedStatus = 'Terminated';
+      else if (statusUpper === 'NOT_STARTED' || statusUpper === 'PENDING') normalizedStatus = 'Pending';
+
       return {
         id: att.id,
         attemptId: att.id,
@@ -1242,17 +1269,66 @@ export const getAllResults = async () => {
         participantName: u?.name || att.participant_id,
         participantEmail: u?.email || att.participant_id,
         score: att.score || 0,
-        totalMarks: att.total_marks || 0,
-        status: att.status,
+        totalMarks: att.total_marks || (q?.total_questions || 30),
+        status: normalizedStatus,
+        rawStatus: att.status,
         startedAt: att.started_at,
         submittedAt: att.submitted_at,
         violationsCount: att.violations_count || att.violation_count || 0,
         violations: violationMap.get(att.id) || []
       };
     });
+
+    // Track which (participantId + quizId) pairs have attempts
+    const attemptedKeys = new Set();
+    attemptsList.forEach(a => {
+      attemptedKeys.add(`${String(a.participant_id).toLowerCase()}_${String(a.quiz_id)}`);
+      attemptedKeys.add(`${String(a.participant_id)}_${String(a.quiz_id)}`);
+    });
+
+    // For registered participants without an attempt, create a Pending record
+    const pendingEntries = [];
+    regsList.forEach((r) => {
+      const pId = String(r.participant_id);
+      const qId = String(r.quiz_id);
+      const k1 = `${pId.toLowerCase()}_${qId}`;
+      const k2 = `${pId}_${qId}`;
+
+      if (!attemptedKeys.has(k1) && !attemptedKeys.has(k2)) {
+        attemptedKeys.add(k1);
+        attemptedKeys.add(k2);
+        const q = quizMap.get(qId);
+        const u = userMap.get(pId) || userMap.get(pId.toLowerCase());
+
+        pendingEntries.push({
+          id: `pending_${qId}_${pId}`,
+          attemptId: null,
+          attemptNumber: 0,
+          quizId: qId,
+          quizTitle: q?.title || qId,
+          category: q?.category || 'General',
+          participantId: pId,
+          participantName: u?.name || pId,
+          participantEmail: u?.email || pId,
+          score: 0,
+          totalMarks: q?.total_questions || 30,
+          status: 'Pending',
+          rawStatus: 'NOT_STARTED',
+          startedAt: null,
+          submittedAt: null,
+          violationsCount: 0,
+          violations: []
+        });
+      }
+    });
+
+    return {
+      results: [...processedAttempts, ...pendingEntries],
+      quizzes: quizList
+    };
   } catch (err) {
     console.error('Supabase getAllResults exception:', err.message);
-    return [];
+    return { results: [], quizzes: [] };
   }
 };
 
