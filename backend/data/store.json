@@ -733,6 +733,42 @@
       },
       "id": "72710fae-ec9f-494e-b7d7-8ecb2b1c0ca5",
       "created_at": "2026-09-08T08:51:01.931Z"
+    },
+    {
+      "admin_id": "a0000000-0000-0000-0000-000000000001",
+      "action": "ADMIN_LOGIN",
+      "entity_type": "AUTH",
+      "entity_id": "a0000000-0000-0000-0000-000000000001",
+      "timestamp": "2026-09-08T09:28:54.179Z",
+      "metadata": {
+        "email": "admin@eloquence.com"
+      },
+      "id": "d7c9dd3e-e5f2-4a03-a377-e2d0b9d40336",
+      "created_at": "2026-09-08T09:28:54.179Z"
+    },
+    {
+      "admin_id": "a0000000-0000-0000-0000-000000000001",
+      "action": "ADMIN_LOGIN",
+      "entity_type": "AUTH",
+      "entity_id": "a0000000-0000-0000-0000-000000000001",
+      "timestamp": "2026-09-08T09:31:34.388Z",
+      "metadata": {
+        "email": "admin@eloquence.com"
+      },
+      "id": "8b7817c4-25bc-4759-8c4d-6c43c8a0ace8",
+      "created_at": "2026-09-08T09:31:34.393Z"
+    },
+    {
+      "admin_id": "a0000000-0000-0000-0000-000000000001",
+      "action": "ADMIN_LOGIN",
+      "entity_type": "AUTH",
+      "entity_id": "a0000000-0000-0000-0000-000000000001",
+      "timestamp": "2026-09-08T09:42:36.089Z",
+      "metadata": {
+        "email": "admin@eloquence.com"
+      },
+      "id": "a2043a09-952c-4676-975b-fb78907badf0",
+      "created_at": "2026-09-08T09:42:36.097Z"
     }
   ],
   "system_settings": {

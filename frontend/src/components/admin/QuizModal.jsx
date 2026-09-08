@@ -49,7 +49,11 @@ export default function QuizModal({ isOpen, onClose, onSave, initialData = null,
         max_violations: initialData.max_violations || 3,
         shuffle_questions: initialData.shuffle_questions !== false,
         shuffle_options: initialData.shuffle_options !== false,
-        question_ids: initialData.questions ? initialData.questions.map((q) => q.id) : []
+        question_ids: initialData.questions
+          ? initialData.questions.map((q) => q.id)
+          : Array.isArray(initialData.question_ids)
+          ? initialData.question_ids
+          : []
       });
     } else {
       // Default: select all questions currently in bank
