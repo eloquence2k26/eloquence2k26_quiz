@@ -46,6 +46,12 @@ export const StrictQuizInterface = () => {
   const [isLocked, setIsLocked] = useState(false);
   const [lockReason, setLockReason] = useState('');
 
+  // 5-Minute Joining Window Lockout Modal
+  const [showLateLockModal, setShowLateLockModal] = useState(false);
+  const [lateLockError, setLateLockError] = useState('');
+  const [lateRequestSent, setLateRequestSent] = useState(false);
+  const [lateSubmitting, setLateSubmitting] = useState(false);
+
   const containerRef = useRef(null);
 
   // 1. Initialize Attempt on Server
@@ -75,11 +81,40 @@ export const StrictQuizInterface = () => {
         }
       } else {
         const err = await res.json();
-        alert(err.error || 'Failed to start quiz attempt.');
-        navigate('/participant/quizzes');
+        if (err.code === 'LATE_LOCKED' || (err.error && (err.error.toLowerCase().includes('joining window') || err.error.toLowerCase().includes('5 minutes')))) {
+          setLateLockError(err.error || 'The 5-minute joining window for this quiz has expired. Only an administrator can permit late entry.');
+          setShowLateLockModal(true);
+        } else {
+          alert(err.error || 'Failed to start quiz attempt.');
+          navigate('/participant/quizzes');
+        }
       }
     } catch (err) {
       console.error('Start quiz attempt error:', err);
+    }
+  };
+
+  const handleRequestLateJoinFromStrict = async () => {
+    setLateSubmitting(true);
+    try {
+      const res = await fetch(`${API_PARTICIPANT_URL}/quizzes/${quizId}/request-late-join`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-user-id': user?.id || user?.email || 'user-demo-1'
+        },
+        body: JSON.stringify({
+          participantId: user?.id || user?.email || 'user-demo-1',
+          reason: 'Attempted to enter quiz screen after 5-minute joining window. Requesting administrator permission to join.'
+        })
+      });
+      if (res.ok) {
+        setLateRequestSent(true);
+      }
+    } catch (e) {
+      console.error('Late join request error:', e);
+    } finally {
+      setLateSubmitting(false);
     }
   };
 
@@ -690,6 +725,52 @@ export const StrictQuizInterface = () => {
               className="w-full py-3 bg-amber-500 hover:bg-amber-600 text-slate-950 font-bold text-xs rounded-xl shadow-lg transition-all cursor-pointer"
             >
               I Understand & Return to Quiz
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL 3: LATE JOINING WINDOW LOCKED MODAL */}
+      {showLateLockModal && (
+        <div className="fixed inset-0 z-50 bg-black/90 backdrop-blur-md flex items-center justify-center p-4">
+          <div className="bg-slate-900 border border-amber-500/50 rounded-3xl w-full max-w-md p-6 sm:p-8 space-y-6 text-center shadow-2xl animate-in fade-in zoom-in duration-200">
+            <div className="w-16 h-16 bg-amber-500/15 text-amber-500 border border-amber-500/30 rounded-2xl flex items-center justify-center mx-auto shadow-lg shadow-amber-500/15">
+              <Lock className="w-8 h-8" />
+            </div>
+
+            <div className="space-y-2">
+              <span className="inline-block px-3 py-1 rounded-full bg-amber-500/20 text-amber-300 font-bold text-xs uppercase tracking-wider">
+                Joining Window Closed
+              </span>
+              <h3 className="text-xl font-extrabold text-white">
+                5-Minute Entry Time Expired
+              </h3>
+              <p className="text-xs text-slate-300 leading-relaxed">
+                {lateLockError || 'Once the event starts, participants have only 5 minutes to join. Since this time has passed, only an administrator can permit you to enter.'}
+              </p>
+            </div>
+
+            {lateRequestSent ? (
+              <div className="p-3.5 rounded-2xl bg-emerald-500/20 border border-emerald-500/40 text-emerald-300 text-xs font-semibold flex items-center gap-2">
+                <CheckCircle className="w-4 h-4 text-emerald-400 shrink-0" />
+                <span>Your late entry request has been sent to the admin. Please notify the organizer.</span>
+              </div>
+            ) : (
+              <button
+                onClick={handleRequestLateJoinFromStrict}
+                disabled={lateSubmitting}
+                className="w-full py-3 bg-gradient-to-r from-amber-600 to-orange-600 hover:from-amber-700 hover:to-orange-700 text-white font-bold text-xs rounded-xl shadow-lg transition-all cursor-pointer flex items-center justify-center gap-2"
+              >
+                <Lock className="w-4 h-4" />
+                {lateSubmitting ? 'Sending Request...' : 'Request Admin to Allow Join'}
+              </button>
+            )}
+
+            <button
+              onClick={() => navigate('/participant/quizzes')}
+              className="w-full py-2.5 bg-slate-800 hover:bg-slate-700 text-slate-300 font-semibold text-xs rounded-xl border border-slate-700 transition-all cursor-pointer"
+            >
+              Back to Authorized Quizzes
             </button>
           </div>
         </div>

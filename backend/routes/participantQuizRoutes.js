@@ -9,7 +9,8 @@ import {
   recordViolation, 
   submitAttempt, 
   checkQualification, 
-  requestRetestPermission 
+  requestRetestPermission,
+  requestLateJoinPermission 
 } from '../controllers/participantQuizController.js';
 
 const router = express.Router();
@@ -44,5 +45,8 @@ router.get('/qualification-status', checkQualification);
 
 // Request Retest
 router.post('/quizzes/:id/request-retest', requestRetestPermission);
+
+// Request Late Join
+router.post('/quizzes/:id/request-late-join', requestLateJoinPermission);
 
 export default router;

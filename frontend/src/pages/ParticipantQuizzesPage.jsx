@@ -45,6 +45,12 @@ export const ParticipantQuizzesPage = () => {
   // Retest Request Modal state
   const [retestModalQuiz, setRetestModalQuiz] = useState(null);
   const [retestReason, setRetestReason] = useState('');
+
+  // Late Join Request Modal state
+  const [lateJoinModalQuiz, setLateJoinModalQuiz] = useState(null);
+  const [lateJoinReason, setLateJoinReason] = useState('');
+  const [lateJoinSubmitting, setLateJoinSubmitting] = useState(false);
+
   const [notification, setNotification] = useState('');
 
   const fetchQualificationStatus = async () => {
@@ -140,6 +146,40 @@ export const ParticipantQuizzesPage = () => {
     }
   };
 
+  const handleRequestLateJoinSubmit = async (e) => {
+    e.preventDefault();
+    if (!lateJoinModalQuiz) return;
+    setLateJoinSubmitting(true);
+    try {
+      const res = await fetch(`${API_PARTICIPANT_URL}/quizzes/${lateJoinModalQuiz.id}/request-late-join`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-user-id': user?.id || user?.email || 'user-demo-1'
+        },
+        body: JSON.stringify({
+          participantId: user?.id || user?.email || 'user-demo-1',
+          reason: lateJoinReason || 'Arrived after 5-minute joining window. Requesting administrator permission to join.'
+        })
+      });
+
+      if (res.ok) {
+        setNotification('Your late entry request has been sent to the Administrator. Please wait for approval.');
+        setLateJoinModalQuiz(null);
+        setLateJoinReason('');
+        fetchParticipantQuizzes();
+        setTimeout(() => setNotification(''), 5000);
+      } else {
+        const err = await res.json();
+        alert(err.error || 'Failed to submit late entry request');
+      }
+    } catch (err) {
+      console.error('Late join request error:', err);
+    } finally {
+      setLateJoinSubmitting(false);
+    }
+  };
+
   return (
     <div className="max-w-6xl mx-auto p-4 sm:p-8 space-y-8">
       {/* Student Welcome Banner */}
@@ -196,6 +236,18 @@ export const ParticipantQuizzesPage = () => {
               const isClosed = now > endDate;
               const isLive = !isUpcoming && !isClosed;
 
+              // 5-Minute Joining Window
+              const joinWindowEnd = new Date(startDate.getTime() + 5 * 60 * 1000);
+              const isWithinJoinWindow = now <= joinWindowEnd;
+              const hasStartedEarlier = quiz.accessStatus === 'in_progress';
+              const isLateLocked = isLive && !isWithinJoinWindow && !hasStartedEarlier && !quiz.lateJoinApproved &&
+                quiz.accessStatus !== 'completed' && quiz.accessStatus !== 'terminated' && 
+                quiz.accessStatus !== 'locked' && quiz.accessStatus !== 'access_revoked';
+
+              const remainingJoinSec = Math.max(0, Math.floor((joinWindowEnd.getTime() - now.getTime()) / 1000));
+              const jwMin = Math.floor(remainingJoinSec / 60);
+              const jwSec = remainingJoinSec % 60;
+
               return (
                 <div key={quiz.id} className="basic-card p-6 space-y-5 transition-all flex flex-col justify-between hover:border-blue-400 dark:hover:border-blue-600">
                   <div className="space-y-3">
@@ -238,6 +290,32 @@ export const ParticipantQuizzesPage = () => {
                         <strong className="text-slate-900 dark:text-white">{quiz.total_questions || quiz.questions_count} Questions ({quiz.marks_per_question || 1} mark/qn)</strong>
                       </div>
                     </div>
+
+                    {/* Late Join Approved Banner */}
+                    {quiz.lateJoinApproved && (
+                      <div className="p-3.5 rounded-2xl bg-emerald-500/10 border border-emerald-500/30 text-emerald-800 dark:text-emerald-300 space-y-1">
+                        <div className="flex items-center gap-2 font-bold text-xs">
+                          <CheckCircle2 className="w-4 h-4 text-emerald-500" />
+                          <span>LATE ENTRY PERMITTED BY ADMINISTRATOR</span>
+                        </div>
+                        <p className="text-xs text-emerald-700 dark:text-emerald-400">
+                          You have been granted permission to join this test after the 5-minute joining window.
+                        </p>
+                      </div>
+                    )}
+
+                    {/* Late Locked Alert Banner (>5 mins expired) */}
+                    {isLateLocked && (
+                      <div className="p-3.5 rounded-2xl bg-amber-50 dark:bg-amber-950/60 border border-amber-300 dark:border-amber-800 text-xs text-amber-900 dark:text-amber-200 space-y-2">
+                        <div className="flex items-center gap-2 font-bold">
+                          <Lock className="w-4 h-4 text-amber-600 dark:text-amber-400 shrink-0" />
+                          <span>JOINING WINDOW CLOSED (5 MINS EXPIRED)</span>
+                        </div>
+                        <p className="text-[11px] leading-relaxed text-amber-800 dark:text-amber-300">
+                          Participants were given 5 minutes to join after the event started at <strong>{startDate.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</strong>. Since more than 5 minutes have elapsed, only an administrator can allow you to enter.
+                        </p>
+                      </div>
+                    )}
 
                     {/* Approved Retest Alert Banner */}
                     {quiz.approvedRetest && (
@@ -291,6 +369,23 @@ export const ParticipantQuizzesPage = () => {
                           Request Retest
                         </Button>
                       </div>
+                    ) : isLateLocked ? (
+                      <div className="w-full flex items-center justify-between gap-3">
+                        <span className="text-xs font-bold text-amber-700 dark:text-amber-400 flex items-center gap-1.5">
+                          <Lock className="w-4 h-4" /> Late Entry Locked
+                        </span>
+                        <Button
+                          size="sm"
+                          variant="primary"
+                          className="bg-amber-600 hover:bg-amber-700 text-white font-bold"
+                          onClick={() => {
+                            setLateJoinModalQuiz(quiz);
+                            setLateJoinReason('');
+                          }}
+                        >
+                          Request Late Entry from Admin
+                        </Button>
+                      </div>
                     ) : quiz.accessStatus === 'completed' && !quiz.approvedRetest ? (
                       <div className="w-full flex items-center justify-between">
                         <span className="text-xs font-bold text-emerald-600 dark:text-emerald-400 flex items-center gap-1">
@@ -299,17 +394,24 @@ export const ParticipantQuizzesPage = () => {
                         <Button size="sm" variant="secondary" disabled>Attempt Used</Button>
                       </div>
                     ) : (
-                      <div className="w-full flex items-center justify-between">
-                        <span className="text-xs font-bold text-emerald-600 dark:text-emerald-400 flex items-center gap-1">
-                          <span className="w-2 h-2 rounded-full bg-emerald-500 animate-ping"></span> Live Now
-                        </span>
+                      <div className="w-full flex items-center justify-between gap-2">
+                        <div className="flex items-center gap-2">
+                          <span className="text-xs font-bold text-emerald-600 dark:text-emerald-400 flex items-center gap-1">
+                            <span className="w-2 h-2 rounded-full bg-emerald-500 animate-ping"></span> Live Now
+                          </span>
+                          {isLive && isWithinJoinWindow && (
+                            <span className="text-[10px] font-mono font-bold text-amber-700 dark:text-amber-300 bg-amber-100 dark:bg-amber-950/80 px-2 py-0.5 rounded-full border border-amber-300 dark:border-amber-700 animate-pulse">
+                              {jwMin}m {String(jwSec).padStart(2, '0')}s left to join
+                            </span>
+                          )}
+                        </div>
                         <Button
                           size="sm"
                           variant="primary"
                           icon={PlayCircle}
                           onClick={() => setSelectedRulesQuiz(quiz)}
                         >
-                          {quiz.approvedRetest ? 'START RETEST' : 'START QUIZ'}
+                          {quiz.approvedRetest ? 'START RETEST' : quiz.lateJoinApproved ? 'START (LATE JOIN)' : 'START QUIZ'}
                         </Button>
                       </div>
                     )}
@@ -510,6 +612,61 @@ export const ParticipantQuizzesPage = () => {
                 OK
               </Button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL 5: LATE JOIN REQUEST MODAL */}
+      {lateJoinModalQuiz && (
+        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-md flex items-center justify-center p-4">
+          <div className="bg-white dark:bg-zinc-950 border border-amber-500/40 rounded-3xl w-full max-w-lg p-6 sm:p-8 space-y-6 shadow-2xl animate-in fade-in zoom-in duration-200">
+            <div className="flex items-center gap-3 text-amber-600 border-b border-slate-200 dark:border-zinc-800 pb-4">
+              <div className="w-10 h-10 rounded-2xl bg-amber-100 dark:bg-amber-950/80 text-amber-600 dark:text-amber-400 flex items-center justify-center shrink-0">
+                <Lock className="w-5 h-5" />
+              </div>
+              <div>
+                <h3 className="text-lg font-bold text-slate-900 dark:text-white">Request Late Entry Permission</h3>
+                <p className="text-xs text-slate-500 dark:text-zinc-400">For: <strong>{lateJoinModalQuiz.title}</strong></p>
+              </div>
+            </div>
+
+            <form onSubmit={handleRequestLateJoinSubmit} className="space-y-4">
+              <div className="p-3.5 rounded-2xl bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-800 text-xs text-amber-900 dark:text-amber-200 leading-relaxed">
+                Participants must join within 5 minutes of the event starting. Submitting this request alerts the administrator on their live schedule console so they can approve your entry.
+              </div>
+
+              <div className="space-y-1.5">
+                <label className="text-xs font-bold text-slate-700 dark:text-zinc-300">
+                  Reason for Late Entry (Optional)
+                </label>
+                <textarea
+                  rows="3"
+                  placeholder="e.g. Technical/network delay, lab connectivity issue..."
+                  value={lateJoinReason}
+                  onChange={(e) => setLateJoinReason(e.target.value)}
+                  className="w-full bg-slate-50 dark:bg-zinc-900 border border-slate-200 dark:border-zinc-800 rounded-xl p-3 text-xs text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-amber-500"
+                />
+              </div>
+
+              <div className="flex items-center gap-3 pt-2">
+                <Button 
+                  type="button" 
+                  variant="secondary" 
+                  className="flex-1" 
+                  onClick={() => setLateJoinModalQuiz(null)}
+                >
+                  Cancel
+                </Button>
+                <Button 
+                  type="submit" 
+                  variant="primary" 
+                  className="flex-1 bg-amber-600 hover:bg-amber-700 text-white font-bold"
+                  disabled={lateJoinSubmitting}
+                >
+                  {lateJoinSubmitting ? 'Sending Request...' : 'Submit Request'}
+                </Button>
+              </div>
+            </form>
           </div>
         </div>
       )}

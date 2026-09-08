@@ -24,7 +24,9 @@ import {
   Zap,
   Phone,
   Mail,
-  Flame
+  Flame,
+  Lock,
+  Unlock
 } from 'lucide-react';
 import { API_SCHEDULE_URL } from '../config/apiConfig';
 
@@ -43,6 +45,11 @@ export const ScheduleEventsPage = () => {
   const [activeUsers, setActiveUsers] = useState([]);
   const [activeUsersLoading, setActiveUsersLoading] = useState(false);
   const [attendeeSearch, setAttendeeSearch] = useState('');
+
+  // 5-Minute Joining Window & Late Join Permissions
+  const [joinWindow, setJoinWindow] = useState(null);
+  const [lateJoinAllowedAll, setLateJoinAllowedAll] = useState(false);
+  const [lateActionLoading, setLateActionLoading] = useState(false);
 
   // Notifications
   const [notification, setNotification] = useState(null);
@@ -129,6 +136,8 @@ export const ScheduleEventsPage = () => {
       if (res.ok) {
         const data = await res.json();
         setActiveUsers(data.users || []);
+        setJoinWindow(data.joinWindow || null);
+        setLateJoinAllowedAll(Boolean(data.lateJoinAllowedAll));
       }
     } catch (err) {
       console.error('Fetch active users error:', err);
@@ -243,6 +252,28 @@ export const ScheduleEventsPage = () => {
     } catch {
       return '';
     }
+  };
+
+  // Helper to compute 5-minute joining window info for any event
+  const getJoinWindowInfo = (event) => {
+    if (!event) return null;
+    const startMs = event.start_date_time || event.start_time ? new Date(event.start_date_time || event.start_time).getTime() : 0;
+    if (!startMs) return null;
+    const isStarted = currentTime >= startMs;
+    const joinWindowEndMs = startMs + 5 * 60 * 1000;
+    const isClosed = isStarted && currentTime > joinWindowEndMs;
+    const remainingMs = Math.max(0, joinWindowEndMs - currentTime);
+    const remainingSec = Math.floor(remainingMs / 1000);
+    const remMin = Math.floor(remainingSec / 60);
+    const remSec = remainingSec % 60;
+    return {
+      isStarted,
+      isClosed,
+      remainingSec,
+      remainingFormatted: `${remMin}m ${String(remSec).padStart(2, '0')}s`,
+      joinWindowEndMs,
+      joinWindowEndDate: new Date(joinWindowEndMs)
+    };
   };
 
   // Open Create Modal
@@ -406,6 +437,56 @@ export const ScheduleEventsPage = () => {
       }
     } catch (err) {
       showToast(err.message || 'Network error', 'error');
+    }
+  };
+
+  // Admin: Permit late join for participant or ALL
+  const handleAllowLateJoin = async (participantId, adminMessage = '') => {
+    if (!selectedEventId) return;
+    setLateActionLoading(true);
+    try {
+      const res = await fetch(`${API_SCHEDULE_URL}/${selectedEventId}/allow-late-join`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ participantId, adminMessage })
+      });
+      if (res.ok) {
+        const data = await res.json();
+        showToast(data.message || 'Late entry permission granted.');
+        fetchActiveUsers(selectedEventId, true);
+      } else {
+        const err = await res.json();
+        showToast(err.error || 'Failed to grant late join permission', 'error');
+      }
+    } catch (err) {
+      showToast(err.message || 'Network error', 'error');
+    } finally {
+      setLateActionLoading(false);
+    }
+  };
+
+  // Admin: Revoke late join permission
+  const handleRevokeLateJoin = async (participantId) => {
+    if (!selectedEventId) return;
+    setLateActionLoading(true);
+    try {
+      const res = await fetch(`${API_SCHEDULE_URL}/${selectedEventId}/revoke-late-join`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ participantId })
+      });
+      if (res.ok) {
+        const data = await res.json();
+        showToast(data.message || 'Late entry permission revoked.');
+        fetchActiveUsers(selectedEventId, true);
+      } else {
+        const err = await res.json();
+        showToast(err.error || 'Failed to revoke late join permission', 'error');
+      }
+    } catch (err) {
+      showToast(err.message || 'Network error', 'error');
+    } finally {
+      setLateActionLoading(false);
     }
   };
 
@@ -634,6 +715,7 @@ export const ScheduleEventsPage = () => {
                 const isPublished = liveStatus === 'Published';
                 const isSelected = String(event.id) === String(selectedEventId);
                 const countdown = formatCountdown(event.start_date_time || event.start_time);
+                const jwInfo = getJoinWindowInfo(event);
 
                 return (
                   <div
@@ -653,12 +735,25 @@ export const ScheduleEventsPage = () => {
                             {event.category || 'General'}
                           </span>
 
-                          {/* Dynamic Status Badge with Auto-Start detection */}
+                          {/* Dynamic Status Badge with Auto-Start detection & 5-min Window */}
                           {isPublished ? (
-                            <span className="inline-flex items-center gap-1.5 px-3 py-0.5 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200 dark:bg-emerald-950/80 dark:text-emerald-300 dark:border-emerald-800 text-xs font-extrabold shadow-sm shadow-emerald-500/20 animate-pulse">
-                              <span className="w-2 h-2 rounded-full bg-emerald-500"></span>
-                              PUBLISHED (LIVE)
-                            </span>
+                            <div className="flex items-center gap-1.5 flex-wrap">
+                              <span className="inline-flex items-center gap-1.5 px-3 py-0.5 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200 dark:bg-emerald-950/80 dark:text-emerald-300 dark:border-emerald-800 text-xs font-extrabold shadow-sm shadow-emerald-500/20">
+                                <span className="w-2 h-2 rounded-full bg-emerald-500 animate-ping"></span>
+                                PUBLISHED (LIVE)
+                              </span>
+                              {jwInfo && !jwInfo.isClosed ? (
+                                <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300 border border-emerald-300 dark:border-emerald-700 text-[10px] font-mono font-bold animate-pulse">
+                                  <Clock className="w-3 h-3 text-emerald-600" />
+                                  Join Window: {jwInfo.remainingFormatted} left
+                                </span>
+                              ) : (
+                                <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-slate-100 text-slate-700 dark:bg-zinc-800 dark:text-zinc-300 border border-slate-200 dark:border-zinc-700 text-[10px] font-bold">
+                                  <Lock className="w-2.5 h-2.5 text-amber-500" />
+                                  Join Window Closed (&gt;5m)
+                                </span>
+                              )}
+                            </div>
                           ) : (
                             <div className="inline-flex items-center gap-2 flex-wrap">
                               <span className="inline-flex items-center gap-1.5 px-3 py-0.5 rounded-full bg-blue-50 text-blue-700 border border-blue-200 dark:bg-blue-950/80 dark:text-blue-300 dark:border-blue-800 text-xs font-extrabold">
@@ -812,6 +907,96 @@ export const ScheduleEventsPage = () => {
               </div>
             </div>
 
+            {/* 5-Minute Joining Window Status Banner */}
+            {currentSelectedEvent && (() => {
+              const currentSelectedEventJoinWindow = getJoinWindowInfo(currentSelectedEvent);
+              if (!currentSelectedEventJoinWindow?.isStarted) {
+                return (
+                  <div className="p-3.5 rounded-2xl bg-slate-50 dark:bg-zinc-900 border border-slate-200 dark:border-zinc-800 text-xs flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <Clock className="w-4 h-4 text-blue-500 shrink-0" />
+                      <div>
+                        <p className="font-bold text-slate-800 dark:text-zinc-200">5-Minute Joining Window</p>
+                        <p className="text-[11px] text-slate-500 dark:text-zinc-400">Activates automatically once event starts</p>
+                      </div>
+                    </div>
+                    <span className="px-2.5 py-1 rounded-full bg-slate-200 dark:bg-zinc-800 text-slate-600 dark:text-zinc-400 text-[10px] font-bold">
+                      Standby
+                    </span>
+                  </div>
+                );
+              }
+
+              if (!currentSelectedEventJoinWindow.isClosed) {
+                return (
+                  <div className="p-4 rounded-2xl bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-300 dark:border-emerald-800 text-xs space-y-2 shadow-sm">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <span className="relative flex h-2.5 w-2.5">
+                          <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                          <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-emerald-500"></span>
+                        </span>
+                        <span className="font-extrabold text-emerald-800 dark:text-emerald-300 uppercase tracking-wider text-[11px]">
+                          5-Minute Joining Window Active
+                        </span>
+                      </div>
+                      <span className="px-2.5 py-0.5 rounded-full bg-emerald-100 dark:bg-emerald-900 text-emerald-800 dark:text-emerald-200 text-xs font-mono font-black animate-pulse">
+                        {currentSelectedEventJoinWindow.remainingFormatted} left
+                      </span>
+                    </div>
+                    <p className="text-[11px] text-emerald-700 dark:text-emerald-400 leading-snug">
+                      Participants can enter freely right now. Once this 5-minute countdown finishes, all unentered participants will be locked out and will require admin permission to enter.
+                    </p>
+                  </div>
+                );
+              }
+
+              return (
+                <div className="p-4 rounded-2xl bg-amber-500/10 dark:bg-amber-950/40 border border-amber-500/30 text-xs space-y-2.5 shadow-sm">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <Lock className="w-4 h-4 text-amber-600 dark:text-amber-400 shrink-0" />
+                      <span className="font-extrabold text-amber-900 dark:text-amber-300 uppercase tracking-wider text-[11px]">
+                        5-Minute Joining Window Closed
+                      </span>
+                    </div>
+                    <span className="px-2 py-0.5 rounded-full bg-red-100 dark:bg-red-950/80 text-red-700 dark:text-red-300 text-[10px] font-bold border border-red-200 dark:border-red-800">
+                      Late Lock Active
+                    </span>
+                  </div>
+                  <p className="text-[11px] text-amber-800 dark:text-amber-300 leading-snug">
+                    The initial 5-minute entry window expired. Unstarted participants are locked out from taking this quiz unless permitted below.
+                  </p>
+                  {isAdmin && (
+                    <div className="pt-2 flex items-center justify-between gap-2 border-t border-amber-500/20">
+                      <span className="text-[10px] text-amber-800 dark:text-amber-400 font-semibold">
+                        {lateJoinAllowedAll ? 'Late entry open for all' : 'Global override:'}
+                      </span>
+                      {lateJoinAllowedAll ? (
+                        <button
+                          onClick={() => handleRevokeLateJoin('ALL')}
+                          disabled={lateActionLoading}
+                          className="px-3 py-1 rounded-xl bg-red-600 hover:bg-red-700 text-white text-[11px] font-bold shadow-sm transition-all cursor-pointer flex items-center gap-1"
+                        >
+                          <Lock className="w-3 h-3" />
+                          Lock Entry for Late Comers
+                        </button>
+                      ) : (
+                        <button
+                          onClick={() => handleAllowLateJoin('ALL', 'Admin unlocked late entry for all participants')}
+                          disabled={lateActionLoading}
+                          className="px-3 py-1 rounded-xl bg-gradient-to-r from-amber-600 to-orange-600 hover:from-amber-700 hover:to-orange-700 text-white text-[11px] font-bold shadow-sm transition-all cursor-pointer flex items-center gap-1"
+                        >
+                          <Unlock className="w-3 h-3" />
+                          Allow ALL Late Participants
+                        </button>
+                      )}
+                    </div>
+                  )}
+                </div>
+              );
+            })()}
+
             {/* Attendee Search Input */}
             <div className="relative">
               <Search className="w-3.5 h-3.5 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
@@ -844,60 +1029,106 @@ export const ScheduleEventsPage = () => {
               </div>
             ) : (
               <div className="space-y-2.5 max-h-[500px] overflow-y-auto pr-1">
-                {filteredAttendees.map((attendee) => (
-                  <div
-                    key={attendee.id}
-                    className="p-3 rounded-2xl bg-slate-50 dark:bg-zinc-900/80 border border-slate-200/80 dark:border-zinc-800 flex items-center justify-between gap-3 hover:border-blue-400 dark:hover:border-blue-700 transition-all"
-                  >
-                    <div className="flex items-center gap-3 min-w-0">
-                      {/* Avatar with dynamic gradient */}
-                      <div className="w-9 h-9 rounded-xl bg-gradient-to-tr from-blue-600 to-indigo-500 text-white font-black text-xs flex items-center justify-center shrink-0 shadow-sm">
-                        {(attendee.name || attendee.username || 'U').charAt(0).toUpperCase()}
+                {filteredAttendees.map((attendee) => {
+                  const currentSelectedEventJoinWindow = getJoinWindowInfo(currentSelectedEvent);
+                  const isLockedOut = attendee.isLateLocked || (currentSelectedEventJoinWindow?.isClosed && !attendee.hasStarted && !attendee.lateAllowed && !lateJoinAllowedAll);
+                  const isPermitted = attendee.lateAllowed || lateJoinAllowedAll;
+
+                  return (
+                    <div
+                      key={attendee.id}
+                      className="p-3 rounded-2xl bg-slate-50 dark:bg-zinc-900/80 border border-slate-200/80 dark:border-zinc-800 flex items-center justify-between gap-3 hover:border-blue-400 dark:hover:border-blue-700 transition-all"
+                    >
+                      <div className="flex items-center gap-3 min-w-0">
+                        {/* Avatar with dynamic gradient */}
+                        <div className="w-9 h-9 rounded-xl bg-gradient-to-tr from-blue-600 to-indigo-500 text-white font-black text-xs flex items-center justify-center shrink-0 shadow-sm">
+                          {(attendee.name || attendee.username || 'U').charAt(0).toUpperCase()}
+                        </div>
+
+                        <div className="min-w-0">
+                          <div className="flex items-center gap-1.5">
+                            <p className="text-xs font-bold text-slate-900 dark:text-white truncate">
+                              {attendee.name}
+                            </p>
+                            <span className="text-[10px] font-mono text-blue-600 dark:text-blue-400 font-semibold truncate">
+                              @{attendee.username}
+                            </span>
+                          </div>
+
+                          <div className="flex items-center gap-2 text-[10px] text-slate-400 dark:text-zinc-500 truncate">
+                            {attendee.phone && (
+                              <span className="flex items-center gap-0.5">
+                                <Phone className="w-2.5 h-2.5" />
+                                {attendee.phone}
+                              </span>
+                            )}
+                            {attendee.email && (
+                              <span className="flex items-center gap-0.5 truncate">
+                                <Mail className="w-2.5 h-2.5" />
+                                {attendee.email}
+                              </span>
+                            )}
+                          </div>
+                        </div>
                       </div>
 
-                      <div className="min-w-0">
-                        <div className="flex items-center gap-1.5">
-                          <p className="text-xs font-bold text-slate-900 dark:text-white truncate">
-                            {attendee.name}
-                          </p>
-                          <span className="text-[10px] font-mono text-blue-600 dark:text-blue-400 font-semibold truncate">
-                            @{attendee.username}
+                      {/* Status Badge & Late Join Controls */}
+                      <div className="shrink-0 text-right flex flex-col items-end gap-1">
+                        {attendee.isAttempting ? (
+                          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-amber-50 text-amber-700 border border-amber-200 dark:bg-amber-950/80 dark:text-amber-300 dark:border-amber-800 text-[10px] font-bold">
+                            <Flame className="w-3 h-3 text-amber-500 fill-amber-500" />
+                            Testing
                           </span>
-                        </div>
-
-                        <div className="flex items-center gap-2 text-[10px] text-slate-400 dark:text-zinc-500 truncate">
-                          {attendee.phone && (
-                            <span className="flex items-center gap-0.5">
-                              <Phone className="w-2.5 h-2.5" />
-                              {attendee.phone}
+                        ) : isPermitted ? (
+                          <div className="flex items-center gap-1.5">
+                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200 dark:bg-emerald-950/80 dark:text-emerald-300 dark:border-emerald-800 text-[10px] font-bold">
+                              <Unlock className="w-2.5 h-2.5 text-emerald-600" />
+                              Late Allowed
                             </span>
-                          )}
-                          {attendee.email && (
-                            <span className="flex items-center gap-0.5 truncate">
-                              <Mail className="w-2.5 h-2.5" />
-                              {attendee.email}
+                            {isAdmin && !lateJoinAllowedAll && (
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  handleRevokeLateJoin(attendee.id);
+                                }}
+                                disabled={lateActionLoading}
+                                title="Revoke late join permission"
+                                className="p-1 text-slate-400 hover:text-red-500 text-[10px] cursor-pointer"
+                              >
+                                <X className="w-3 h-3" />
+                              </button>
+                            )}
+                          </div>
+                        ) : isLockedOut ? (
+                          <div className="flex items-center gap-1.5">
+                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-red-50 text-red-700 border border-red-200 dark:bg-red-950/80 dark:text-red-300 dark:border-red-800 text-[10px] font-bold">
+                              <Lock className="w-2.5 h-2.5 text-red-500" />
+                              Late Locked (&gt;5m)
                             </span>
-                          )}
-                        </div>
+                            {isAdmin && (
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  handleAllowLateJoin(attendee.id, 'Admin approved late join');
+                                }}
+                                disabled={lateActionLoading}
+                                className="px-2 py-0.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-[10px] font-bold transition-all cursor-pointer flex items-center gap-1 shadow-sm"
+                              >
+                                <Unlock className="w-2.5 h-2.5" />
+                                Allow Join
+                              </button>
+                            )}
+                          </div>
+                        ) : (
+                          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200 dark:bg-emerald-950/80 dark:text-emerald-300 dark:border-emerald-800 text-[10px] font-bold">
+                            <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-ping"></span>
+                            Logged In
+                          </span>
+                        )}
                       </div>
                     </div>
-
-                    {/* Status Badge */}
-                    <div className="shrink-0 text-right">
-                      {attendee.isAttempting ? (
-                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-amber-50 text-amber-700 border border-amber-200 dark:bg-amber-950/80 dark:text-amber-300 dark:border-amber-800 text-[10px] font-bold">
-                          <Flame className="w-3 h-3 text-amber-500 fill-amber-500" />
-                          Testing
-                        </span>
-                      ) : (
-                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200 dark:bg-emerald-950/80 dark:text-emerald-300 dark:border-emerald-800 text-[10px] font-bold">
-                          <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-ping"></span>
-                          Logged In
-                        </span>
-                      )}
-                    </div>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             )}
 

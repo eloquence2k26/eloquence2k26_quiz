@@ -154,11 +154,11 @@ function App() {
         }
       />
 
-      {/* Schedule Management Route */}
+      {/* Schedule Management Route (Admin Only) */}
       <Route
         path="/schedule"
         element={
-          <ProtectedRoute>
+          <ProtectedRoute requiredRole="admin">
             <AppLayout>
               <ScheduleEventsPage />
             </AppLayout>

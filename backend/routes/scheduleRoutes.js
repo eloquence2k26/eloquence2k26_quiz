@@ -2,10 +2,16 @@ import express from 'express';
 import { supabase } from '../config/supabase.js';
 import { 
   getQuizzesFromDB, 
+  getQuizByIdFromDB,
   insertQuizToDB, 
   updateQuizInDB, 
   deleteQuizFromDB,
-  getUsersFromDB
+  getUsersFromDB,
+  allowLateJoinInDB,
+  revokeLateJoinInDB,
+  checkLateJoinPermission,
+  getLateJoinPermissionsForQuiz,
+  lateJoinCache
 } from '../config/db.js';
 
 const router = express.Router();
@@ -367,14 +373,87 @@ router.get('/:id/active-users', async (req, res) => {
       }
     });
 
+    // 5. Check 5-Minute Joining Window for Event
+    const quiz = await getQuizByIdFromDB(id);
+    const startTime = quiz ? new Date(quiz.start_date_time || quiz.start_time).getTime() : 0;
+    const isStarted = startTime > 0 && now >= startTime;
+    const joinWindowEnd = startTime + 5 * 60 * 1000;
+    const isJoinWindowClosed = isStarted && now > joinWindowEnd;
+    const secondsRemaining = isStarted && !isJoinWindowClosed ? Math.max(0, Math.floor((joinWindowEnd - now) / 1000)) : 0;
+
+    // 6. Enrich each participant with late-joining status
+    const enrichedParticipants = await Promise.all(
+      activeParticipants.map(async (attendee) => {
+        const hasStarted = Boolean(attendee.isAttempting && attendee.attemptStatus !== 'NOT_STARTED');
+        const lateAllowed = await checkLateJoinPermission(id, [attendee.id, attendee.email, attendee.phone]);
+        const isLateLocked = isJoinWindowClosed && !hasStarted && !lateAllowed;
+
+        return {
+          ...attendee,
+          hasStarted,
+          lateAllowed,
+          isLateLocked,
+          minutesLate: isJoinWindowClosed ? Math.ceil((now - joinWindowEnd) / 60000) : 0
+        };
+      })
+    );
+
     res.json({
       success: true,
       quizId: id,
-      count: activeParticipants.length,
-      users: activeParticipants
+      count: enrichedParticipants.length,
+      users: enrichedParticipants,
+      joinWindow: {
+        isStarted,
+        isJoinWindowClosed,
+        secondsRemaining,
+        joinWindowDurationMinutes: 5,
+        startTime: startTime ? new Date(startTime).toISOString() : null,
+        joinWindowEnd: startTime ? new Date(joinWindowEnd).toISOString() : null
+      },
+      lateJoinAllowedAll: lateJoinCache.has(`${id}__ALL`)
     });
   } catch (err) {
     console.error('Error fetching active users for schedule:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// POST /api/schedule/:id/allow-late-join - Admin permits late entry for participant or ALL
+router.post('/:id/allow-late-join', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { participantId, adminMessage } = req.body;
+    const result = await allowLateJoinInDB(id, participantId || 'ALL', adminMessage);
+    res.json(result);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// POST /api/schedule/:id/revoke-late-join - Admin revokes late entry
+router.post('/:id/revoke-late-join', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { participantId } = req.body;
+    const result = await revokeLateJoinInDB(id, participantId || 'ALL');
+    res.json(result);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// GET /api/schedule/:id/late-permissions - Get list of late-permitted participants
+router.get('/:id/late-permissions', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const permissions = await getLateJoinPermissionsForQuiz(id);
+    res.json({
+      success: true,
+      permissions,
+      allowedAll: lateJoinCache.has(`${id}__ALL`)
+    });
+  } catch (err) {
     res.status(500).json({ error: err.message });
   }
 });

@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { NavLink, useNavigate } from 'react-router-dom';
+import { NavLink, useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { ThemeToggle } from './ThemeToggle';
 import { 
@@ -17,13 +17,20 @@ import {
   CalendarClock,
   UserCheck,
   Layers,
-  Trophy
+  Trophy,
+  ChevronDown,
+  ShieldAlert
 } from 'lucide-react';
 
 export const Sidebar = () => {
   const { user, role, logout } = useAuth();
   const navigate = useNavigate();
+  const location = useLocation();
   const [mobileOpen, setMobileOpen] = useState(false);
+  const [quizMenuOpen, setQuizMenuOpen] = useState(true);
+
+  const searchParams = new URLSearchParams(location.search);
+  const currentTab = searchParams.get('tab') || 'quizzes';
 
   const handleLogout = async () => {
     await logout();
@@ -43,18 +50,45 @@ export const Sidebar = () => {
     },
     {
       name: 'Quiz Management',
-      path: '/admin/quizzes',
-      icon: Settings
+      icon: Settings,
+      isDropdown: true,
+      children: [
+        {
+          name: 'Quiz Events',
+          path: '/admin/quizzes?tab=quizzes',
+          tabId: 'quizzes',
+          icon: BookOpen
+        },
+        {
+          name: 'Question Management',
+          path: '/admin/quizzes?tab=questions',
+          tabId: 'questions',
+          icon: Layers
+        },
+        {
+          name: 'Participant Access',
+          path: '/admin/quizzes?tab=registrations',
+          tabId: 'registrations',
+          icon: UserCheck
+        },
+        {
+          name: 'All Results Overview',
+          path: '/admin/quizzes?tab=results',
+          tabId: 'results',
+          icon: Trophy
+        },
+        {
+          name: 'Security Violations Log',
+          path: '/admin/quizzes?tab=violations',
+          tabId: 'violations',
+          icon: ShieldAlert
+        }
+      ]
     },
     {
       name: 'Event Rounds',
       path: '/admin/rounds',
       icon: Layers
-    },
-    {
-      name: 'Participant Access',
-      path: '/admin/participant-access',
-      icon: UserCheck
     },
     {
       name: 'Next Round Filter',
@@ -85,11 +119,6 @@ export const Sidebar = () => {
       icon: LayoutDashboard
     },
     {
-      name: 'Schedule',
-      path: '/schedule',
-      icon: CalendarClock
-    },
-    {
       name: 'My Quizzes',
       path: '/participant/quizzes',
       icon: BookOpen
@@ -116,7 +145,7 @@ export const Sidebar = () => {
           <ThemeToggle />
           <button
             onClick={() => setMobileOpen(!mobileOpen)}
-            className="p-2 rounded-xl bg-slate-100 dark:bg-zinc-800 text-slate-700 dark:text-zinc-300 hover:bg-slate-200 dark:hover:bg-zinc-700 transition-colors"
+            className="p-2 rounded-xl bg-slate-100 dark:bg-zinc-800 text-slate-700 dark:text-zinc-300 hover:bg-slate-200 dark:hover:bg-zinc-700 transition-colors cursor-pointer"
             aria-label="Toggle navigation menu"
           >
             {mobileOpen ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
@@ -163,6 +192,65 @@ export const Sidebar = () => {
             </p>
             {navItems.map((item) => {
               const Icon = item.icon;
+
+              if (item.isDropdown) {
+                const isParentActive =
+                  location.pathname.startsWith('/admin/quizzes') ||
+                  location.pathname === '/admin/participant-access';
+
+                return (
+                  <div key={item.name} className="space-y-1">
+                    <button
+                      type="button"
+                      onClick={() => setQuizMenuOpen((prev) => !prev)}
+                      className={`w-full flex items-center justify-between px-3.5 py-2.5 rounded-xl text-xs sm:text-sm font-semibold transition-all duration-150 cursor-pointer ${
+                        isParentActive
+                          ? 'bg-blue-50 text-blue-700 border border-blue-200 dark:bg-blue-950/60 dark:text-blue-400 dark:border-blue-800/80 shadow-sm'
+                          : 'text-slate-600 dark:text-zinc-400 hover:text-blue-600 dark:hover:text-blue-400 hover:bg-blue-50/50 dark:hover:bg-zinc-900'
+                      }`}
+                    >
+                      <div className="flex items-center gap-3">
+                        <Icon className="w-4 h-4 shrink-0" />
+                        <span>{item.name}</span>
+                      </div>
+                      <ChevronDown
+                        className={`w-4 h-4 shrink-0 transition-transform duration-200 ${
+                          quizMenuOpen ? 'rotate-180 text-blue-600 dark:text-blue-400' : 'text-slate-400 dark:text-zinc-500'
+                        }`}
+                      />
+                    </button>
+
+                    {quizMenuOpen && (
+                      <div className="pl-3 ml-3.5 border-l-2 border-slate-200 dark:border-zinc-800 space-y-1 pt-1 animate-in fade-in duration-150">
+                        {item.children.map((child) => {
+                          const ChildIcon = child.icon;
+                          const isChildActive =
+                            location.pathname === '/admin/quizzes'
+                              ? currentTab === child.tabId
+                              : child.tabId === 'registrations' && location.pathname === '/admin/participant-access';
+
+                          return (
+                            <NavLink
+                              key={child.path}
+                              to={child.path}
+                              onClick={() => setMobileOpen(false)}
+                              className={`flex items-center gap-2.5 px-3 py-2 rounded-lg text-xs font-semibold transition-all duration-150 ${
+                                isChildActive
+                                  ? 'bg-blue-600 text-white font-bold shadow-sm shadow-blue-500/20'
+                                  : 'text-slate-600 dark:text-zinc-400 hover:text-blue-600 dark:hover:text-blue-400 hover:bg-blue-50/50 dark:hover:bg-zinc-900'
+                              }`}
+                            >
+                              <ChildIcon className="w-3.5 h-3.5 shrink-0" />
+                              <span className="truncate">{child.name}</span>
+                            </NavLink>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </div>
+                );
+              }
+
               return (
                 <NavLink
                   key={item.path}

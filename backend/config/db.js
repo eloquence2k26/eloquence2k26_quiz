@@ -676,6 +676,141 @@ export const setParticipantAccessByQuizAndUser = async (quizId, participantId, a
   }
 };
 
+// =========================================================================
+// Late Join Permission Cache & DB Handlers (5-Minute Window Rule)
+// =========================================================================
+export const lateJoinCache = new Map();
+
+export const allowLateJoinInDB = async (quizId, participantId, adminMessage = 'Late entry permitted by administrator') => {
+  try {
+    const qid = String(quizId);
+    if (!participantId || participantId === 'ALL') {
+      lateJoinCache.set(`${qid}__ALL`, { quizId: qid, participantId: 'ALL', adminMessage, grantedAt: new Date().toISOString() });
+    } else {
+      const pid = String(participantId).toLowerCase();
+      lateJoinCache.set(`${qid}__${pid}`, { quizId: qid, participantId: pid, adminMessage, grantedAt: new Date().toISOString() });
+    }
+
+    // Persist to Supabase retest_permissions table with status = 'late_join_granted'
+    try {
+      const permId = `late_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`;
+      await supabase.from('retest_permissions').insert([{
+        id: permId,
+        quiz_id: qid,
+        participant_id: participantId === 'ALL' ? 'ALL' : String(participantId),
+        status: 'late_join_granted',
+        reason: 'Late join authorized by admin',
+        admin_message: adminMessage
+      }]);
+    } catch (persistErr) {
+      console.warn('Supabase persist late join warning:', persistErr.message);
+    }
+
+    return { success: true, message: 'Late entry permission granted' };
+  } catch (err) {
+    console.error('allowLateJoinInDB error:', err);
+    return { success: false, error: err.message };
+  }
+};
+
+export const revokeLateJoinInDB = async (quizId, participantId) => {
+  try {
+    const qid = String(quizId);
+    if (!participantId || participantId === 'ALL') {
+      lateJoinCache.delete(`${qid}__ALL`);
+    } else {
+      const pid = String(participantId).toLowerCase();
+      lateJoinCache.delete(`${qid}__${pid}`);
+    }
+
+    try {
+      await supabase.from('retest_permissions')
+        .update({ status: 'denied' })
+        .eq('quiz_id', qid)
+        .eq('participant_id', String(participantId))
+        .eq('status', 'late_join_granted');
+    } catch (revokeErr) {
+      console.warn('Supabase revoke late join warning:', revokeErr.message);
+    }
+
+    return { success: true, message: 'Late entry permission revoked' };
+  } catch (err) {
+    return { success: false, error: err.message };
+  }
+};
+
+export const checkLateJoinPermission = async (quizId, identifiers) => {
+  const qid = String(quizId);
+  if (lateJoinCache.has(`${qid}__ALL`)) return true;
+
+  const idList = Array.isArray(identifiers) ? identifiers : [identifiers];
+  for (const id of idList) {
+    if (!id) continue;
+    const cleanId = String(id).toLowerCase();
+    if (lateJoinCache.has(`${qid}__${cleanId}`)) return true;
+  }
+
+  // Also query Supabase retest_permissions if not found in cache
+  try {
+    const { data } = await supabase
+      .from('retest_permissions')
+      .select('*')
+      .eq('quiz_id', qid)
+      .eq('status', 'late_join_granted');
+
+    if (data && data.length > 0) {
+      for (const r of data) {
+        if (r.participant_id === 'ALL') {
+          lateJoinCache.set(`${qid}__ALL`, r);
+          return true;
+        }
+        for (const id of idList) {
+          if (String(r.participant_id).toLowerCase() === String(id).toLowerCase()) {
+            lateJoinCache.set(`${qid}__${String(id).toLowerCase()}`, r);
+            return true;
+          }
+        }
+      }
+    }
+  } catch (err) {
+    // silently fallback
+  }
+
+  return false;
+};
+
+export const getLateJoinPermissionsForQuiz = async (quizId) => {
+  const qid = String(quizId);
+  const permissions = [];
+
+  for (const [key, val] of lateJoinCache.entries()) {
+    if (key.startsWith(`${qid}__`)) {
+      permissions.push(val);
+    }
+  }
+
+  try {
+    const { data } = await supabase
+      .from('retest_permissions')
+      .select('*')
+      .eq('quiz_id', qid)
+      .eq('status', 'late_join_granted');
+
+    (data || []).forEach((r) => {
+      if (!permissions.some((p) => String(p.participantId).toLowerCase() === String(r.participant_id).toLowerCase())) {
+        permissions.push({
+          quizId: r.quiz_id,
+          participantId: r.participant_id,
+          adminMessage: r.admin_message,
+          grantedAt: r.created_at || r.granted_at
+        });
+      }
+    });
+  } catch {}
+
+  return permissions;
+};
+
 // Check participant access status for a quiz live in Supabase DB
 export const checkParticipantQuizAccess = async (participantId, quizId) => {
   try {
@@ -729,14 +864,57 @@ export const checkParticipantQuizAccess = async (participantId, quizId) => {
     const endTime = new Date(quiz.end_date_time || quiz.end_time);
 
     if (now < startTime) {
-      return { canStart: false, reason: `Quiz has not started yet. Scheduled for ${startTime.toLocaleString()}`, status: 'not_started_yet' };
+      return { 
+        canStart: false, 
+        reason: `Quiz has not started yet. Scheduled for ${startTime.toLocaleString()}`, 
+        status: 'not_started_yet',
+        startTime: startTime.toISOString()
+      };
     }
 
     if (now > endTime) {
-      return { canStart: false, reason: 'Quiz window has expired', status: 'expired' };
+      return { 
+        canStart: false, 
+        reason: 'Quiz window has expired', 
+        status: 'expired',
+        endTime: endTime.toISOString()
+      };
     }
 
-    // 5. Check Retest Approvals
+    // 5. Check Past Attempts & Ongoing Attempts
+    const { data: attemptsData } = await supabase
+      .from('quiz_attempts')
+      .select('*')
+      .eq('quiz_id', quizId);
+
+    const userAttempts = (attemptsData || []).filter((a) => identifiers.includes(String(a.participant_id)));
+    const ongoingAttempt = userAttempts.find((a) => a.status === 'IN_PROGRESS');
+
+    // 6. Check 5-Minute Joining Window
+    // Once event starts, participants have 5 minutes to join.
+    // If > 5 minutes have elapsed, only participants who already joined or who have admin permission can join!
+    const joinWindowMinutes = 5;
+    const joinWindowEnd = new Date(startTime.getTime() + joinWindowMinutes * 60000);
+    const isLateJoin = now > joinWindowEnd;
+    let lateJoinApproved = false;
+
+    if (isLateJoin && !ongoingAttempt) {
+      lateJoinApproved = await checkLateJoinPermission(quizId, identifiers);
+      if (!lateJoinApproved) {
+        const minutesLate = Math.ceil((now.getTime() - joinWindowEnd.getTime()) / 60000);
+        return {
+          canStart: false,
+          reason: `Joining window closed (${minutesLate} min${minutesLate === 1 ? '' : 's'} late). Participants must join within 5 minutes of event start. Only an administrator can permit late entry.`,
+          status: 'late_locked',
+          isLateLocked: true,
+          joinWindowEnd: joinWindowEnd.toISOString(),
+          startTime: startTime.toISOString(),
+          minutesLate
+        };
+      }
+    }
+
+    // 7. Check Retest Approvals
     const { data: retestData } = await supabase
       .from('retest_permissions')
       .select('*')
@@ -745,13 +923,6 @@ export const checkParticipantQuizAccess = async (participantId, quizId) => {
 
     const approvedRetest = (retestData || []).find((r) => identifiers.includes(String(r.participant_id)));
 
-    // 6. Check Past Attempts
-    const { data: attemptsData } = await supabase
-      .from('quiz_attempts')
-      .select('*')
-      .eq('quiz_id', quizId);
-
-    const userAttempts = (attemptsData || []).filter((a) => identifiers.includes(String(a.participant_id)));
     const terminatedAttempt = userAttempts.find((a) => a.status === 'TERMINATED');
 
     if (terminatedAttempt && !approvedRetest) {
@@ -767,9 +938,12 @@ export const checkParticipantQuizAccess = async (participantId, quizId) => {
 
     return { 
       canStart: true, 
-      reason: 'Access Authorized by Admin', 
+      reason: lateJoinApproved ? 'Late Entry Authorized by Admin' : 'Access Authorized by Admin', 
       status: 'authorized', 
-      approvedRetest: approvedRetest || null 
+      approvedRetest: approvedRetest || null,
+      lateJoinApproved: Boolean(lateJoinApproved),
+      joinWindowEnd: joinWindowEnd.toISOString(),
+      isWithinJoinWindow: !isLateJoin
     };
   } catch (err) {
     console.error('Supabase checkParticipantQuizAccess exception:', err.message);

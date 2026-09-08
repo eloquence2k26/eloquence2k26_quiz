@@ -37,7 +37,12 @@ export const getParticipantQuizzes = async (req, res) => {
           accessStatus: access.status,
           canStart: access.canStart,
           reason: access.reason,
-          approvedRetest: access.approvedRetest || null
+          approvedRetest: access.approvedRetest || null,
+          isLateLocked: access.isLateLocked || false,
+          lateJoinApproved: access.lateJoinApproved || false,
+          isWithinJoinWindow: access.isWithinJoinWindow !== undefined ? access.isWithinJoinWindow : true,
+          joinWindowEnd: access.joinWindowEnd || null,
+          minutesLate: access.minutesLate || 0
         };
       })
     );
@@ -167,6 +172,25 @@ export const requestRetestPermission = async (req, res) => {
 
     const request = await requestRetest(participantId, id, reason);
     res.json({ success: true, retest: request });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+};
+
+// POST /api/participant/quizzes/:id/request-late-join - Request late join permission
+export const requestLateJoinPermission = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { reason } = req.body;
+    const participantId = req.body.participantId || req.body.userId || req.headers['x-user-id'] || 'user-demo-1';
+
+    const reqMsg = reason || 'Participant arrived late (>5 mins after event start) and requested late-entry permission.';
+    const request = await requestRetest(participantId, id, `[LATE JOIN REQUEST] ${reqMsg}`);
+    res.json({ 
+      success: true, 
+      request, 
+      message: 'Late entry permission request submitted to administrator.' 
+    });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }

@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { 
   Settings, 
@@ -43,15 +44,20 @@ import { parseQuestionFile, parseUserFile } from '../utils/fileParser';
 export const AdminQuizManagement = ({ initialTab = 'quizzes' }) => {
   const { user, registeredUsers, fetchUsers } = useAuth();
   const { toast } = useToast();
+  const [searchParams, setSearchParams] = useSearchParams();
+
+  const tabQuery = searchParams.get('tab');
 
   // Active Tab: 'quizzes' | 'questions' | 'registrations' | 'submissions' | 'results' | 'violations' | 'retests'
-  const [activeTab, setActiveTab] = useState(initialTab);
+  const [activeTab, setActiveTab] = useState(tabQuery || initialTab || 'quizzes');
 
   useEffect(() => {
-    if (initialTab) {
+    if (tabQuery) {
+      setActiveTab(tabQuery);
+    } else if (initialTab) {
       setActiveTab(initialTab);
     }
-  }, [initialTab]);
+  }, [tabQuery, initialTab]);
 
   // Main Data States
   const [quizzes, setQuizzes] = useState([]);
@@ -730,37 +736,6 @@ export const AdminQuizManagement = ({ initialTab = 'quizzes' }) => {
             <span>{statusMsg}</span>
           </div>
         )}
-
-        {/* Navigation Tabs */}
-        <div className="flex overflow-x-auto pb-1 gap-2 pt-4 border-t border-slate-200 dark:border-zinc-800 scrollbar-none">
-          {[
-            { id: 'quizzes', label: 'Quiz Events', icon: BookOpen, count: quizzes.length },
-            { id: 'questions', label: 'Question Management', icon: Layers, count: questions.length },
-            { id: 'registrations', label: 'Participant Access', icon: Users, count: registrations.length },
-            { id: 'results', label: 'All Results Overview', icon: Award, count: results.length },
-            { id: 'violations', label: 'Security Violations Log', icon: ShieldAlert, count: violations.length }
-          ].map((tab) => {
-            const Icon = tab.icon;
-            const isActive = activeTab === tab.id;
-            return (
-              <button
-                key={tab.id}
-                onClick={() => setActiveTab(tab.id)}
-                className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs font-bold transition-all cursor-pointer shrink-0 whitespace-nowrap ${
-                  isActive
-                    ? 'bg-blue-600 text-white shadow-md shadow-blue-500/20'
-                    : 'bg-slate-100 hover:bg-slate-200 dark:bg-zinc-900 dark:hover:bg-zinc-800 text-slate-700 dark:text-zinc-300 border border-slate-200 dark:border-zinc-800'
-                }`}
-              >
-                <Icon className="w-4 h-4" />
-                <span>{tab.label}</span>
-                <span className={`px-2 py-0.5 rounded-full text-[10px] ${isActive ? 'bg-white/20 text-white' : 'bg-slate-200 dark:bg-zinc-800 text-slate-600 dark:text-zinc-400'}`}>
-                  {tab.count}
-                </span>
-              </button>
-            );
-          })}
-        </div>
       </section>
 
       {/* QUIZ SELECTOR BANNER FOR QUESTION, SUBMISSION, & REGISTRATION TABS */}
