@@ -1,48 +1,72 @@
-@import url('https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap');
-@import "tailwindcss";
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
 
-@custom-variant dark (&:where(.dark, .dark *));
+@layer base {
+  body {
+    font-family: 'Inter', system-ui, sans-serif;
+    user-select: none;
+    -webkit-user-select: none;
+  }
 
-:root {
-  font-family: 'Outfit', 'Plus Jakarta Sans', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
-  color-scheme: light;
+  input, textarea, select {
+    user-select: text;
+    -webkit-user-select: text;
+  }
 }
 
-:root.dark, html.dark {
-  color-scheme: dark;
+/* Custom scrollbar */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
 }
 
-::selection {
-  background-color: #3b82f6;
-  color: #ffffff;
+::-webkit-scrollbar-track {
+  background: transparent;
 }
 
-/* White Theme with Blue Accent (Default Light) */
-body {
-  margin: 0;
-  min-height: 100vh;
-  background-color: #f8fafc;
-  color: #0f172a;
-  transition: background-color 0.2s ease, color 0.2s ease, border-color 0.2s ease;
+::-webkit-scrollbar-thumb {
+  background: #cbd5e1;
+  border-radius: 9999px;
 }
 
-/* Black Theme with Blue Accent (Dark) */
-html.dark body, body.dark {
-  background-color: #000000;
-  color: #ffffff;
+.dark ::-webkit-scrollbar-thumb {
+  background: #334155;
 }
 
-/* White Card with Blue Accent in Light Mode, Black Card with Blue Accent in Dark Mode */
-.basic-card {
-  background-color: #ffffff;
-  border: 1px solid #e2e8f0;
-  border-radius: 1rem;
-  box-shadow: 0 4px 20px -2px rgba(37, 99, 235, 0.05), 0 2px 6px -1px rgba(0, 0, 0, 0.04);
-  transition: all 0.2s ease;
+/* Glassmorphism helpers */
+.glass-panel {
+  background: rgba(255, 255, 255, 0.85);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid rgba(226, 232, 240, 0.8);
 }
 
-html.dark .basic-card, .dark .basic-card {
-  background-color: #0d0f12;
-  border: 1px solid #1e293b;
-  box-shadow: 0 4px 25px -2px rgba(0, 0, 0, 0.8), 0 0 15px -3px rgba(37, 99, 235, 0.12);
+.dark .glass-panel {
+  background: rgba(15, 23, 42, 0.85);
+  border: 1px solid rgba(51, 65, 85, 0.6);
+}
+
+/* Fullscreen exam mode helper */
+.exam-arena-no-select {
+  user-select: none !important;
+  -webkit-user-select: none !important;
+  -moz-user-select: none !important;
+  -ms-user-select: none !important;
+}
+
+/* Pulse animation for live proctoring badge */
+@keyframes soft-pulse {
+  0%, 100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 0.7;
+    transform: scale(1.05);
+  }
+}
+
+.animate-soft-pulse {
+  animation: soft-pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
 }

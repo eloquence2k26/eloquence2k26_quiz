@@ -1,0 +1,33 @@
+export const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:5001';
+export const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL || 'https://wsduykedgwqkcqqazqsv.supabase.co';
+export const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6IndzZHV5a2VkZ3dxa2NxcWF6cXN2Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODgzMjY1MDIsImV4cCI6MjEwMzkwMjUwMn0.eGJpCp_aeK6i3zazyTFjaW3J2VYAaMnkFUHDVoIpqAw';
+
+export const USER_ROLES = {
+  ADMIN: 'ADMIN',
+  PARTICIPANT: 'PARTICIPANT'
+};
+
+export const QUIZ_STATUSES = {
+  DRAFT: 'Draft',
+  SCHEDULED: 'Scheduled',
+  PUBLISHED: 'Published',
+  LIVE: 'Live',
+  COMPLETED: 'Completed',
+  CLOSED: 'Closed'
+};
+
+export const VIOLATION_TYPES = {
+  TAB_SWITCH: 'TAB_SWITCH',
+  WINDOW_BLUR: 'WINDOW_BLUR',
+  FULLSCREEN_EXIT: 'FULLSCREEN_EXIT',
+  COPY: 'COPY',
+  PASTE: 'PASTE',
+  CUT: 'CUT',
+  RIGHT_CLICK: 'RIGHT_CLICK',
+  SHORTCUT: 'SHORTCUT',
+  MULTIPLE_SESSION: 'MULTIPLE_SESSION',
+  NETWORK_DISCONNECT: 'NETWORK_DISCONNECT',
+  REFRESH: 'REFRESH',
+  BACK_NAVIGATION: 'BACK_NAVIGATION',
+  SUSPICIOUS_ACTIVITY: 'SUSPICIOUS_ACTIVITY'
+};

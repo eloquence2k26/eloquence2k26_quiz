@@ -1,36 +1,32 @@
-import React, { createContext, useContext, useState, useEffect } from 'react';
+import React, { createContext, useContext, useEffect, useState } from 'react';
 
-const ThemeContext = createContext();
+const ThemeContext = createContext(null);
 
 export const ThemeProvider = ({ children }) => {
+  // Default to light (white theme) as requested
   const [theme, setTheme] = useState(() => {
-    const savedTheme = localStorage.getItem('eloquence_theme');
-    return savedTheme ? savedTheme : 'light';
+    const saved = localStorage.getItem('eloquence_theme');
+    return saved ? saved : 'light';
   });
 
   useEffect(() => {
     const root = document.documentElement;
-    const body = document.body;
     if (theme === 'dark') {
       root.classList.add('dark');
-      body?.classList.add('dark');
-      root.setAttribute('data-theme', 'dark');
-      root.style.colorScheme = 'dark';
+      root.classList.remove('light');
     } else {
+      root.classList.add('light');
       root.classList.remove('dark');
-      body?.classList.remove('dark');
-      root.setAttribute('data-theme', 'light');
-      root.style.colorScheme = 'light';
     }
     localStorage.setItem('eloquence_theme', theme);
   }, [theme]);
 
   const toggleTheme = () => {
-    setTheme(prev => (prev === 'light' ? 'dark' : 'light'));
+    setTheme((prev) => (prev === 'dark' ? 'light' : 'dark'));
   };
 
   return (
-    <ThemeContext.Provider value={{ theme, toggleTheme }}>
+    <ThemeContext.Provider value={{ theme, toggleTheme, isDark: theme === 'dark' }}>
       {children}
     </ThemeContext.Provider>
   );
@@ -39,7 +35,7 @@ export const ThemeProvider = ({ children }) => {
 export const useTheme = () => {
   const context = useContext(ThemeContext);
   if (!context) {
-    throw new Error('useTheme must be used within a ThemeProvider');
+    throw new Error('useTheme must be used within ThemeProvider');
   }
   return context;
 };

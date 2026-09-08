@@ -1,4 +1,0 @@
-{
-  "watch": ["index.js", "routes"],
-  "ignore": ["data", "data/*", "*.json", "node_modules"]
-}
