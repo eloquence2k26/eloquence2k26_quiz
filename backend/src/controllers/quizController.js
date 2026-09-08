@@ -129,11 +129,25 @@ class QuizController {
         return error(res, 'Title, start date, and end date are required', 400);
       }
 
+      const numRound = Number(round_number) || 1;
+      let roundRecord = db.find('rounds', (r) => r.round_number === numRound);
+      if (!roundRecord) {
+        roundRecord = db.insert('rounds', {
+          event_id: 'c0000000-0000-0000-0000-000000000001',
+          round_number: numRound,
+          round_name: `Round ${numRound}`,
+          description: `Symposium Examination Round ${numRound}`,
+          is_active: true,
+          is_published: ['Published', 'Live'].includes(status)
+        });
+      }
+
       const newQuiz = db.insert('quizzes', {
         title,
         description,
         event_name,
-        round_number: Number(round_number),
+        round_id: roundRecord.id,
+        round_number: numRound,
         total_questions: question_ids.length,
         duration_minutes: Number(duration_minutes),
         start_date,
@@ -196,6 +210,23 @@ class QuizController {
         });
         updates.total_questions = updates.question_ids.length;
         delete updates.question_ids;
+      }
+
+      if (updates.round_number !== undefined) {
+        const numRound = Number(updates.round_number) || 1;
+        updates.round_number = numRound;
+        let roundRecord = db.find('rounds', (r) => r.round_number === numRound);
+        if (!roundRecord) {
+          roundRecord = db.insert('rounds', {
+            event_id: 'c0000000-0000-0000-0000-000000000001',
+            round_number: numRound,
+            round_name: `Round ${numRound}`,
+            description: `Symposium Examination Round ${numRound}`,
+            is_active: true,
+            is_published: false
+          });
+        }
+        updates.round_id = roundRecord.id;
       }
 
       const updated = db.update('quizzes', (q) => q.id === id, updates);

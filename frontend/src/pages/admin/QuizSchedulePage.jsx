@@ -22,7 +22,7 @@ import {
 import { quizService } from '../../services/quizService';
 import { adminService } from '../../services/adminService';
 import { useToast } from '../../context/ToastContext';
-import { formatDate } from '../../utils/formatters';
+import { formatDate, getRoundBadgeVariant } from '../../utils/formatters';
 import Badge from '../../components/common/Badge';
 import Loading from '../../components/common/Loading';
 import ModifyScheduleModal from '../../components/admin/ModifyScheduleModal';
@@ -205,6 +205,12 @@ export default function QuizSchedulePage() {
     }
   };
 
+  // Distinct rounds present in quizzes
+  const distinctRounds = Array.from(
+    new Set(quizzes.map((q) => Number(q.round_number)).filter(Boolean))
+  ).sort((a, b) => a - b);
+  if (distinctRounds.length === 0) distinctRounds.push(1, 2);
+
   // Filter Quizzes
   const filteredQuizzes = quizzes.filter((q) => {
     const matchesRound = filterRound === 'ALL' || q.round_number === parseInt(filterRound);
@@ -314,8 +320,11 @@ export default function QuizSchedulePage() {
               className="px-2.5 py-1.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-xs font-semibold text-slate-700 dark:text-slate-200"
             >
               <option value="ALL">All Rounds</option>
-              <option value="1">Round 1 (Prelims)</option>
-              <option value="2">Round 2 (Grand Finals)</option>
+              {distinctRounds.map((r) => (
+                <option key={r} value={r}>
+                  Round {r} {r === 1 ? '(Prelims)' : r === 2 ? '(Grand Finals)' : ''}
+                </option>
+              ))}
             </select>
           </div>
 
@@ -373,8 +382,8 @@ export default function QuizSchedulePage() {
                   {/* Left: Info & Badges */}
                   <div className="space-y-2 flex-1">
                     <div className="flex flex-wrap items-center gap-2">
-                      <Badge variant={q.round_number === 2 ? 'purple' : 'primary'} size="sm">
-                        Round {q.round_number} {q.round_number === 2 ? '• Grand Finals' : '• Screening'}
+                      <Badge variant={getRoundBadgeVariant(q.round_number)} size="sm">
+                        Round {q.round_number} {q.round_number === 1 ? '• Screening' : q.round_number === 2 ? '• Grand Finals' : ''}
                       </Badge>
 
                       <Badge

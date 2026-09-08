@@ -39,3 +39,21 @@ export function formatDateTime(dateString) {
     return dateString;
   }
 }
+
+export function getRoundBadgeVariant(roundNumber) {
+  const r = Number(roundNumber);
+  switch (r) {
+    case 1:
+      return 'primary';
+    case 2:
+      return 'purple';
+    case 3:
+      return 'warning';
+    case 4:
+      return 'success';
+    case 5:
+      return 'danger';
+    default:
+      return 'default';
+  }
+}

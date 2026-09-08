@@ -37,7 +37,7 @@ export default function AdminLayout() {
     { label: 'Live Exams', icon: Activity, path: '/admin/live-exams' },
     { label: 'Results', icon: Award, path: '/admin/results' },
     { label: 'Round Selection', icon: Filter, path: '/admin/round-selection' },
-    { label: 'Second Round', icon: Layers, path: '/admin/second-round' },
+    { label: 'Rounds', icon: Layers, path: '/admin/rounds' },
     { label: 'Announcements', icon: Bell, path: '/admin/announcements' },
     { label: 'Security Violations', icon: ShieldAlert, path: '/admin/violations' },
     { label: 'Reports', icon: FileSpreadsheet, path: '/admin/reports' },

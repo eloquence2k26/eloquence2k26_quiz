@@ -1,9 +1,15 @@
 import React, { useState, useEffect } from 'react';
-import { Calendar, Clock, AlertCircle, CheckCircle2, Send, Layers } from 'lucide-react';
+import { Calendar, Clock, AlertCircle, CheckCircle2, Send, Layers, Plus } from 'lucide-react';
 import Modal from '../common/Modal';
 import Badge from '../common/Badge';
+import { adminService } from '../../services/adminService';
 
 export default function ModifyScheduleModal({ isOpen, onClose, onSave, quiz }) {
+  const [roundsList, setRoundsList] = useState([
+    { round_number: 1, round_name: 'Round 1 (Prelims)' },
+    { round_number: 2, round_name: 'Round 2 (Grand Finals)' }
+  ]);
+
   const [formData, setFormData] = useState({
     round_number: 1,
     start_date: '',
@@ -14,6 +20,38 @@ export default function ModifyScheduleModal({ isOpen, onClose, onSave, quiz }) {
     status: 'Scheduled'
   });
   const [validationError, setValidationError] = useState('');
+
+  useEffect(() => {
+    if (isOpen) {
+      adminService
+        .getRounds()
+        .then((res) => {
+          if (res.success && res.data && res.data.length > 0) {
+            setRoundsList((prev) => {
+              const combined = [...prev];
+              res.data.forEach((r) => {
+                const num = Number(r.round_number);
+                if (!combined.some((c) => c.round_number === num)) {
+                  combined.push({
+                    round_number: num,
+                    round_name: r.round_name || `Round ${num}`
+                  });
+                }
+              });
+              if (quiz?.round_number && !combined.some((c) => c.round_number === Number(quiz.round_number))) {
+                combined.push({
+                  round_number: Number(quiz.round_number),
+                  round_name: `Round ${quiz.round_number}`
+                });
+              }
+              combined.sort((a, b) => a.round_number - b.round_number);
+              return combined;
+            });
+          }
+        })
+        .catch(() => {});
+    }
+  }, [isOpen, quiz]);
 
   useEffect(() => {
     if (quiz) {
@@ -35,6 +73,28 @@ export default function ModifyScheduleModal({ isOpen, onClose, onSave, quiz }) {
       setValidationError('');
     }
   }, [quiz, isOpen]);
+
+  const handleAddNextRound = async () => {
+    const highestRound = Math.max(...roundsList.map((r) => r.round_number), 0);
+    const nextNum = highestRound + 1;
+    const newRoundItem = {
+      round_number: nextNum,
+      round_name: `Round ${nextNum}`
+    };
+
+    setRoundsList((prev) => [...prev, newRoundItem].sort((a, b) => a.round_number - b.round_number));
+    setFormData((prev) => ({
+      ...prev,
+      round_number: nextNum
+    }));
+
+    try {
+      await adminService.createRound({
+        round_number: nextNum,
+        round_name: `Round ${nextNum}`
+      });
+    } catch (e) {}
+  };
 
   if (!quiz) return null;
 
@@ -147,33 +207,31 @@ export default function ModifyScheduleModal({ isOpen, onClose, onSave, quiz }) {
         {/* Round & Status Selection */}
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <div>
-            <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wider mb-1.5">
-              Round Assignment
-            </label>
-            <div className="grid grid-cols-2 gap-2">
+            <div className="flex items-center justify-between mb-1.5">
+              <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wider">
+                Round Assignment
+              </label>
               <button
                 type="button"
-                onClick={() => setFormData({ ...formData, round_number: 1 })}
-                className={`py-2 px-3 rounded-xl text-xs font-bold border transition-all ${
-                  formData.round_number === 1
-                    ? 'bg-blue-50 dark:bg-blue-950/70 border-brand-500 text-brand-600 dark:text-brand-400 shadow-sm'
-                    : 'bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-400 hover:bg-slate-50'
-                }`}
+                onClick={handleAddNextRound}
+                className="inline-flex items-center gap-1 text-[10px] font-bold text-brand-600 dark:text-brand-400 hover:text-brand-700 dark:hover:text-brand-300"
+                title={`Add Round ${Math.max(...roundsList.map((r) => r.round_number), 0) + 1}`}
               >
-                Round 1 (Prelims)
-              </button>
-              <button
-                type="button"
-                onClick={() => setFormData({ ...formData, round_number: 2 })}
-                className={`py-2 px-3 rounded-xl text-xs font-bold border transition-all ${
-                  formData.round_number === 2
-                    ? 'bg-purple-50 dark:bg-purple-950/70 border-purple-500 text-purple-600 dark:text-purple-400 shadow-sm'
-                    : 'bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-400 hover:bg-slate-50'
-                }`}
-              >
-                Round 2 (Finals)
+                <Plus className="w-3 h-3" />
+                <span>+ Round {Math.max(...roundsList.map((r) => r.round_number), 0) + 1}</span>
               </button>
             </div>
+            <select
+              value={formData.round_number}
+              onChange={(e) => setFormData({ ...formData, round_number: parseInt(e.target.value) })}
+              className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-xs font-bold text-brand-600 dark:text-brand-400"
+            >
+              {roundsList.map((r) => (
+                <option key={r.round_number} value={r.round_number}>
+                  {r.round_name || `Round ${r.round_number}`}
+                </option>
+              ))}
+            </select>
           </div>
 
           <div>

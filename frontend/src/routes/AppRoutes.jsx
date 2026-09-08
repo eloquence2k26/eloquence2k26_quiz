@@ -34,6 +34,7 @@ import QuizSchedulePage from '../pages/admin/QuizSchedulePage';
 import LiveExamsPage from '../pages/admin/LiveExamsPage';
 import ResultsPage from '../pages/admin/ResultsPage';
 import RoundSelectionPage from '../pages/admin/RoundSelectionPage';
+import RoundsPage from '../pages/admin/RoundsPage';
 import SecondRoundPage from '../pages/admin/SecondRoundPage';
 import AnnouncementsPage from '../pages/admin/AnnouncementsPage';
 import ViolationsPage from '../pages/admin/ViolationsPage';
@@ -79,7 +80,8 @@ export default function AppRoutes() {
           <Route path="/admin/live-exams" element={<LiveExamsPage />} />
           <Route path="/admin/results" element={<ResultsPage />} />
           <Route path="/admin/round-selection" element={<RoundSelectionPage />} />
-          <Route path="/admin/second-round" element={<SecondRoundPage />} />
+          <Route path="/admin/rounds" element={<RoundsPage />} />
+          <Route path="/admin/second-round" element={<Navigate to="/admin/rounds" replace />} />
           <Route path="/admin/announcements" element={<AnnouncementsPage />} />
           <Route path="/admin/violations" element={<ViolationsPage />} />
           <Route path="/admin/reports" element={<ReportsPage />} />

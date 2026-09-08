@@ -77,6 +77,27 @@ export const adminService = {
     return res.data;
   },
 
+  // Rounds Management
+  getRounds: async () => {
+    const res = await api.get('/rounds');
+    return res.data;
+  },
+
+  createRound: async (roundData) => {
+    const res = await api.post('/rounds', roundData);
+    return res.data;
+  },
+
+  updateRound: async (id, roundData) => {
+    const res = await api.put(`/rounds/${id}`, roundData);
+    return res.data;
+  },
+
+  deleteRound: async (id, force = false) => {
+    const res = await api.delete(`/rounds/${id}${force ? '?force=true' : ''}`);
+    return res.data;
+  },
+
   // Round 1 -> Round 2 Selection
   getRound1Ranking: async () => {
     const res = await api.get('/rounds/round1-ranking');

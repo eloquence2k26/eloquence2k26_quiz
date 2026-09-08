@@ -6,14 +6,15 @@ import QuestionModal from '../../components/admin/QuestionModal';
 import CSVUploadModal from '../../components/admin/CSVUploadModal';
 import Badge from '../../components/common/Badge';
 import Loading from '../../components/common/Loading';
+import { getRoundBadgeVariant } from '../../utils/formatters';
 
 export default function QuestionsPage() {
   const toast = useToast();
   const [questions, setQuestions] = useState([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
-  const [filterCategory, setFilterCategory] = useState('ALL');
-  const [filterDifficulty, setFilterDifficulty] = useState('ALL');
+  const [filterEvent, setFilterEvent] = useState('ALL');
+  const [filterRound, setFilterRound] = useState('ALL');
 
   const [questionModalOpen, setQuestionModalOpen] = useState(false);
   const [csvModalOpen, setCsvModalOpen] = useState(false);
@@ -109,21 +110,57 @@ export default function QuestionsPage() {
 
   if (loading) return <Loading text="Loading question bank..." />;
 
-  // Unique categories
-  const categories = Array.from(new Set(questions.map((q) => q.category).filter(Boolean)));
+  // Extract unique events across questions
+  const events = Array.from(
+    new Set(
+      questions
+        .flatMap((q) =>
+          Array.isArray(q.events) && q.events.length > 0
+            ? q.events
+            : [q.event_name || 'Eloquence 2026']
+        )
+        .filter(Boolean)
+    )
+  );
+  if (events.length === 0) events.push('Eloquence 2026');
 
+  // Extract unique rounds across questions
+  const distinctRounds = Array.from(
+    new Set(
+      questions
+        .flatMap((q) =>
+          Array.isArray(q.round_numbers) && q.round_numbers.length > 0
+            ? q.round_numbers
+            : [q.round_number || 1]
+        )
+        .map(Number)
+        .filter(Boolean)
+    )
+  ).sort((a, b) => a - b);
+  if (distinctRounds.length === 0) distinctRounds.push(1, 2);
+
+  // Filter questions by Event, Round, and Search term
   let filtered = questions;
-  if (filterCategory !== 'ALL') {
-    filtered = filtered.filter((q) => q.category === filterCategory);
+  if (filterEvent !== 'ALL') {
+    filtered = filtered.filter((q) => {
+      const evts = q.events || (q.event_name ? [q.event_name] : ['Eloquence 2026']);
+      return evts.includes(filterEvent) || q.event_name === filterEvent;
+    });
   }
-  if (filterDifficulty !== 'ALL') {
-    filtered = filtered.filter((q) => q.difficulty === filterDifficulty);
+  if (filterRound !== 'ALL') {
+    const targetRound = parseInt(filterRound);
+    filtered = filtered.filter((q) => {
+      const rNums = q.round_numbers || (q.round_number ? [q.round_number] : [1]);
+      return rNums.includes(targetRound) || q.round_number === targetRound;
+    });
   }
   if (searchTerm) {
     const term = searchTerm.toLowerCase();
-    filtered = filtered.filter((q) =>
-      q.question_text.toLowerCase().includes(term) ||
-      (q.category && q.category.toLowerCase().includes(term))
+    filtered = filtered.filter(
+      (q) =>
+        q.question_text.toLowerCase().includes(term) ||
+        (q.category && q.category.toLowerCase().includes(term)) ||
+        (q.event_name && q.event_name.toLowerCase().includes(term))
     );
   }
 
@@ -136,7 +173,7 @@ export default function QuestionsPage() {
             MCQ Question Bank
           </h1>
           <p className="text-xs text-slate-500 dark:text-slate-400">
-            {questions.length} technical questions categorized across difficulties
+            {questions.length} technical questions organized across symposium events and rounds
           </p>
         </div>
 
@@ -159,7 +196,7 @@ export default function QuestionsPage() {
         </div>
       </div>
 
-      {/* Filter Toolbar */}
+      {/* Filter Toolbar with Event and Rounds */}
       <div className="p-4 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl flex flex-wrap items-center gap-3">
         <div className="relative flex-1 min-w-[200px]">
           <Search className="w-4 h-4 text-slate-400 absolute left-3 top-2.5" />
@@ -172,54 +209,106 @@ export default function QuestionsPage() {
           />
         </div>
 
-        <select
-          value={filterCategory}
-          onChange={(e) => setFilterCategory(e.target.value)}
-          className="px-3 py-1.5 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-800 text-xs font-semibold"
-        >
-          <option value="ALL">All Categories</option>
-          {categories.map((c) => (
-            <option key={c} value={c}>{c}</option>
-          ))}
-        </select>
+        {/* Event Filter */}
+        <div className="flex items-center gap-1.5 text-xs">
+          <span className="text-slate-400 font-semibold text-[11px]">Event:</span>
+          <select
+            value={filterEvent}
+            onChange={(e) => setFilterEvent(e.target.value)}
+            className="px-3 py-1.5 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-800 text-xs font-semibold text-slate-800 dark:text-slate-200 focus:outline-none"
+          >
+            <option value="ALL">All Events</option>
+            {events.map((evt) => (
+              <option key={evt} value={evt}>
+                {evt}
+              </option>
+            ))}
+          </select>
+        </div>
 
-        <select
-          value={filterDifficulty}
-          onChange={(e) => setFilterDifficulty(e.target.value)}
-          className="px-3 py-1.5 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-800 text-xs font-semibold"
-        >
-          <option value="ALL">All Difficulties</option>
-          <option value="Easy">Easy</option>
-          <option value="Medium">Medium</option>
-          <option value="Hard">Hard</option>
-        </select>
+        {/* Rounds Filter */}
+        <div className="flex items-center gap-1.5 text-xs">
+          <span className="text-slate-400 font-semibold text-[11px]">Round:</span>
+          <select
+            value={filterRound}
+            onChange={(e) => setFilterRound(e.target.value)}
+            className="px-3 py-1.5 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-800 text-xs font-semibold text-slate-800 dark:text-slate-200 focus:outline-none"
+          >
+            <option value="ALL">All Rounds</option>
+            {distinctRounds.map((r) => (
+              <option key={r} value={r}>
+                Round {r} {r === 1 ? '(Prelims)' : r === 2 ? '(Grand Finals)' : ''}
+              </option>
+            ))}
+          </select>
+        </div>
       </div>
 
       {/* Questions Cards List */}
       <div className="space-y-4">
-        {filtered.map((q, idx) => (
-          <div
-            key={q.id}
-            className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl p-6 shadow-sm space-y-4"
-          >
-            <div className="flex items-start justify-between gap-4">
-              <div className="space-y-1.5">
-                <div className="flex items-center gap-2">
-                  <span className="text-xs font-black text-brand-600 dark:text-brand-400 font-mono">
-                    #{idx + 1}
-                  </span>
-                  <Badge variant={q.difficulty === 'Hard' ? 'danger' : q.difficulty === 'Medium' ? 'warning' : 'success'} size="sm">
-                    {q.difficulty}
-                  </Badge>
-                  <Badge variant="default" size="sm">
-                    {q.category || 'General'}
-                  </Badge>
-                  <span className="text-xs text-slate-400 font-semibold">+{q.marks} Marks (-{q.negative_marks})</span>
+        {filtered.length === 0 ? (
+          <div className="p-12 text-center bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl space-y-2">
+            <HelpCircle className="w-10 h-10 text-slate-300 dark:text-slate-600 mx-auto" />
+            <h3 className="text-sm font-bold text-slate-800 dark:text-slate-200">
+              No questions found for the selected Event and Round
+            </h3>
+            <p className="text-xs text-slate-400">
+              Try choosing "All Events" or "All Rounds", or add a new question to this selection.
+            </p>
+          </div>
+        ) : (
+          filtered.map((q, idx) => (
+            <div
+              key={q.id}
+              className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl p-6 shadow-sm space-y-4"
+            >
+              <div className="flex items-start justify-between gap-4">
+                <div className="space-y-1.5">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span className="text-xs font-black text-brand-600 dark:text-brand-400 font-mono">
+                      #{idx + 1}
+                    </span>
+
+                    {/* Event Badge */}
+                    <Badge variant="primary" size="sm">
+                      {q.event_name || 'Eloquence 2026'}
+                    </Badge>
+
+                    {/* Round Badges */}
+                    {(q.round_numbers && q.round_numbers.length > 0
+                      ? q.round_numbers
+                      : [q.round_number || 1]
+                    ).map((r) => (
+                      <Badge key={r} variant={getRoundBadgeVariant(r)} size="sm">
+                        Round {r}
+                      </Badge>
+                    ))}
+
+                    <Badge
+                      variant={
+                        q.difficulty === 'Hard'
+                          ? 'danger'
+                          : q.difficulty === 'Medium'
+                          ? 'warning'
+                          : 'success'
+                      }
+                      size="sm"
+                    >
+                      {q.difficulty}
+                    </Badge>
+
+                    <Badge variant="default" size="sm">
+                      {q.category || 'General'}
+                    </Badge>
+
+                    <span className="text-xs text-slate-400 font-semibold">
+                      +{q.marks} Marks (-{q.negative_marks})
+                    </span>
+                  </div>
+                  <h3 className="text-sm font-bold text-slate-900 dark:text-white leading-relaxed">
+                    {q.question_text}
+                  </h3>
                 </div>
-                <h3 className="text-sm font-bold text-slate-900 dark:text-white leading-relaxed">
-                  {q.question_text}
-                </h3>
-              </div>
 
               <div className="flex items-center gap-1">
                 <button
@@ -272,7 +361,8 @@ export default function QuestionsPage() {
               </p>
             )}
           </div>
-        ))}
+        ))
+      )}
       </div>
 
       {/* Modals */}

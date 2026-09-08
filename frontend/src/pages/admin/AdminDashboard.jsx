@@ -186,7 +186,7 @@ export default function AdminDashboard() {
                   </td>
                   <td className="py-3.5 px-4 text-right">
                     <Link
-                      to={idx === 0 ? '/admin/round-selection' : '/admin/second-round'}
+                      to={idx === 0 ? '/admin/round-selection' : '/admin/rounds'}
                       className="px-3 py-1.5 rounded-lg bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 text-slate-700 dark:text-slate-200 font-semibold"
                     >
                       View Details

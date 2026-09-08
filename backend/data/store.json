@@ -141,6 +141,17 @@
       "description": "High-stakes speed and architecture mastery for Round 1 selected finalists.",
       "is_active": true,
       "is_published": false
+    },
+    {
+      "event_id": "c0000000-0000-0000-0000-000000000001",
+      "round_number": 3,
+      "round_name": "Round 3: Hackathon Shootout & Viva",
+      "description": "Advanced coding and rapid-fire viva examination",
+      "is_active": true,
+      "is_published": false,
+      "id": "f8051de2-fdd3-458f-b263-2f1160044705",
+      "created_at": "2026-09-08T10:08:47.489Z",
+      "updated_at": "2026-09-08T10:27:31.194Z"
     }
   ],
   "questions": [
@@ -290,12 +301,12 @@
     {
       "id": "f0000000-0000-0000-0000-000000000002",
       "event_id": "c0000000-0000-0000-0000-000000000001",
-      "round_id": "d0000000-0000-0000-0000-000000000002",
+      "round_id": "f8051de2-fdd3-458f-b263-2f1160044705",
       "title": "Symposium Technical Quiz – Round 2 (Grand Finals)",
       "description": "Advanced High-Intensity Finalist Examination for Round 1 selected candidates.",
       "event_name": "Eloquence 2026",
-      "round_number": 2,
-      "total_questions": 5,
+      "round_number": 3,
+      "total_questions": 0,
       "duration_minutes": 20,
       "start_date": "2026-09-09",
       "start_time": "10:00:00",
@@ -313,7 +324,8 @@
       "shuffle_questions": true,
       "shuffle_options": true,
       "show_detailed_results": true,
-      "created_at": "2026-09-08T08:40:10.956Z"
+      "created_at": "2026-09-08T08:40:10.956Z",
+      "updated_at": "2026-09-08T10:10:24.274Z"
     }
   ],
   "quiz_questions": [
@@ -364,36 +376,6 @@
       "quiz_id": "f0000000-0000-0000-0000-000000000001",
       "question_id": "e0000000-0000-0000-0000-000000000008",
       "display_order": 8
-    },
-    {
-      "id": "04c1cfde-0c6a-46b1-ad27-92ef888b5af2",
-      "quiz_id": "f0000000-0000-0000-0000-000000000002",
-      "question_id": "e0000000-0000-0000-0000-000000000003",
-      "display_order": 1
-    },
-    {
-      "id": "60c4f7da-cbfe-4f38-aeb0-3bcf2faded42",
-      "quiz_id": "f0000000-0000-0000-0000-000000000002",
-      "question_id": "e0000000-0000-0000-0000-000000000004",
-      "display_order": 2
-    },
-    {
-      "id": "2e03fb82-f42d-4c4b-a668-f6c76bc611ba",
-      "quiz_id": "f0000000-0000-0000-0000-000000000002",
-      "question_id": "e0000000-0000-0000-0000-000000000005",
-      "display_order": 3
-    },
-    {
-      "id": "57919624-48b4-4ca6-aaa1-011c1b281961",
-      "quiz_id": "f0000000-0000-0000-0000-000000000002",
-      "question_id": "e0000000-0000-0000-0000-000000000007",
-      "display_order": 4
-    },
-    {
-      "id": "ef6893b5-e129-4963-a0c6-a8d923f7a6a0",
-      "quiz_id": "f0000000-0000-0000-0000-000000000002",
-      "question_id": "e0000000-0000-0000-0000-000000000008",
-      "display_order": 5
     }
   ],
   "quiz_assignments": [
@@ -769,6 +751,101 @@
       },
       "id": "a2043a09-952c-4676-975b-fb78907badf0",
       "created_at": "2026-09-08T09:42:36.097Z"
+    },
+    {
+      "admin_id": "a0000000-0000-0000-0000-000000000001",
+      "action": "CREATE_ROUND",
+      "entity_type": "ROUND",
+      "entity_id": "f8051de2-fdd3-458f-b263-2f1160044705",
+      "timestamp": "2026-09-08T10:08:47.511Z",
+      "metadata": {
+        "round_number": 3
+      },
+      "id": "9b56d09d-251b-4c1e-9ca2-1e42ecb3cefc",
+      "created_at": "2026-09-08T10:08:47.511Z"
+    },
+    {
+      "admin_id": "a0000000-0000-0000-0000-000000000001",
+      "action": "CREATE_ROUND",
+      "entity_type": "ROUND",
+      "entity_id": "a90a239d-a433-4d14-97a7-2e3304f2399c",
+      "timestamp": "2026-09-08T10:09:44.377Z",
+      "metadata": {
+        "round_number": 4
+      },
+      "id": "692d85ec-a3d4-4cf2-89aa-033a58e95415",
+      "created_at": "2026-09-08T10:09:44.377Z"
+    },
+    {
+      "admin_id": "a0000000-0000-0000-0000-000000000001",
+      "action": "UPDATE_QUIZ",
+      "entity_type": "QUIZ",
+      "entity_id": "f0000000-0000-0000-0000-000000000002",
+      "timestamp": "2026-09-08T10:10:24.284Z",
+      "metadata": {
+        "updates": {
+          "title": "Symposium Technical Quiz – Round 2 (Grand Finals)",
+          "description": "Advanced High-Intensity Finalist Examination for Round 1 selected candidates.",
+          "event_name": "Eloquence 2026",
+          "round_number": 3,
+          "duration_minutes": 20,
+          "start_date": "2026-09-09",
+          "start_time": "10:00:00",
+          "end_date": "2026-09-23",
+          "end_time": "18:00:00",
+          "max_marks": 15,
+          "pass_percentage": 50,
+          "negative_marking": true,
+          "negative_mark_value": 1,
+          "max_attempts": 1,
+          "status": "Scheduled",
+          "desktop_only": false,
+          "fullscreen_required": true,
+          "max_violations": 2,
+          "shuffle_questions": true,
+          "shuffle_options": true,
+          "total_questions": 0,
+          "round_id": "f8051de2-fdd3-458f-b263-2f1160044705"
+        }
+      },
+      "id": "de53d5c1-03e2-4f80-b119-6d3944055e40",
+      "created_at": "2026-09-08T10:10:24.285Z"
+    },
+    {
+      "admin_id": "a0000000-0000-0000-0000-000000000001",
+      "action": "CREATE_ROUND",
+      "entity_type": "ROUND",
+      "entity_id": "887c12c3-0149-4c2f-ad06-2c7cad320838",
+      "timestamp": "2026-09-08T10:12:49.436Z",
+      "metadata": {
+        "round_number": 5
+      },
+      "id": "d5f6e1fb-b8b6-4851-bac7-c2862aa745ff",
+      "created_at": "2026-09-08T10:12:49.436Z"
+    },
+    {
+      "admin_id": "a0000000-0000-0000-0000-000000000001",
+      "action": "DELETE_ROUND",
+      "entity_type": "ROUND",
+      "entity_id": "887c12c3-0149-4c2f-ad06-2c7cad320838",
+      "timestamp": "2026-09-08T10:29:05.798Z",
+      "metadata": {
+        "round_number": 5
+      },
+      "id": "ec3ff732-8329-437e-b3e0-493e7dbb2c3b",
+      "created_at": "2026-09-08T10:29:05.798Z"
+    },
+    {
+      "admin_id": "a0000000-0000-0000-0000-000000000001",
+      "action": "DELETE_ROUND",
+      "entity_type": "ROUND",
+      "entity_id": "a90a239d-a433-4d14-97a7-2e3304f2399c",
+      "timestamp": "2026-09-08T10:34:04.673Z",
+      "metadata": {
+        "round_number": 4
+      },
+      "id": "34eeacb6-d3bf-4f14-b59f-45b51ce53aad",
+      "created_at": "2026-09-08T10:34:04.673Z"
     }
   ],
   "system_settings": {

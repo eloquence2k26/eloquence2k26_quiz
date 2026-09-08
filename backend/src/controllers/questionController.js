@@ -8,20 +8,69 @@ class QuestionController {
    */
   static async getAllQuestions(req, res) {
     try {
-      const { category, difficulty, search } = req.query;
-      let questions = db.get('questions');
+      const { category, difficulty, search, event, round } = req.query;
+      const rawQuestions = db.get('questions');
+      const quizzes = db.get('quizzes') || [];
+      const quizQuestions = db.get('quiz_questions') || [];
 
-      if (category) {
+      // Enrich questions with associated event and rounds
+      let questions = rawQuestions.map((q) => {
+        const junctions = quizQuestions.filter((qq) => qq.question_id === q.id);
+        const relatedQuizzes = junctions
+          .map((qq) => quizzes.find((qz) => qz.id === qq.quiz_id))
+          .filter(Boolean);
+
+        const eventNames = Array.from(
+          new Set([
+            q.event_name,
+            ...relatedQuizzes.map((qz) => qz.event_name || 'Eloquence 2026')
+          ].filter(Boolean))
+        );
+        if (eventNames.length === 0) eventNames.push('Eloquence 2026');
+
+        const roundNumbers = Array.from(
+          new Set([
+            q.round_number,
+            ...(Array.isArray(q.rounds) ? q.rounds : []),
+            ...relatedQuizzes.map((qz) => qz.round_number)
+          ].filter((r) => r !== undefined && r !== null))
+        );
+        if (roundNumbers.length === 0) roundNumbers.push(1);
+
+        return {
+          ...q,
+          event_name: q.event_name || eventNames[0] || 'Eloquence 2026',
+          events: eventNames,
+          round_numbers: roundNumbers,
+          round_number: q.round_number || roundNumbers[0] || 1
+        };
+      });
+
+      if (event && event !== 'ALL') {
+        questions = questions.filter((q) =>
+          (q.events && q.events.some((e) => e.toLowerCase() === event.toLowerCase())) ||
+          (q.event_name && q.event_name.toLowerCase() === event.toLowerCase())
+        );
+      }
+      if (round && round !== 'ALL') {
+        const rNum = Number(round);
+        questions = questions.filter((q) =>
+          (Array.isArray(q.round_numbers) && q.round_numbers.includes(rNum)) ||
+          q.round_number === rNum
+        );
+      }
+      if (category && category !== 'ALL') {
         questions = questions.filter((q) => q.category && q.category.toLowerCase() === category.toLowerCase());
       }
-      if (difficulty) {
+      if (difficulty && difficulty !== 'ALL') {
         questions = questions.filter((q) => q.difficulty && q.difficulty.toLowerCase() === difficulty.toLowerCase());
       }
       if (search) {
         const term = search.toLowerCase();
         questions = questions.filter((q) =>
           q.question_text.toLowerCase().includes(term) ||
-          (q.category && q.category.toLowerCase().includes(term))
+          (q.category && q.category.toLowerCase().includes(term)) ||
+          (q.event_name && q.event_name.toLowerCase().includes(term))
         );
       }
 
@@ -47,7 +96,9 @@ class QuestionController {
         negative_marks = 0.0,
         explanation = '',
         category = 'General',
-        difficulty = 'Medium'
+        difficulty = 'Medium',
+        event_name = 'Eloquence 2026',
+        round_number = 1
       } = req.body;
 
       if (!question_text || !option_a || !option_b || !option_c || !option_d || !correct_answer) {
@@ -70,6 +121,8 @@ class QuestionController {
         explanation: explanation ? explanation.trim() : '',
         category: category.trim(),
         difficulty: ['Easy', 'Medium', 'Hard'].includes(difficulty) ? difficulty : 'Medium',
+        event_name: event_name ? event_name.trim() : 'Eloquence 2026',
+        round_number: Number(round_number) || 1,
         created_by: req.user.id
       });
 
@@ -174,6 +227,8 @@ class QuestionController {
             explanation: q.explanation ? q.explanation.trim() : '',
             category: q.category ? q.category.trim() : 'General',
             difficulty: ['Easy', 'Medium', 'Hard'].includes(q.difficulty) ? q.difficulty : 'Medium',
+            event_name: q.event_name ? q.event_name.trim() : 'Eloquence 2026',
+            round_number: Number(q.round_number) || 1,
             created_by: req.user.id
           });
           inserted.push(item);
