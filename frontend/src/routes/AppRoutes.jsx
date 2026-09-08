@@ -28,6 +28,7 @@ import ExamTerminatedPage from '../pages/exam/ExamTerminatedPage';
 // Admin Pages
 import AdminDashboard from '../pages/admin/AdminDashboard';
 import ParticipantsPage from '../pages/admin/ParticipantsPage';
+import UserRegistrationPage from '../pages/admin/UserRegistrationPage';
 import QuizzesPage from '../pages/admin/QuizzesPage';
 import QuestionsPage from '../pages/admin/QuestionsPage';
 import QuizSchedulePage from '../pages/admin/QuizSchedulePage';
@@ -43,10 +44,10 @@ import SettingsPage from '../pages/admin/SettingsPage';
 export default function AppRoutes() {
   return (
     <Routes>
-      {/* Public Auth Routes */}
+      {/* Public Auth Routes - Registration only handled via Admin portal */}
       <Route element={<AuthLayout />}>
         <Route path="/login" element={<LoginPage />} />
-        <Route path="/register" element={<RegisterPage />} />
+        <Route path="/register" element={<Navigate to="/login" replace />} />
         <Route path="/forgot-password" element={<ForgotPasswordPage />} />
       </Route>
 
@@ -73,6 +74,8 @@ export default function AppRoutes() {
         <Route element={<AdminLayout />}>
           <Route path="/admin/dashboard" element={<AdminDashboard />} />
           <Route path="/admin/participants" element={<ParticipantsPage />} />
+          <Route path="/admin/user-register" element={<UserRegistrationPage />} />
+          <Route path="/admin/register-participants" element={<UserRegistrationPage />} />
           <Route path="/admin/quizzes" element={<QuizzesPage />} />
           <Route path="/admin/questions" element={<QuestionsPage />} />
           <Route path="/admin/schedule" element={<QuizSchedulePage />} />

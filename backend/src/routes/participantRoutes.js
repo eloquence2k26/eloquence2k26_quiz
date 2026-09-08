@@ -7,6 +7,8 @@ const authorize = require('../middleware/roleMiddleware');
 router.use(authenticate, authorize('ADMIN'));
 
 router.get('/', ParticipantController.getAllParticipants);
+router.post('/', ParticipantController.createParticipant);
+router.post('/bulk-import', ParticipantController.bulkImportParticipants);
 router.get('/:id', ParticipantController.getParticipantById);
 router.patch('/:id/status', ParticipantController.toggleDisableParticipant);
 router.delete('/:id', ParticipantController.deleteParticipant);

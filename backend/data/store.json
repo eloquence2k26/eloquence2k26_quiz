@@ -31,6 +31,14 @@
       "role": "PARTICIPANT",
       "is_active": true,
       "created_at": "2026-09-08T08:40:10.956Z"
+    },
+    {
+      "email": "s@gmail.com",
+      "password_hash": "$2a$10$ofCjCUcfsvDMOy8kqJBs/OtJAVRJ4Nxr3uI2CLWRUpBGHz1AGRhve",
+      "role": "PARTICIPANT",
+      "is_active": true,
+      "id": "22ab2a43-71ab-42fb-8e81-1dae9ff700b2",
+      "created_at": "2026-09-08T10:22:36.698Z"
     }
   ],
   "profiles": [
@@ -54,6 +62,12 @@
       "id": "b0000000-0000-0000-0000-000000000003",
       "full_name": "Rahul Verma",
       "mobile": "+91 9123456782"
+    },
+    {
+      "id": "22ab2a43-71ab-42fb-8e81-1dae9ff700b2",
+      "full_name": "SHA",
+      "mobile": "9876543210",
+      "created_at": "2026-09-08T10:22:36.701Z"
     }
   ],
   "participants": [
@@ -104,6 +118,22 @@
       "round_2_selected": false,
       "is_disabled": false,
       "created_at": "2026-09-08T08:40:10.956Z"
+    },
+    {
+      "id": "22ab2a43-71ab-42fb-8e81-1dae9ff700b2",
+      "participant_id": "ELQ-2026-004",
+      "full_name": "SHA",
+      "email": "s@gmail.com",
+      "mobile": "9876543210",
+      "college": "Engineering College",
+      "department": "Computer Science & Engineering",
+      "year": "3rd Year",
+      "event": "Technical Quiz",
+      "registration_number": "REG-2026-004",
+      "round_1_selected": false,
+      "round_2_selected": false,
+      "is_disabled": false,
+      "created_at": "2026-09-08T10:22:36.704Z"
     }
   ],
   "admins": [
@@ -285,7 +315,11 @@
       "shuffle_options": true,
       "show_detailed_results": true,
       "created_at": "2026-09-08T08:40:10.956Z",
-      "updated_at": "2026-09-08T08:51:01.929Z"
+      "updated_at": "2026-09-08T10:25:49.986Z",
+      "published_participant_ids": [
+        "b0000000-0000-0000-0000-000000000001",
+        "22ab2a43-71ab-42fb-8e81-1dae9ff700b2"
+      ]
     },
     {
       "id": "f0000000-0000-0000-0000-000000000002",
@@ -414,6 +448,14 @@
       "quiz_id": "f0000000-0000-0000-0000-000000000001",
       "participant_id": "b0000000-0000-0000-0000-000000000003",
       "status": "ASSIGNED"
+    },
+    {
+      "quiz_id": "f0000000-0000-0000-0000-000000000001",
+      "participant_id": "22ab2a43-71ab-42fb-8e81-1dae9ff700b2",
+      "assigned_by": "a0000000-0000-0000-0000-000000000001",
+      "status": "ASSIGNED",
+      "id": "197fe33f-141a-45e2-bb93-2a8396584a3b",
+      "created_at": "2026-09-08T10:22:36.706Z"
     }
   ],
   "exam_attempts": [
@@ -433,6 +475,23 @@
       "updated_at": "2026-09-08T08:48:37.627Z",
       "termination_reason": "Terminated automatically after exceeding 3 security violations (Latest: WINDOW_BLUR)",
       "submitted_at": "2026-09-08T08:48:37.627Z"
+    },
+    {
+      "quiz_id": "f0000000-0000-0000-0000-000000000001",
+      "participant_id": "22ab2a43-71ab-42fb-8e81-1dae9ff700b2",
+      "attempt_number": 1,
+      "session_id": "34ee4713-bd5e-4841-beb2-b2bc8f5330b2",
+      "status": "TERMINATED",
+      "started_at": "2026-09-08T10:23:59.455Z",
+      "expires_at": "2026-09-08T10:53:59.455Z",
+      "violation_count": 3,
+      "ip_address": "::1",
+      "user_agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/152.0.0.0 Safari/537.36 Edg/152.0.0.0",
+      "id": "fbbe457b-52f6-4b74-b0d8-fafdfc58d542",
+      "created_at": "2026-09-08T10:23:59.458Z",
+      "updated_at": "2026-09-08T10:24:59.069Z",
+      "termination_reason": "Terminated automatically after exceeding 3 security violations (Latest: TAB_SWITCH)",
+      "submitted_at": "2026-09-08T10:24:59.069Z"
     }
   ],
   "question_orders": [
@@ -539,6 +598,110 @@
       ],
       "id": "6aa98d9b-504d-47bf-a162-0abcfda087cd",
       "created_at": "2026-09-08T08:48:01.588Z"
+    },
+    {
+      "attempt_id": "fbbe457b-52f6-4b74-b0d8-fafdfc58d542",
+      "question_id": "e0000000-0000-0000-0000-000000000001",
+      "question_order": 1,
+      "options_order": [
+        "C",
+        "B",
+        "A",
+        "D"
+      ],
+      "id": "8cd29fd1-2b68-4371-a5ec-47702f238756",
+      "created_at": "2026-09-08T10:23:59.462Z"
+    },
+    {
+      "attempt_id": "fbbe457b-52f6-4b74-b0d8-fafdfc58d542",
+      "question_id": "e0000000-0000-0000-0000-000000000003",
+      "question_order": 2,
+      "options_order": [
+        "D",
+        "A",
+        "B",
+        "C"
+      ],
+      "id": "5dce3349-3367-448e-884e-c5645e3dcec7",
+      "created_at": "2026-09-08T10:23:59.465Z"
+    },
+    {
+      "attempt_id": "fbbe457b-52f6-4b74-b0d8-fafdfc58d542",
+      "question_id": "e0000000-0000-0000-0000-000000000004",
+      "question_order": 3,
+      "options_order": [
+        "A",
+        "D",
+        "B",
+        "C"
+      ],
+      "id": "f0be383d-81ff-442d-9cd1-80be0e3307ca",
+      "created_at": "2026-09-08T10:23:59.467Z"
+    },
+    {
+      "attempt_id": "fbbe457b-52f6-4b74-b0d8-fafdfc58d542",
+      "question_id": "e0000000-0000-0000-0000-000000000007",
+      "question_order": 4,
+      "options_order": [
+        "C",
+        "D",
+        "A",
+        "B"
+      ],
+      "id": "a71ad63b-6f5a-4e42-ab5e-af5d91fa2091",
+      "created_at": "2026-09-08T10:23:59.470Z"
+    },
+    {
+      "attempt_id": "fbbe457b-52f6-4b74-b0d8-fafdfc58d542",
+      "question_id": "e0000000-0000-0000-0000-000000000006",
+      "question_order": 5,
+      "options_order": [
+        "D",
+        "C",
+        "A",
+        "B"
+      ],
+      "id": "767551bc-406c-4219-8da4-8fffb46c9c0f",
+      "created_at": "2026-09-08T10:23:59.472Z"
+    },
+    {
+      "attempt_id": "fbbe457b-52f6-4b74-b0d8-fafdfc58d542",
+      "question_id": "e0000000-0000-0000-0000-000000000002",
+      "question_order": 6,
+      "options_order": [
+        "B",
+        "C",
+        "A",
+        "D"
+      ],
+      "id": "75d014c5-90df-4e8b-afec-6d4a045520be",
+      "created_at": "2026-09-08T10:23:59.475Z"
+    },
+    {
+      "attempt_id": "fbbe457b-52f6-4b74-b0d8-fafdfc58d542",
+      "question_id": "e0000000-0000-0000-0000-000000000005",
+      "question_order": 7,
+      "options_order": [
+        "C",
+        "A",
+        "D",
+        "B"
+      ],
+      "id": "910ccf03-ad16-4fbd-894c-2ebd2a05f733",
+      "created_at": "2026-09-08T10:23:59.480Z"
+    },
+    {
+      "attempt_id": "fbbe457b-52f6-4b74-b0d8-fafdfc58d542",
+      "question_id": "e0000000-0000-0000-0000-000000000008",
+      "question_order": 8,
+      "options_order": [
+        "D",
+        "C",
+        "B",
+        "A"
+      ],
+      "id": "0e93cd22-4387-47cf-8b9f-739094aaac08",
+      "created_at": "2026-09-08T10:23:59.485Z"
     }
   ],
   "attempt_answers": [
@@ -553,6 +716,30 @@
       "updated_at": "2026-09-08T08:48:37.628Z",
       "is_correct": false,
       "marks_awarded": -0.5
+    },
+    {
+      "attempt_id": "fbbe457b-52f6-4b74-b0d8-fafdfc58d542",
+      "question_id": "e0000000-0000-0000-0000-000000000003",
+      "selected_option": "A",
+      "is_marked_for_review": false,
+      "answered_at": "2026-09-08T10:24:10.620Z",
+      "id": "4ccb5e1c-e0ee-4551-9046-32671f8fd126",
+      "created_at": "2026-09-08T10:24:09.170Z",
+      "updated_at": "2026-09-08T10:24:59.076Z",
+      "is_correct": true,
+      "marks_awarded": 2
+    },
+    {
+      "attempt_id": "fbbe457b-52f6-4b74-b0d8-fafdfc58d542",
+      "question_id": "e0000000-0000-0000-0000-000000000001",
+      "selected_option": "C",
+      "is_marked_for_review": false,
+      "answered_at": "2026-09-08T10:24:13.148Z",
+      "id": "7b61f355-db56-4131-804b-fcbf6131af90",
+      "created_at": "2026-09-08T10:24:13.148Z",
+      "is_correct": false,
+      "marks_awarded": -0.5,
+      "updated_at": "2026-09-08T10:24:59.073Z"
     }
   ],
   "results": [
@@ -575,8 +762,32 @@
       "published_at": "2026-09-08T08:48:37.629Z",
       "id": "0919c25e-456c-420a-80fa-047928dd1a46",
       "created_at": "2026-09-08T08:48:37.629Z",
+      "rank": 2,
+      "updated_at": "2026-09-08T10:24:59.084Z",
+      "is_published_to_login": true
+    },
+    {
+      "attempt_id": "fbbe457b-52f6-4b74-b0d8-fafdfc58d542",
+      "quiz_id": "f0000000-0000-0000-0000-000000000001",
+      "participant_id": "22ab2a43-71ab-42fb-8e81-1dae9ff700b2",
+      "total_questions": 8,
+      "attempted_questions": 2,
+      "correct_answers": 1,
+      "wrong_answers": 1,
+      "unanswered_questions": 6,
+      "positive_marks": 2,
+      "negative_marks": 0.5,
+      "final_score": 1.5,
+      "percentage": 8.33,
+      "is_passed": false,
+      "time_taken_seconds": 59,
+      "status": "TERMINATED",
+      "published_at": "2026-09-08T10:24:59.078Z",
+      "id": "affe7a3c-c391-4c5f-b322-631d3a690aaa",
+      "created_at": "2026-09-08T10:24:59.079Z",
       "rank": 1,
-      "updated_at": "2026-09-08T08:48:37.631Z"
+      "updated_at": "2026-09-08T10:25:49.990Z",
+      "is_published_to_login": true
     }
   ],
   "round_selections": [],
@@ -628,6 +839,54 @@
       },
       "id": "6cb127bf-7e34-4af1-8330-cfcf5cb44d9f",
       "created_at": "2026-09-08T08:48:20.986Z"
+    },
+    {
+      "attempt_id": "fbbe457b-52f6-4b74-b0d8-fafdfc58d542",
+      "participant_id": "22ab2a43-71ab-42fb-8e81-1dae9ff700b2",
+      "quiz_id": "f0000000-0000-0000-0000-000000000001",
+      "violation_type": "WINDOW_BLUR",
+      "description": "Exam window lost focus to another application",
+      "severity": "MEDIUM",
+      "timestamp": "2026-09-08T10:24:23.276Z",
+      "ip_address": "::1",
+      "user_agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/152.0.0.0 Safari/537.36 Edg/152.0.0.0",
+      "metadata": {
+        "timestamp": "2026-09-08T10:24:23.252Z"
+      },
+      "id": "ce701e89-4459-41c3-b7d7-0103bc409e41",
+      "created_at": "2026-09-08T10:24:23.276Z"
+    },
+    {
+      "attempt_id": "fbbe457b-52f6-4b74-b0d8-fafdfc58d542",
+      "participant_id": "22ab2a43-71ab-42fb-8e81-1dae9ff700b2",
+      "quiz_id": "f0000000-0000-0000-0000-000000000001",
+      "violation_type": "WINDOW_BLUR",
+      "description": "Exam window lost focus to another application",
+      "severity": "MEDIUM",
+      "timestamp": "2026-09-08T10:24:50.505Z",
+      "ip_address": "::1",
+      "user_agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/152.0.0.0 Safari/537.36 Edg/152.0.0.0",
+      "metadata": {
+        "timestamp": "2026-09-08T10:24:50.462Z"
+      },
+      "id": "eec7d862-e527-4ab2-a769-f1ead9449426",
+      "created_at": "2026-09-08T10:24:50.505Z"
+    },
+    {
+      "attempt_id": "fbbe457b-52f6-4b74-b0d8-fafdfc58d542",
+      "participant_id": "22ab2a43-71ab-42fb-8e81-1dae9ff700b2",
+      "quiz_id": "f0000000-0000-0000-0000-000000000001",
+      "violation_type": "TAB_SWITCH",
+      "description": "Participant switched browser tab or minimized window",
+      "severity": "HIGH",
+      "timestamp": "2026-09-08T10:24:59.062Z",
+      "ip_address": "::1",
+      "user_agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/152.0.0.0 Safari/537.36 Edg/152.0.0.0",
+      "metadata": {
+        "timestamp": "2026-09-08T10:24:58.985Z"
+      },
+      "id": "3e4768a0-eb16-47e8-9560-b05db6a25ad6",
+      "created_at": "2026-09-08T10:24:59.062Z"
     }
   ],
   "exam_sessions": [
@@ -642,6 +901,18 @@
       "id": "023cad65-b1f9-46df-9515-56b4cb70d9ef",
       "created_at": "2026-09-08T08:48:01.575Z",
       "updated_at": "2026-09-08T08:48:37.632Z"
+    },
+    {
+      "participant_id": "22ab2a43-71ab-42fb-8e81-1dae9ff700b2",
+      "quiz_id": "f0000000-0000-0000-0000-000000000001",
+      "session_id": "34ee4713-bd5e-4841-beb2-b2bc8f5330b2",
+      "is_active": false,
+      "last_heartbeat": "2026-09-08T10:23:59.494Z",
+      "ip_address": "::1",
+      "user_agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/152.0.0.0 Safari/537.36 Edg/152.0.0.0",
+      "id": "f3f0f1e3-0f37-4937-9449-bd972affbb2c",
+      "created_at": "2026-09-08T10:23:59.455Z",
+      "updated_at": "2026-09-08T10:24:59.090Z"
     }
   ],
   "announcements": [
@@ -733,6 +1004,133 @@
       },
       "id": "72710fae-ec9f-494e-b7d7-8ecb2b1c0ca5",
       "created_at": "2026-09-08T08:51:01.931Z"
+    },
+    {
+      "admin_id": "a0000000-0000-0000-0000-000000000001",
+      "action": "ADMIN_LOGIN",
+      "entity_type": "AUTH",
+      "entity_id": "a0000000-0000-0000-0000-000000000001",
+      "timestamp": "2026-09-08T09:30:29.674Z",
+      "metadata": {
+        "email": "admin@eloquence.com"
+      },
+      "id": "b9f0635f-274b-4fac-838f-4f4c6ec3d538",
+      "created_at": "2026-09-08T09:30:29.675Z"
+    },
+    {
+      "admin_id": "a0000000-0000-0000-0000-000000000001",
+      "action": "ADMIN_LOGIN",
+      "entity_type": "AUTH",
+      "entity_id": "a0000000-0000-0000-0000-000000000001",
+      "timestamp": "2026-09-08T09:37:15.263Z",
+      "metadata": {
+        "email": "admin@eloquence.com"
+      },
+      "id": "c53cb7ad-9d7d-4c40-ab72-f7ce97ca3897",
+      "created_at": "2026-09-08T09:37:15.263Z"
+    },
+    {
+      "admin_id": "a0000000-0000-0000-0000-000000000001",
+      "action": "SEND_SELECTIVE_RESULTS",
+      "entity_type": "QUIZ",
+      "entity_id": "f0000000-0000-0000-0000-000000000001",
+      "timestamp": "2026-09-08T10:19:19.584Z",
+      "metadata": {
+        "participant_count": 1,
+        "send_status": true
+      },
+      "id": "2a9880b0-d202-4963-bb8d-605e5be45295",
+      "created_at": "2026-09-08T10:19:19.584Z"
+    },
+    {
+      "admin_id": "a0000000-0000-0000-0000-000000000001",
+      "action": "ADMIN_LOGIN",
+      "entity_type": "AUTH",
+      "entity_id": "a0000000-0000-0000-0000-000000000001",
+      "timestamp": "2026-09-08T10:20:05.965Z",
+      "metadata": {
+        "email": "admin@eloquence.com"
+      },
+      "id": "352b2605-343c-4b0b-accc-1f55d54253a6",
+      "created_at": "2026-09-08T10:20:05.965Z"
+    },
+    {
+      "admin_id": "a0000000-0000-0000-0000-000000000001",
+      "action": "ADMIN_REGISTER_PARTICIPANT",
+      "entity_type": "PARTICIPANT",
+      "entity_id": "22ab2a43-71ab-42fb-8e81-1dae9ff700b2",
+      "timestamp": "2026-09-08T10:22:36.709Z",
+      "metadata": {
+        "participant_id": "ELQ-2026-004",
+        "full_name": "SHA",
+        "email": "s@gmail.com",
+        "mobile": "9876543210"
+      },
+      "id": "f97cfe51-580a-4f37-bde0-faaa1334e0c7",
+      "created_at": "2026-09-08T10:22:36.709Z"
+    },
+    {
+      "admin_id": null,
+      "action": "AUTO_TERMINATE_EXAM",
+      "entity_type": "EXAM_ATTEMPT",
+      "entity_id": "fbbe457b-52f6-4b74-b0d8-fafdfc58d542",
+      "timestamp": "2026-09-08T10:24:59.094Z",
+      "metadata": {
+        "participant_id": "22ab2a43-71ab-42fb-8e81-1dae9ff700b2",
+        "reason": "Terminated automatically after exceeding 3 security violations (Latest: TAB_SWITCH)",
+        "violations": 3
+      },
+      "id": "3f526221-641e-4047-9d12-e4a43cbd91f3",
+      "created_at": "2026-09-08T10:24:59.095Z"
+    },
+    {
+      "admin_id": "a0000000-0000-0000-0000-000000000001",
+      "action": "ADMIN_LOGIN",
+      "entity_type": "AUTH",
+      "entity_id": "a0000000-0000-0000-0000-000000000001",
+      "timestamp": "2026-09-08T10:25:30.537Z",
+      "metadata": {
+        "email": "admin@eloquence.com"
+      },
+      "id": "b73eb475-a410-42ed-a4d7-fbffc4ca4dab",
+      "created_at": "2026-09-08T10:25:30.538Z"
+    },
+    {
+      "admin_id": "a0000000-0000-0000-0000-000000000001",
+      "action": "SEND_SELECTIVE_RESULTS",
+      "entity_type": "QUIZ",
+      "entity_id": "f0000000-0000-0000-0000-000000000001",
+      "timestamp": "2026-09-08T10:25:49.993Z",
+      "metadata": {
+        "participant_count": 1,
+        "send_status": true
+      },
+      "id": "4309d3a9-8a85-484c-990b-10e5f87f4c8b",
+      "created_at": "2026-09-08T10:25:49.994Z"
+    },
+    {
+      "admin_id": "a0000000-0000-0000-0000-000000000001",
+      "action": "ADMIN_LOGIN",
+      "entity_type": "AUTH",
+      "entity_id": "a0000000-0000-0000-0000-000000000001",
+      "timestamp": "2026-09-08T10:27:32.411Z",
+      "metadata": {
+        "email": "admin@eloquence.com"
+      },
+      "id": "c4f6c9c8-6571-4856-881f-93e35247bf58",
+      "created_at": "2026-09-08T10:27:32.412Z"
+    },
+    {
+      "admin_id": "a0000000-0000-0000-0000-000000000001",
+      "action": "ADMIN_LOGIN",
+      "entity_type": "AUTH",
+      "entity_id": "a0000000-0000-0000-0000-000000000001",
+      "timestamp": "2026-09-08T10:28:24.091Z",
+      "metadata": {
+        "email": "admin@eloquence.com"
+      },
+      "id": "ceb83e63-03d7-475f-a4f4-85472e2236da",
+      "created_at": "2026-09-08T10:28:24.091Z"
     }
   ],
   "system_settings": {

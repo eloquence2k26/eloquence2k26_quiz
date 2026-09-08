@@ -1,3 +1,4 @@
+const bcrypt = require('bcryptjs');
 const db = require('../config/db');
 const { success, error } = require('../utils/responseHelper');
 const AuditService = require('../services/auditService');
@@ -125,6 +126,245 @@ class ParticipantController {
       });
 
       return success(res, {}, 'Participant deleted successfully');
+    } catch (err) {
+      return error(res, err.message, 500);
+    }
+  }
+
+  /**
+   * Create single participant by admin
+   */
+  static async createParticipant(req, res) {
+    try {
+      const {
+        full_name,
+        mobile,
+        email,
+        college = 'Engineering College',
+        department = 'Computer Science & Engineering',
+        year = '3rd Year',
+        password,
+        registration_number,
+        auto_password = true,
+        assign_round1 = true
+      } = req.body;
+
+      if (!full_name || !full_name.trim()) {
+        return error(res, 'Full Name is required', 400);
+      }
+
+      if (!mobile || !mobile.trim()) {
+        return error(res, 'Phone / Mobile number is required', 400);
+      }
+
+      const cleanMobile = mobile.trim();
+      let mobileDigits = cleanMobile.replace(/\D/g, '');
+      if (mobileDigits.length === 12 && mobileDigits.startsWith('91')) {
+        mobileDigits = mobileDigits.slice(2);
+      } else if (mobileDigits.length === 11 && mobileDigits.startsWith('0')) {
+        mobileDigits = mobileDigits.slice(1);
+      }
+
+      // Determine password: if custom password provided, use it; otherwise use first 4 digits of phone
+      let finalPassword = password && password.trim() ? password.trim() : '';
+      if (!finalPassword) {
+        finalPassword = mobileDigits.length >= 4 ? mobileDigits.slice(0, 4) : (mobileDigits || '1234');
+      }
+
+      // Determine email: if not provided, auto-generate standard format
+      let finalEmail = email && email.trim() ? email.trim().toLowerCase() : '';
+      if (!finalEmail) {
+        finalEmail = `elq_${mobileDigits || Date.now().toString().slice(-6)}@eloquence.com`;
+      }
+
+      // Check if user already exists
+      const existingUser = db.find('users', (u) => u.email.toLowerCase() === finalEmail.toLowerCase());
+      if (existingUser) {
+        return error(res, `A user with email "${finalEmail}" already exists. Please provide a unique email or mobile.`, 409);
+      }
+
+      const password_hash = await bcrypt.hash(finalPassword, 10);
+      const participantCount = db.get('participants').length + 1;
+      const participantId = `ELQ-2026-${String(participantCount).padStart(3, '0')}`;
+      const defaultRegNo = `REG-2026-${String(participantCount).padStart(3, '0')}`;
+      const finalRegNo = registration_number && registration_number.trim() ? registration_number.trim() : defaultRegNo;
+
+      const newUser = db.insert('users', {
+        email: finalEmail,
+        password_hash,
+        role: 'PARTICIPANT',
+        is_active: true
+      });
+
+      db.insert('profiles', {
+        id: newUser.id,
+        full_name: full_name.trim(),
+        mobile: cleanMobile
+      });
+
+      const newParticipant = db.insert('participants', {
+        id: newUser.id,
+        participant_id: participantId,
+        full_name: full_name.trim(),
+        email: finalEmail,
+        mobile: cleanMobile,
+        college: college ? college.trim() : 'Engineering College',
+        department: department ? department.trim() : 'Computer Science & Engineering',
+        year: year ? year.trim() : '3rd Year',
+        event: 'Technical Quiz',
+        registration_number: finalRegNo,
+        round_1_selected: false,
+        round_2_selected: false,
+        is_disabled: false
+      });
+
+      // Auto assign to Round 1 quiz
+      if (assign_round1) {
+        const round1Quiz = db.find('quizzes', (q) => q.round_number === 1);
+        if (round1Quiz) {
+          const existingAssign = db.find('quiz_assignments', (qa) => qa.quiz_id === round1Quiz.id && qa.participant_id === newParticipant.id);
+          if (!existingAssign) {
+            db.insert('quiz_assignments', {
+              quiz_id: round1Quiz.id,
+              participant_id: newParticipant.id,
+              assigned_by: req.user.id,
+              status: 'ASSIGNED'
+            });
+          }
+        }
+      }
+
+      AuditService.log(req.user.id, 'ADMIN_REGISTER_PARTICIPANT', 'PARTICIPANT', newParticipant.id, {
+        participant_id: participantId,
+        full_name: newParticipant.full_name,
+        email: finalEmail,
+        mobile: cleanMobile
+      });
+
+      return success(res, {
+        ...newParticipant,
+        generated_password: finalPassword
+      }, 'Participant registered successfully', 201);
+    } catch (err) {
+      return error(res, err.message, 500);
+    }
+  }
+
+  /**
+   * Bulk import participants (CSV, Excel, JSON)
+   */
+  static async bulkImportParticipants(req, res) {
+    try {
+      const { participants = [] } = req.body;
+
+      if (!Array.isArray(participants) || participants.length === 0) {
+        return error(res, 'No participant records provided for import', 400);
+      }
+
+      const round1Quiz = db.find('quizzes', (q) => q.round_number === 1);
+      const imported = [];
+      const errors = [];
+
+      let currentCount = db.get('participants').length;
+
+      for (let i = 0; i < participants.length; i++) {
+        const item = participants[i];
+        const fullName = (item.full_name || item.name || '').trim();
+        const mobile = (item.mobile || item.phone || item.phone_number || '').toString().trim();
+
+        if (!fullName || !mobile) {
+          errors.push({ row: i + 1, item, reason: 'Full Name and Phone Number are required' });
+          continue;
+        }
+
+        let mobileDigits = mobile.replace(/\D/g, '');
+        if (mobileDigits.length === 12 && mobileDigits.startsWith('91')) {
+          mobileDigits = mobileDigits.slice(2);
+        } else if (mobileDigits.length === 11 && mobileDigits.startsWith('0')) {
+          mobileDigits = mobileDigits.slice(1);
+        }
+
+        const autoPassword = item.password && item.password.toString().trim()
+          ? item.password.toString().trim()
+          : (mobileDigits.length >= 4 ? mobileDigits.slice(0, 4) : (mobileDigits || '1234'));
+
+        let email = (item.email || '').trim().toLowerCase();
+        if (!email) {
+          email = `elq_${mobileDigits || (Date.now() + i).toString().slice(-6)}@eloquence.com`;
+        }
+
+        // Check if existing
+        const existing = db.find('users', (u) => u.email.toLowerCase() === email.toLowerCase());
+        if (existing) {
+          // generate alternative email if conflict
+          email = `elq_${mobileDigits}_${i + 1}@eloquence.com`;
+        }
+
+        const password_hash = await bcrypt.hash(autoPassword, 10);
+        currentCount++;
+        const participantId = `ELQ-2026-${String(currentCount).padStart(3, '0')}`;
+
+        const newUser = db.insert('users', {
+          email,
+          password_hash,
+          role: 'PARTICIPANT',
+          is_active: true
+        });
+
+        db.insert('profiles', {
+          id: newUser.id,
+          full_name: fullName,
+          mobile
+        });
+
+        const newParticipant = db.insert('participants', {
+          id: newUser.id,
+          participant_id: participantId,
+          full_name: fullName,
+          email,
+          mobile,
+          college: (item.college || item.institution || 'Engineering College').toString().trim(),
+          department: (item.department || item.dept || item.branch || 'Computer Science & Engineering').toString().trim(),
+          year: (item.year || '3rd Year').toString().trim(),
+          event: 'Technical Quiz',
+          registration_number: (item.registration_number || item.reg_no || `REG-2026-${String(currentCount).padStart(3, '0')}`).toString().trim(),
+          round_1_selected: false,
+          round_2_selected: false,
+          is_disabled: false
+        });
+
+        if (round1Quiz) {
+          db.insert('quiz_assignments', {
+            quiz_id: round1Quiz.id,
+            participant_id: newParticipant.id,
+            assigned_by: req.user.id,
+            status: 'ASSIGNED'
+          });
+        }
+
+        imported.push({
+          id: newParticipant.id,
+          participant_id: participantId,
+          full_name: fullName,
+          mobile,
+          email,
+          college: newParticipant.college,
+          department: newParticipant.department,
+          default_password: autoPassword
+        });
+      }
+
+      AuditService.log(req.user.id, 'BULK_IMPORT_PARTICIPANTS', 'PARTICIPANT', 'BULK', {
+        importedCount: imported.length,
+        failedCount: errors.length
+      });
+
+      return success(res, {
+        importedCount: imported.length,
+        failedCount: errors.length,
+        imported,
+        errors
+      }, `Successfully imported ${imported.length} participants with phone-based auto credentials.`);
     } catch (err) {
       return error(res, err.message, 500);
     }
