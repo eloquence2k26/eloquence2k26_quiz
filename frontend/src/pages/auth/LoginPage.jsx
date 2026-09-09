@@ -188,19 +188,6 @@ export default function LoginPage() {
           </button>
         </div>
       </div>
-
-      {/* Participant Registration Footer */}
-      <div className="text-center pt-2">
-        <p className="text-xs text-slate-500 dark:text-slate-400">
-          Not registered for the symposium quiz?{' '}
-          <Link
-            to="/register"
-            className="font-bold text-brand-600 dark:text-brand-400 hover:underline"
-          >
-            Register Here
-          </Link>
-        </p>
-      </div>
     </div>
   );
 }

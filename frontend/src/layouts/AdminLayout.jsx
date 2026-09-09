@@ -3,6 +3,7 @@ import { Link, useLocation, useNavigate, Outlet } from 'react-router-dom';
 import {
   LayoutDashboard,
   Users,
+  UserPlus,
   BookOpen,
   HelpCircle,
   Calendar,
@@ -31,6 +32,7 @@ export default function AdminLayout() {
   const menuItems = [
     { label: 'Dashboard', icon: LayoutDashboard, path: '/admin/dashboard' },
     { label: 'Participants', icon: Users, path: '/admin/participants' },
+    { label: 'User Registration', icon: UserPlus, path: '/admin/user-register' },
     { label: 'Event Management', icon: BookOpen, path: '/admin/quizzes' },
     { label: 'Questions', icon: HelpCircle, path: '/admin/questions' },
     { label: 'Quiz Schedule', icon: Calendar, path: '/admin/schedule' },
@@ -152,6 +154,13 @@ export default function AdminLayout() {
           </div>
 
           <div className="flex items-center gap-3">
+            <Link
+              to="/admin/user-register"
+              className="hidden sm:flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-brand-50 dark:bg-brand-950/60 border border-brand-200 dark:border-brand-800 text-brand-700 dark:text-brand-300 text-xs font-bold hover:bg-brand-100 transition-colors"
+            >
+              <UserPlus className="w-3.5 h-3.5" />
+              <span>Register Users</span>
+            </Link>
             <div className="hidden md:flex items-center gap-2 px-3 py-1.5 rounded-full bg-emerald-50 dark:bg-emerald-950/60 border border-emerald-200 dark:border-emerald-800 text-emerald-700 dark:text-emerald-300 text-xs font-semibold">
               <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
               Proctor Engine Active

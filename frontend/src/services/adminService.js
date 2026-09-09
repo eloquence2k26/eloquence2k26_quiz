@@ -65,6 +65,16 @@ export const adminService = {
     return res.data;
   },
 
+  createParticipant: async (participantData) => {
+    const res = await api.post('/participants', participantData);
+    return res.data;
+  },
+
+  bulkImportParticipants: async (participants) => {
+    const res = await api.post('/participants/bulk-import', { participants });
+    return res.data;
+  },
+
   toggleDisableParticipant: async (id, is_disabled) => {
     const res = await api.patch(`/participants/${id}/status`, { is_disabled });
     return res.data;
@@ -164,6 +174,25 @@ export const adminService = {
 
   deleteAnnouncement: async (id) => {
     const res = await api.delete(`/announcements/${id}`);
+    return res.data;
+  },
+
+  // Results & Publishing Lifecycle
+  getEventOverview: async (quizId) => {
+    const res = await api.get(`/results/overview/${quizId}`);
+    return res.data;
+  },
+
+  publishAllResults: async (quizId, publish = true) => {
+    const res = await api.post(`/results/publish/${quizId}`, { publish });
+    return res.data;
+  },
+
+  sendSelectiveResults: async (quizId, participantIds, sendStatus = true) => {
+    const res = await api.post(`/results/send-selective/${quizId}`, {
+      participant_ids: participantIds,
+      send_status: sendStatus
+    });
     return res.data;
   },
 

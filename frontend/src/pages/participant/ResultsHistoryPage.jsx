@@ -38,16 +38,21 @@ export default function ResultsHistoryPage() {
     fetchHistory();
   }, [requestedAttemptId]);
 
+  const [unreleasedMsg, setUnreleasedMsg] = useState('');
+
   const loadAttemptDetails = async (attemptId) => {
     if (!attemptId) return;
     setDetailsLoading(true);
+    setUnreleasedMsg('');
     try {
       const res = await examService.getAttemptResult(attemptId);
       if (res.success) {
         setSelectedResult(res.data);
       }
     } catch (err) {
-      console.error('Error loading attempt detail:', err.message);
+      const msg = err.response?.data?.message || err.message;
+      setUnreleasedMsg(msg || 'Results for this examination have not been published yet.');
+      setSelectedResult(null);
     } finally {
       setDetailsLoading(false);
     }
@@ -119,6 +124,18 @@ export default function ResultsHistoryPage() {
           <div className="lg:col-span-8 space-y-6">
             {detailsLoading ? (
               <Loading text="Loading scorecard..." />
+            ) : unreleasedMsg ? (
+              <div className="p-8 sm:p-12 text-center bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl space-y-3">
+                <div className="w-12 h-12 rounded-2xl bg-amber-50 dark:bg-amber-950/60 text-amber-600 dark:text-amber-400 flex items-center justify-center mx-auto">
+                  <Clock className="w-6 h-6" />
+                </div>
+                <h3 className="text-sm font-bold text-slate-900 dark:text-white">
+                  Results Awaiting Symposium Desk Publication
+                </h3>
+                <p className="text-xs text-slate-500 dark:text-slate-400 max-w-md mx-auto">
+                  {unreleasedMsg}
+                </p>
+              </div>
             ) : result ? (
               <div className="space-y-6">
                 {/* Scorecard Hero Banner */}

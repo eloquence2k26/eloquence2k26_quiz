@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { Link } from 'react-router-dom';
 import { Search, Filter, Trash2, Ban, CheckCircle, UserPlus, CheckSquare, Sparkles, BookOpen } from 'lucide-react';
 import { adminService } from '../../services/adminService';
 import { quizService } from '../../services/quizService';
@@ -127,13 +128,23 @@ export default function ParticipantsPage() {
           </p>
         </div>
 
-        <button
-          onClick={() => setShowAssignModal(true)}
-          className="flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold text-white bg-brand-600 hover:bg-brand-700 shadow-md shadow-brand-500/20"
-        >
-          <BookOpen className="w-4 h-4" />
-          <span>Assign Participants to Quiz</span>
-        </button>
+        <div className="flex items-center gap-2">
+          <Link
+            to="/admin/user-register"
+            className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-bold text-white bg-brand-600 hover:bg-brand-700 shadow-md shadow-brand-500/20"
+          >
+            <UserPlus className="w-4 h-4" />
+            <span>Register / Import Users</span>
+          </Link>
+
+          <button
+            onClick={() => setShowAssignModal(true)}
+            className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-bold text-slate-700 dark:text-slate-200 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-700/50 shadow-sm"
+          >
+            <BookOpen className="w-4 h-4 text-brand-600" />
+            <span>Assign to Quiz</span>
+          </button>
+        </div>
       </div>
 
       {/* Filter and Search Bar */}
