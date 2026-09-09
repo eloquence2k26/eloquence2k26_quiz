@@ -13,6 +13,8 @@ export default function QuestionModal({ isOpen, onClose, onSave, initialData = n
     negative_marks: 0.0,
     difficulty: 'Medium',
     category: 'General',
+    event_name: 'Eloquence 2026',
+    round_number: 1,
     explanation: ''
   });
 
@@ -29,6 +31,8 @@ export default function QuestionModal({ isOpen, onClose, onSave, initialData = n
         negative_marks: initialData.negative_marks || 0.0,
         difficulty: initialData.difficulty || 'Medium',
         category: initialData.category || 'General',
+        event_name: initialData.event_name || 'Eloquence 2026',
+        round_number: initialData.round_number || 1,
         explanation: initialData.explanation || ''
       });
     } else {
@@ -43,6 +47,8 @@ export default function QuestionModal({ isOpen, onClose, onSave, initialData = n
         negative_marks: 0.5,
         difficulty: 'Medium',
         category: 'Algorithms',
+        event_name: 'Eloquence 2026',
+        round_number: 1,
         explanation: ''
       });
     }
@@ -188,6 +194,36 @@ export default function QuestionModal({ isOpen, onClose, onSave, initialData = n
               onChange={(e) => setFormData({ ...formData, negative_marks: parseFloat(e.target.value) || 0 })}
               className="w-full px-3 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-xs"
             />
+          </div>
+        </div>
+
+        {/* Event & Round Assignment */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <div>
+            <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
+              Event Name
+            </label>
+            <input
+              type="text"
+              value={formData.event_name}
+              onChange={(e) => setFormData({ ...formData, event_name: e.target.value })}
+              placeholder="e.g. Eloquence 2026"
+              className="w-full px-3.5 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-xs text-slate-900 dark:text-white"
+            />
+          </div>
+
+          <div>
+            <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
+              Assigned Round
+            </label>
+            <select
+              value={formData.round_number}
+              onChange={(e) => setFormData({ ...formData, round_number: parseInt(e.target.value) || 1 })}
+              className="w-full px-3.5 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-xs font-bold text-brand-600 dark:text-brand-400"
+            >
+              <option value={1}>Round 1 (Prelims / Screening)</option>
+              <option value={2}>Round 2 (Grand Finals)</option>
+            </select>
           </div>
         </div>
 

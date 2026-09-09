@@ -6,7 +6,7 @@ import { useToast } from '../../context/ToastContext';
 import QuizModal from '../../components/admin/QuizModal';
 import Badge from '../../components/common/Badge';
 import Loading from '../../components/common/Loading';
-import { formatDate } from '../../utils/formatters';
+import { formatDate, getRoundBadgeVariant } from '../../utils/formatters';
 
 export default function QuizzesPage() {
   const toast = useToast();
@@ -132,7 +132,7 @@ export default function QuizzesPage() {
           >
             <div>
               <div className="flex items-center justify-between gap-2 mb-3">
-                <Badge variant={q.round_number === 2 ? 'purple' : 'primary'} size="sm">
+                <Badge variant={getRoundBadgeVariant(q.round_number)} size="sm">
                   Round {q.round_number}
                 </Badge>
                 <div className="flex items-center gap-2">
