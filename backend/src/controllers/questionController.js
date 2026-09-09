@@ -1,6 +1,7 @@
 const db = require('../config/db');
 const { success, error } = require('../utils/responseHelper');
 const AuditService = require('../services/auditService');
+const DocumentParserService = require('../services/documentParserService');
 
 class QuestionController {
   /**
@@ -242,6 +243,88 @@ class QuestionController {
       return error(res, err.message, 500);
     }
   }
+
+  /**
+   * Import Questions from Uploaded Document (PDF, PPT, Word, Excel, CSV, JSON, TXT)
+   */
+  static async importQuestionsFile(req, res) {
+    try {
+      if (!req.file) {
+        return error(res, 'No file uploaded', 400);
+      }
+
+      const { event_name = 'Eloquence 2026', round_number = 1, preview_only = 'false' } = req.body;
+      const originalFilename = req.file.originalname;
+      const fileBuffer = req.file.buffer;
+
+      const parsedQuestions = await DocumentParserService.parseDocument(fileBuffer, originalFilename, {
+        event_name,
+        round_number: Number(round_number) || 1
+      });
+
+      if (!parsedQuestions || parsedQuestions.length === 0) {
+        return error(
+          res,
+          'Could not extract any valid MCQ questions from the uploaded file. Please check file formatting.',
+          422
+        );
+      }
+
+      // If preview_only is true, return parsed list without inserting
+      if (preview_only === 'true' || preview_only === true) {
+        return success(
+          res,
+          {
+            filename: originalFilename,
+            count: parsedQuestions.length,
+            questions: parsedQuestions
+          },
+          `Extracted ${parsedQuestions.length} questions from ${originalFilename}`
+        );
+      }
+
+      // Insert into DB
+      const inserted = [];
+      parsedQuestions.forEach((q) => {
+        const item = db.insert('questions', {
+          question_text: q.question_text,
+          option_a: q.option_a,
+          option_b: q.option_b,
+          option_c: q.option_c,
+          option_d: q.option_d,
+          correct_answer: q.correct_answer || 'A',
+          marks: Number(q.marks) || 2.0,
+          negative_marks: Number(q.negative_marks) || 0.5,
+          explanation: q.explanation || '',
+          category: q.category || 'General',
+          difficulty: q.difficulty || 'Medium',
+          event_name: q.event_name || event_name,
+          round_number: Number(q.round_number) || Number(round_number) || 1,
+          created_by: req.user.id
+        });
+        inserted.push(item);
+      });
+
+      AuditService.log(req.user.id, 'IMPORT_FILE_QUESTIONS', 'QUESTION', 'BATCH', {
+        filename: originalFilename,
+        count: inserted.length,
+        round_number
+      });
+
+      return success(
+        res,
+        {
+          count: inserted.length,
+          items: inserted
+        },
+        `Successfully imported ${inserted.length} questions from ${originalFilename}`,
+        201
+      );
+    } catch (err) {
+      return error(res, err.message, 500);
+    }
+  }
 }
 
 module.exports = QuestionController;
+

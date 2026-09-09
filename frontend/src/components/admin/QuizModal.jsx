@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { Plus, Check, X, Trash2 } from 'lucide-react';
+import { Link } from 'react-router-dom';
+import { Plus, Check, X, Trash2, HelpCircle, ExternalLink, CheckCircle2 } from 'lucide-react';
 import Modal from '../common/Modal';
 import { adminService } from '../../services/adminService';
 
@@ -16,6 +17,7 @@ export default function QuizModal({ isOpen, onClose, onSave, initialData = null,
     title: '',
     description: '',
     event_name: 'Eloquence 2026',
+    event_code: 'ELQ26',
     round_number: 1,
     duration_minutes: 30,
     start_date: new Date().toISOString().split('T')[0],
@@ -77,6 +79,7 @@ export default function QuizModal({ isOpen, onClose, onSave, initialData = null,
         title: initialData.title || '',
         description: initialData.description || '',
         event_name: initialData.event_name || 'Eloquence 2026',
+        event_code: initialData.event_code || 'ELQ26',
         round_number: initialData.round_number || 1,
         duration_minutes: initialData.duration_minutes || 30,
         start_date: initialData.start_date || new Date().toISOString().split('T')[0],
@@ -183,26 +186,6 @@ export default function QuizModal({ isOpen, onClose, onSave, initialData = null,
     } catch (e) {}
   };
 
-  const toggleQuestionSelect = (qId) => {
-    setFormData((prev) => {
-      const exists = prev.question_ids.includes(qId);
-      return {
-        ...prev,
-        question_ids: exists
-          ? prev.question_ids.filter((id) => id !== qId)
-          : [...prev.question_ids, qId]
-      };
-    });
-  };
-
-  const handleSelectAll = () => {
-    if (formData.question_ids.length === allQuestions.length) {
-      setFormData({ ...formData, question_ids: [] });
-    } else {
-      setFormData({ ...formData, question_ids: allQuestions.map((q) => q.id) });
-    }
-  };
-
   const handleSubmit = (e) => {
     e.preventDefault();
     onSave(formData);
@@ -212,23 +195,38 @@ export default function QuizModal({ isOpen, onClose, onSave, initialData = null,
     <Modal
       isOpen={isOpen}
       onClose={onClose}
-      title={initialData ? 'Edit Examination' : 'Create New Examination'}
+      title={initialData ? 'Edit Event' : 'Create New Event'}
       maxWidth="max-w-3xl"
     >
       <form onSubmit={handleSubmit} className="space-y-4 max-h-[80vh] overflow-y-auto pr-1">
-        {/* Title & Description */}
-        <div>
-          <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 uppercase mb-1">
-            Quiz Title *
-          </label>
-          <input
-            type="text"
-            required
-            value={formData.title}
-            onChange={(e) => setFormData({ ...formData, title: e.target.value })}
-            placeholder="e.g. Symposium Technical Quiz – Round 1"
-            className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-xs text-slate-900 dark:text-white"
-          />
+        {/* Title & Event Code */}
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+          <div className="sm:col-span-2">
+            <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 uppercase mb-1">
+              Event Title *
+            </label>
+            <input
+              type="text"
+              required
+              value={formData.title}
+              onChange={(e) => setFormData({ ...formData, title: e.target.value, event_name: e.target.value })}
+              placeholder="e.g. Technical MCQ Championship"
+              className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-xs text-slate-900 dark:text-white"
+            />
+          </div>
+          <div>
+            <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 uppercase mb-1">
+              Event Code *
+            </label>
+            <input
+              type="text"
+              required
+              value={formData.event_code}
+              onChange={(e) => setFormData({ ...formData, event_code: e.target.value.toUpperCase() })}
+              placeholder="e.g. ELQ26"
+              className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-xs text-slate-900 dark:text-white font-mono uppercase"
+            />
+          </div>
         </div>
 
         <div>
@@ -513,47 +511,32 @@ export default function QuizModal({ isOpen, onClose, onSave, initialData = null,
           </label>
         </div>
 
-        {/* Question Selector Bank */}
-        <div className="space-y-2 pt-2 border-t border-slate-100 dark:border-slate-800">
-          <div className="flex items-center justify-between">
-            <span className="text-xs font-bold text-slate-800 dark:text-slate-200 uppercase">
-              Select Questions ({formData.question_ids.length} / {allQuestions.length} selected)
-            </span>
-            <button
-              type="button"
-              onClick={handleSelectAll}
-              className="text-xs font-bold text-brand-600 dark:text-brand-400 hover:underline"
-            >
-              {formData.question_ids.length === allQuestions.length ? 'Deselect All' : 'Select All'}
-            </button>
-          </div>
-
-          <div className="max-h-48 overflow-y-auto space-y-1.5 border border-slate-200 dark:border-slate-700 rounded-xl p-2 bg-slate-50 dark:bg-slate-800/40">
-            {allQuestions.map((q) => {
-              const isSelected = formData.question_ids.includes(q.id);
-              return (
-                <div
-                  key={q.id}
-                  onClick={() => toggleQuestionSelect(q.id)}
-                  className={`flex items-start gap-2.5 p-2 rounded-lg cursor-pointer transition-colors text-xs ${
-                    isSelected
-                      ? 'bg-blue-50 dark:bg-blue-950/60 border border-blue-200 dark:border-blue-900/50 text-blue-900 dark:text-blue-100'
-                      : 'hover:bg-white dark:hover:bg-slate-800 text-slate-700 dark:text-slate-300'
-                  }`}
-                >
-                  <input
-                    type="checkbox"
-                    checked={isSelected}
-                    onChange={() => {}}
-                    className="mt-0.5 rounded text-brand-600 pointer-events-none"
-                  />
-                  <div className="flex-1 truncate">
-                    <p className="font-medium truncate">{q.question_text}</p>
-                    <span className="text-[10px] text-slate-400">{q.category} • {q.difficulty} • {q.marks} Marks</span>
-                  </div>
-                </div>
-              );
-            })}
+        {/* Question Bank Synchronization Notice */}
+        <div className="p-4 rounded-2xl bg-brand-50/70 dark:bg-brand-950/40 border border-brand-200 dark:border-brand-900/50 flex items-start gap-3">
+          <HelpCircle className="w-5 h-5 text-brand-600 dark:text-brand-400 mt-0.5 flex-shrink-0" />
+          <div className="flex-1 text-xs">
+            <div className="flex items-center justify-between">
+              <h4 className="font-bold text-slate-900 dark:text-white text-xs">
+                Question Bank Synchronization (Round {formData.round_number})
+              </h4>
+              <Link
+                to="/admin/questions"
+                className="text-[11px] font-bold text-brand-600 dark:text-brand-400 hover:underline inline-flex items-center gap-1"
+                onClick={onClose}
+              >
+                <span>Questions Section</span>
+                <ExternalLink className="w-3 h-3" />
+              </Link>
+            </div>
+            <p className="text-slate-600 dark:text-slate-400 mt-1 leading-relaxed">
+              Questions for this examination are automatically sourced from the centralized Question Bank for <strong>Round {formData.round_number}</strong>. Authoring, editing, and bulk document imports (PDF, PPT, Word, Excel, CSV) are managed from the <strong>Questions</strong> section in the navigation bar.
+            </p>
+            <div className="mt-2.5 flex items-center gap-2">
+              <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-emerald-50 dark:bg-emerald-950/50 border border-emerald-200 dark:border-emerald-800 text-emerald-700 dark:text-emerald-300 font-bold text-[11px]">
+                <CheckCircle2 className="w-3.5 h-3.5" />
+                {allQuestions.filter((q) => Number(q.round_number) === Number(formData.round_number)).length} questions currently active for Round {formData.round_number}
+              </span>
+            </div>
           </div>
         </div>
 
@@ -570,7 +553,7 @@ export default function QuizModal({ isOpen, onClose, onSave, initialData = null,
             type="submit"
             className="px-5 py-2 rounded-xl text-xs font-bold text-white bg-brand-600 hover:bg-brand-700 shadow-md shadow-brand-500/20"
           >
-            {initialData ? 'Update Quiz' : 'Save Quiz'}
+            {initialData ? 'Update Event' : 'Create Event'}
           </button>
         </div>
       </form>

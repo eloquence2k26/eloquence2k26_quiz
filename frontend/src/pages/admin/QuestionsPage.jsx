@@ -1,9 +1,9 @@
 import React, { useState, useEffect } from 'react';
-import { Plus, Upload, Search, Filter, Edit2, Copy, Trash2, HelpCircle, CheckCircle2 } from 'lucide-react';
+import { Plus, Upload, Search, Filter, Edit2, Copy, Trash2, HelpCircle, CheckCircle2, FileUp } from 'lucide-react';
 import { adminService } from '../../services/adminService';
 import { useToast } from '../../context/ToastContext';
 import QuestionModal from '../../components/admin/QuestionModal';
-import CSVUploadModal from '../../components/admin/CSVUploadModal';
+import MultiFormatImportModal from '../../components/admin/MultiFormatImportModal';
 import Badge from '../../components/common/Badge';
 import Loading from '../../components/common/Loading';
 import { getRoundBadgeVariant } from '../../utils/formatters';
@@ -11,13 +11,15 @@ import { getRoundBadgeVariant } from '../../utils/formatters';
 export default function QuestionsPage() {
   const toast = useToast();
   const [questions, setQuestions] = useState([]);
+  const [eventsList, setEventsList] = useState([]);
+  const [roundsList, setRoundsList] = useState([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
   const [filterEvent, setFilterEvent] = useState('ALL');
   const [filterRound, setFilterRound] = useState('ALL');
 
   const [questionModalOpen, setQuestionModalOpen] = useState(false);
-  const [csvModalOpen, setCsvModalOpen] = useState(false);
+  const [importModalOpen, setImportModalOpen] = useState(false);
   const [selectedQuestion, setSelectedQuestion] = useState(null);
 
   useEffect(() => {
@@ -27,10 +29,14 @@ export default function QuestionsPage() {
   const fetchQuestions = async () => {
     setLoading(true);
     try {
-      const res = await adminService.getQuestions();
-      if (res.success) {
-        setQuestions(res.data || []);
-      }
+      const [qRes, eRes, rRes] = await Promise.all([
+        adminService.getQuestions(),
+        adminService.getEvents().catch(() => ({ success: false, data: [] })),
+        adminService.getRounds().catch(() => ({ success: false, data: [] }))
+      ]);
+      if (qRes.success) setQuestions(qRes.data || []);
+      if (eRes.success) setEventsList(eRes.data || []);
+      if (rRes.success) setRoundsList(rRes.data || []);
     } catch (err) {
       toast.error('Failed to load question bank');
     } finally {
@@ -110,34 +116,36 @@ export default function QuestionsPage() {
 
   if (loading) return <Loading text="Loading question bank..." />;
 
-  // Extract unique events across questions
-  const events = Array.from(
-    new Set(
-      questions
+  // Extract all unique events combining database events + existing questions
+  const allEvents = Array.from(
+    new Set([
+      ...eventsList.map((e) => (typeof e === 'string' ? e : e.title)),
+      ...questions
         .flatMap((q) =>
           Array.isArray(q.events) && q.events.length > 0
             ? q.events
-            : [q.event_name || 'Eloquence 2026']
+            : [q.event_name]
         )
         .filter(Boolean)
-    )
+    ])
   );
-  if (events.length === 0) events.push('Eloquence 2026');
+  if (allEvents.length === 0) allEvents.push('Eloquence 2026');
 
-  // Extract unique rounds across questions
-  const distinctRounds = Array.from(
-    new Set(
-      questions
+  // Extract all unique rounds combining database rounds + existing questions
+  const allRoundNumbers = Array.from(
+    new Set([
+      ...roundsList.map((r) => Number(r.round_number)),
+      ...questions
         .flatMap((q) =>
           Array.isArray(q.round_numbers) && q.round_numbers.length > 0
             ? q.round_numbers
-            : [q.round_number || 1]
+            : [q.round_number]
         )
         .map(Number)
         .filter(Boolean)
-    )
+    ])
   ).sort((a, b) => a - b);
-  if (distinctRounds.length === 0) distinctRounds.push(1, 2);
+  if (allRoundNumbers.length === 0) allRoundNumbers.push(1, 2);
 
   // Filter questions by Event, Round, and Search term
   let filtered = questions;
@@ -177,13 +185,14 @@ export default function QuestionsPage() {
           </p>
         </div>
 
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           <button
-            onClick={() => setCsvModalOpen(true)}
-            className="flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs font-bold text-slate-700 dark:text-slate-200 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 hover:bg-slate-50 shadow-sm"
+            onClick={() => setImportModalOpen(true)}
+            className="flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs font-bold text-slate-800 dark:text-slate-100 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 hover:bg-slate-50 dark:hover:bg-slate-800 shadow-sm transition-all"
+            title="Import questions from PDF, PPT, Word, Excel, CSV, or JSON"
           >
-            <Upload className="w-4 h-4 text-emerald-600" />
-            <span>Bulk CSV Import</span>
+            <Upload className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
+            <span>Import Questions (PDF, PPT, Word, Excel, CSV)</span>
           </button>
 
           <button
@@ -215,10 +224,10 @@ export default function QuestionsPage() {
           <select
             value={filterEvent}
             onChange={(e) => setFilterEvent(e.target.value)}
-            className="px-3 py-1.5 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-800 text-xs font-semibold text-slate-800 dark:text-slate-200 focus:outline-none"
+            className="px-3 py-1.5 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-800 text-xs font-semibold text-slate-800 dark:text-slate-200 focus:outline-none max-w-[220px] truncate"
           >
-            <option value="ALL">All Events</option>
-            {events.map((evt) => (
+            <option value="ALL">All Events ({allEvents.length})</option>
+            {allEvents.map((evt) => (
               <option key={evt} value={evt}>
                 {evt}
               </option>
@@ -234,27 +243,79 @@ export default function QuestionsPage() {
             onChange={(e) => setFilterRound(e.target.value)}
             className="px-3 py-1.5 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-800 text-xs font-semibold text-slate-800 dark:text-slate-200 focus:outline-none"
           >
-            <option value="ALL">All Rounds</option>
-            {distinctRounds.map((r) => (
-              <option key={r} value={r}>
-                Round {r} {r === 1 ? '(Prelims)' : r === 2 ? '(Grand Finals)' : ''}
-              </option>
-            ))}
+            <option value="ALL">All Rounds ({allRoundNumbers.length})</option>
+            {allRoundNumbers.map((rNum) => {
+              const foundRound = roundsList.find((r) => Number(r.round_number) === rNum);
+              const roundTitle = foundRound?.round_name ? ` — ${foundRound.round_name}` : (rNum === 1 ? ' (Prelims)' : rNum === 2 ? ' (Grand Finals)' : '');
+              return (
+                <option key={rNum} value={rNum}>
+                  Round {rNum}{roundTitle}
+                </option>
+              );
+            })}
           </select>
         </div>
       </div>
 
       {/* Questions Cards List */}
       <div className="space-y-4">
-        {filtered.length === 0 ? (
-          <div className="p-12 text-center bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl space-y-2">
+        {questions.length === 0 ? (
+          <div className="p-12 text-center bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl space-y-4 max-w-lg mx-auto shadow-sm">
+            <div className="w-16 h-16 rounded-2xl bg-brand-50 dark:bg-brand-950/50 text-brand-600 dark:text-brand-400 flex items-center justify-center mx-auto border border-brand-200 dark:border-brand-800">
+              <HelpCircle className="w-8 h-8" />
+            </div>
+            <div>
+              <h3 className="text-base font-bold text-slate-800 dark:text-slate-200">
+                Question Bank is Empty
+              </h3>
+              <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
+                Start building your repository by importing questions from PDF, PPT, Word, Excel, or CSV documents, or create them manually.
+              </p>
+            </div>
+            <div className="flex items-center justify-center gap-3 pt-2">
+              <button
+                onClick={() => setImportModalOpen(true)}
+                className="flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs font-bold text-white bg-brand-600 hover:bg-brand-700 shadow-md shadow-brand-500/20"
+              >
+                <Upload className="w-4 h-4" />
+                <span>Import Questions</span>
+              </button>
+              <button
+                onClick={handleCreate}
+                className="flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs font-semibold text-slate-700 dark:text-slate-200 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200"
+              >
+                <Plus className="w-4 h-4" />
+                <span>Add Question</span>
+              </button>
+            </div>
+          </div>
+        ) : filtered.length === 0 ? (
+          <div className="p-12 text-center bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl space-y-3 max-w-lg mx-auto shadow-sm">
             <HelpCircle className="w-10 h-10 text-slate-300 dark:text-slate-600 mx-auto" />
-            <h3 className="text-sm font-bold text-slate-800 dark:text-slate-200">
-              No questions found for the selected Event and Round
-            </h3>
-            <p className="text-xs text-slate-400">
-              Try choosing "All Events" or "All Rounds", or add a new question to this selection.
-            </p>
+            <div>
+              <h3 className="text-sm font-bold text-slate-800 dark:text-slate-200">
+                No questions found {filterEvent !== 'ALL' ? `for "${filterEvent}"` : ''} {filterRound !== 'ALL' ? `(Round ${filterRound})` : ''}
+              </h3>
+              <p className="text-xs text-slate-400 mt-1">
+                You can import a batch of questions or add a new question specifically to this event and round.
+              </p>
+            </div>
+            <div className="flex items-center justify-center gap-3 pt-1">
+              <button
+                onClick={() => setImportModalOpen(true)}
+                className="flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold text-white bg-brand-600 hover:bg-brand-700 shadow-sm"
+              >
+                <Upload className="w-4 h-4" />
+                <span>Import to this Selection</span>
+              </button>
+              <button
+                onClick={handleCreate}
+                className="flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-semibold text-slate-700 dark:text-slate-200 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200"
+              >
+                <Plus className="w-4 h-4" />
+                <span>Add Question</span>
+              </button>
+            </div>
           </div>
         ) : (
           filtered.map((q, idx) => (
@@ -371,12 +432,28 @@ export default function QuestionsPage() {
         onClose={() => setQuestionModalOpen(false)}
         onSave={handleSaveQuestion}
         initialData={selectedQuestion}
+        eventsList={allEvents}
+        roundsList={roundsList.length > 0 ? roundsList : allRoundNumbers.map((n) => ({ round_number: n, round_name: `Round ${n}` }))}
+        initialEvent={filterEvent !== 'ALL' ? filterEvent : allEvents[0]}
+        initialRound={filterRound !== 'ALL' ? parseInt(filterRound) : (allRoundNumbers[0] || 1)}
       />
 
-      <CSVUploadModal
-        isOpen={csvModalOpen}
-        onClose={() => setCsvModalOpen(false)}
-        onUpload={handleBulkUpload}
+      <MultiFormatImportModal
+        isOpen={importModalOpen}
+        onClose={() => setImportModalOpen(false)}
+        onSuccess={(importedInfo) => {
+          fetchQuestions();
+          if (importedInfo?.event_name) {
+            setFilterEvent(importedInfo.event_name);
+          }
+          if (importedInfo?.round_number) {
+            setFilterRound(String(importedInfo.round_number));
+          }
+        }}
+        eventsList={allEvents}
+        roundsList={roundsList.length > 0 ? roundsList : allRoundNumbers.map((n) => ({ round_number: n, round_name: `Round ${n}` }))}
+        initialEvent={filterEvent !== 'ALL' ? filterEvent : allEvents[0]}
+        initialRound={filterRound !== 'ALL' ? parseInt(filterRound) : (allRoundNumbers[0] || 1)}
       />
     </div>
   );

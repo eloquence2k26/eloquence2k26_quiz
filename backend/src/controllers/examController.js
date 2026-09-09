@@ -107,6 +107,17 @@ class ExamController {
       const quizQuestions = db.filter('quiz_questions', (qq) => qq.quiz_id === quizId);
       let questionList = quizQuestions.map((qq) => db.find('questions', (q) => q.id === qq.question_id)).filter(Boolean);
 
+      if (questionList.length === 0) {
+        questionList = db.filter('questions', (q) => {
+          const matchesRound = Number(q.round_number) === Number(quiz.round_number);
+          const matchesEvent = !q.event_name || q.event_name === quiz.event_name || q.event_name === quiz.title;
+          return matchesRound && matchesEvent;
+        });
+        if (questionList.length === 0) {
+          questionList = db.filter('questions', (q) => Number(q.round_number) === Number(quiz.round_number));
+        }
+      }
+
       if (quiz.shuffle_questions) {
         questionList = shuffleArray(questionList);
       }

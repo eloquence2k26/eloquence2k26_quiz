@@ -7,6 +7,7 @@ const authorize = require('../middleware/roleMiddleware');
 router.use(authenticate, authorize('ADMIN'));
 
 router.get('/dashboard-stats', AdminController.getDashboardStats);
+router.get('/events', AdminController.getEvents);
 router.get('/settings', AdminController.getSettings);
 router.put('/settings', AdminController.updateSettings);
 router.get('/audit-logs', AdminController.getAuditLogs);

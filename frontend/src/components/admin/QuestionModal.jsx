@@ -1,7 +1,16 @@
 import React, { useState, useEffect } from 'react';
 import Modal from '../common/Modal';
 
-export default function QuestionModal({ isOpen, onClose, onSave, initialData = null }) {
+export default function QuestionModal({
+  isOpen,
+  onClose,
+  onSave,
+  initialData = null,
+  eventsList = [],
+  roundsList = [],
+  initialEvent = '',
+  initialRound = 1
+}) {
   const [formData, setFormData] = useState({
     question_text: '',
     option_a: '',
@@ -36,6 +45,8 @@ export default function QuestionModal({ isOpen, onClose, onSave, initialData = n
         explanation: initialData.explanation || ''
       });
     } else {
+      const defaultEvt = initialEvent || (eventsList[0] ? (typeof eventsList[0] === 'string' ? eventsList[0] : eventsList[0].title) : 'Eloquence 2026');
+      const defaultRnd = initialRound ? Number(initialRound) : 1;
       setFormData({
         question_text: '',
         option_a: '',
@@ -47,12 +58,12 @@ export default function QuestionModal({ isOpen, onClose, onSave, initialData = n
         negative_marks: 0.5,
         difficulty: 'Medium',
         category: 'Algorithms',
-        event_name: 'Eloquence 2026',
-        round_number: 1,
+        event_name: defaultEvt,
+        round_number: defaultRnd,
         explanation: ''
       });
     }
-  }, [initialData, isOpen]);
+  }, [initialData, isOpen, initialEvent, initialRound, eventsList]);
 
   const handleSubmit = (e) => {
     e.preventDefault();
@@ -203,13 +214,30 @@ export default function QuestionModal({ isOpen, onClose, onSave, initialData = n
             <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
               Event Name
             </label>
-            <input
-              type="text"
-              value={formData.event_name}
-              onChange={(e) => setFormData({ ...formData, event_name: e.target.value })}
-              placeholder="e.g. Eloquence 2026"
-              className="w-full px-3.5 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-xs text-slate-900 dark:text-white"
-            />
+            {eventsList && eventsList.length > 0 ? (
+              <select
+                value={formData.event_name}
+                onChange={(e) => setFormData({ ...formData, event_name: e.target.value })}
+                className="w-full px-3.5 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-xs font-bold text-slate-800 dark:text-slate-200"
+              >
+                {eventsList.map((evt) => {
+                  const val = typeof evt === 'string' ? evt : evt.title;
+                  return (
+                    <option key={val} value={val}>
+                      {val}
+                    </option>
+                  );
+                })}
+              </select>
+            ) : (
+              <input
+                type="text"
+                value={formData.event_name}
+                onChange={(e) => setFormData({ ...formData, event_name: e.target.value })}
+                placeholder="e.g. Eloquence 2026"
+                className="w-full px-3.5 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-xs text-slate-900 dark:text-white"
+              />
+            )}
           </div>
 
           <div>
@@ -221,8 +249,22 @@ export default function QuestionModal({ isOpen, onClose, onSave, initialData = n
               onChange={(e) => setFormData({ ...formData, round_number: parseInt(e.target.value) || 1 })}
               className="w-full px-3.5 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-xs font-bold text-brand-600 dark:text-brand-400"
             >
-              <option value={1}>Round 1 (Prelims / Screening)</option>
-              <option value={2}>Round 2 (Grand Finals)</option>
+              {roundsList && roundsList.length > 0 ? (
+                roundsList.map((r) => {
+                  const num = typeof r === 'object' ? r.round_number : r;
+                  const name = typeof r === 'object' && r.round_name ? ` — ${r.round_name}` : '';
+                  return (
+                    <option key={num} value={num}>
+                      Round {num}{name}
+                    </option>
+                  );
+                })
+              ) : (
+                <>
+                  <option value={1}>Round 1 (Prelims / Screening)</option>
+                  <option value={2}>Round 2 (Grand Finals)</option>
+                </>
+              )}
             </select>
           </div>
         </div>

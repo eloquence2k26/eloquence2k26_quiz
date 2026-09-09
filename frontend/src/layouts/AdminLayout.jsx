@@ -31,7 +31,7 @@ export default function AdminLayout() {
   const menuItems = [
     { label: 'Dashboard', icon: LayoutDashboard, path: '/admin/dashboard' },
     { label: 'Participants', icon: Users, path: '/admin/participants' },
-    { label: 'Quiz Management', icon: BookOpen, path: '/admin/quizzes' },
+    { label: 'Event Management', icon: BookOpen, path: '/admin/quizzes' },
     { label: 'Questions', icon: HelpCircle, path: '/admin/questions' },
     { label: 'Quiz Schedule', icon: Calendar, path: '/admin/schedule' },
     { label: 'Live Exams', icon: Activity, path: '/admin/live-exams' },
