@@ -41,8 +41,8 @@ export default function MultiFormatImportModal({
   const [customEventInput, setCustomEventInput] = useState(false);
   const [eventsOptions, setEventsOptions] = useState([]);
   const [roundsOptions, setRoundsOptions] = useState([
-    { round_number: 1, round_name: 'Round 1 (Screening / Prelims)' },
-    { round_number: 2, round_name: 'Round 2 (Grand Finals)' }
+    { round_number: 1, round_name: 'Round 1' },
+    { round_number: 2, round_name: 'Round 2' }
   ]);
 
   const [pasteText, setPasteText] = useState('');

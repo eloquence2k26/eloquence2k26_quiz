@@ -246,7 +246,7 @@ export default function QuestionsPage() {
             <option value="ALL">All Rounds ({allRoundNumbers.length})</option>
             {allRoundNumbers.map((rNum) => {
               const foundRound = roundsList.find((r) => Number(r.round_number) === rNum);
-              const roundTitle = foundRound?.round_name ? ` — ${foundRound.round_name}` : (rNum === 1 ? ' (Prelims)' : rNum === 2 ? ' (Grand Finals)' : '');
+              const roundTitle = foundRound?.round_name && foundRound.round_name !== `Round ${rNum}` ? ` — ${foundRound.round_name}` : '';
               return (
                 <option key={rNum} value={rNum}>
                   Round {rNum}{roundTitle}

@@ -1,13 +1,12 @@
 import React, { useState, useEffect } from 'react';
-import { Link } from 'react-router-dom';
-import { Plus, Check, X, Trash2, HelpCircle, ExternalLink, CheckCircle2 } from 'lucide-react';
+import { Plus, Check, X, Trash2 } from 'lucide-react';
 import Modal from '../common/Modal';
 import { adminService } from '../../services/adminService';
 
 export default function QuizModal({ isOpen, onClose, onSave, initialData = null, allQuestions = [] }) {
   const [roundsList, setRoundsList] = useState([
-    { round_number: 1, round_name: 'Round 1 (Prelims / Screening)' },
-    { round_number: 2, round_name: 'Round 2 (Grand Finals)' }
+    { round_number: 1, round_name: 'Round 1' },
+    { round_number: 2, round_name: 'Round 2' }
   ]);
   const [showCustomRoundInput, setShowCustomRoundInput] = useState(false);
   const [customRoundNumber, setCustomRoundNumber] = useState('');
@@ -199,34 +198,19 @@ export default function QuizModal({ isOpen, onClose, onSave, initialData = null,
       maxWidth="max-w-3xl"
     >
       <form onSubmit={handleSubmit} className="space-y-4 max-h-[80vh] overflow-y-auto pr-1">
-        {/* Title & Event Code */}
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-          <div className="sm:col-span-2">
-            <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 uppercase mb-1">
-              Event Title *
-            </label>
-            <input
-              type="text"
-              required
-              value={formData.title}
-              onChange={(e) => setFormData({ ...formData, title: e.target.value, event_name: e.target.value })}
-              placeholder="e.g. Technical MCQ Championship"
-              className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-xs text-slate-900 dark:text-white"
-            />
-          </div>
-          <div>
-            <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 uppercase mb-1">
-              Event Code *
-            </label>
-            <input
-              type="text"
-              required
-              value={formData.event_code}
-              onChange={(e) => setFormData({ ...formData, event_code: e.target.value.toUpperCase() })}
-              placeholder="e.g. ELQ26"
-              className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-xs text-slate-900 dark:text-white font-mono uppercase"
-            />
-          </div>
+        {/* Event Title */}
+        <div>
+          <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 uppercase mb-1">
+            Event Title *
+          </label>
+          <input
+            type="text"
+            required
+            value={formData.title}
+            onChange={(e) => setFormData({ ...formData, title: e.target.value, event_name: e.target.value })}
+            placeholder="e.g. Technical MCQ Championship"
+            className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-xs text-slate-900 dark:text-white"
+          />
         </div>
 
         <div>
@@ -511,34 +495,7 @@ export default function QuizModal({ isOpen, onClose, onSave, initialData = null,
           </label>
         </div>
 
-        {/* Question Bank Synchronization Notice */}
-        <div className="p-4 rounded-2xl bg-brand-50/70 dark:bg-brand-950/40 border border-brand-200 dark:border-brand-900/50 flex items-start gap-3">
-          <HelpCircle className="w-5 h-5 text-brand-600 dark:text-brand-400 mt-0.5 flex-shrink-0" />
-          <div className="flex-1 text-xs">
-            <div className="flex items-center justify-between">
-              <h4 className="font-bold text-slate-900 dark:text-white text-xs">
-                Question Bank Synchronization (Round {formData.round_number})
-              </h4>
-              <Link
-                to="/admin/questions"
-                className="text-[11px] font-bold text-brand-600 dark:text-brand-400 hover:underline inline-flex items-center gap-1"
-                onClick={onClose}
-              >
-                <span>Questions Section</span>
-                <ExternalLink className="w-3 h-3" />
-              </Link>
-            </div>
-            <p className="text-slate-600 dark:text-slate-400 mt-1 leading-relaxed">
-              Questions for this examination are automatically sourced from the centralized Question Bank for <strong>Round {formData.round_number}</strong>. Authoring, editing, and bulk document imports (PDF, PPT, Word, Excel, CSV) are managed from the <strong>Questions</strong> section in the navigation bar.
-            </p>
-            <div className="mt-2.5 flex items-center gap-2">
-              <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-emerald-50 dark:bg-emerald-950/50 border border-emerald-200 dark:border-emerald-800 text-emerald-700 dark:text-emerald-300 font-bold text-[11px]">
-                <CheckCircle2 className="w-3.5 h-3.5" />
-                {allQuestions.filter((q) => Number(q.round_number) === Number(formData.round_number)).length} questions currently active for Round {formData.round_number}
-              </span>
-            </div>
-          </div>
-        </div>
+
 
         {/* Action Footer */}
         <div className="flex items-center justify-end gap-3 pt-4 border-t border-slate-100 dark:border-slate-800">

@@ -6,8 +6,8 @@ import { adminService } from '../../services/adminService';
 
 export default function ModifyScheduleModal({ isOpen, onClose, onSave, quiz }) {
   const [roundsList, setRoundsList] = useState([
-    { round_number: 1, round_name: 'Round 1 (Prelims)' },
-    { round_number: 2, round_name: 'Round 2 (Grand Finals)' }
+    { round_number: 1, round_name: 'Round 1' },
+    { round_number: 2, round_name: 'Round 2' }
   ]);
 
   const [formData, setFormData] = useState({

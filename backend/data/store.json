@@ -185,6 +185,29 @@
       "is_published": true,
       "id": "a256dfce-b239-48fe-8cb0-c951768fbaf4",
       "created_at": "2026-09-09T06:04:00.235Z"
+    },
+    {
+      "event_id": "40edcc8f-a5c8-4418-92a7-a3076c5cdd94",
+      "event_name": "technical quiz",
+      "round_number": 2,
+      "round_name": "Round 2",
+      "description": "technical quiz Examination Round 2",
+      "is_active": true,
+      "is_published": false,
+      "id": "17982fa5-e610-4040-8ff2-3c8a4c2a1a2f",
+      "created_at": "2026-09-09T06:57:10.433Z",
+      "updated_at": "2026-09-09T06:57:56.638Z"
+    },
+    {
+      "event_id": "40edcc8f-a5c8-4418-92a7-a3076c5cdd94",
+      "event_name": "technical quiz",
+      "round_number": 3,
+      "round_name": "Round 3",
+      "description": "technical quiz Examination Round 3",
+      "is_active": true,
+      "is_published": false,
+      "id": "63440d38-2970-43ee-a8ec-aa21be05444a",
+      "created_at": "2026-09-09T06:57:23.093Z"
     }
   ],
   "questions": [
@@ -930,6 +953,59 @@
       },
       "id": "c9362db3-2bb4-448f-b25d-908c94c3f220",
       "created_at": "2026-09-09T06:18:26.112Z"
+    },
+    {
+      "admin_id": "a0000000-0000-0000-0000-000000000001",
+      "action": "ADMIN_LOGIN",
+      "entity_type": "AUTH",
+      "entity_id": "a0000000-0000-0000-0000-000000000001",
+      "timestamp": "2026-09-09T06:49:53.831Z",
+      "metadata": {
+        "email": "admin@eloquence.com"
+      },
+      "id": "c16eda01-ba5e-4a12-b12f-e1daef873048",
+      "created_at": "2026-09-09T06:49:53.831Z"
+    },
+    {
+      "admin_id": "a0000000-0000-0000-0000-000000000001",
+      "action": "CREATE_ROUND",
+      "entity_type": "ROUND",
+      "entity_id": "17982fa5-e610-4040-8ff2-3c8a4c2a1a2f",
+      "timestamp": "2026-09-09T06:57:10.436Z",
+      "metadata": {
+        "round_number": 2,
+        "event_name": "technical quiz"
+      },
+      "id": "350d3901-cdb4-46dd-b468-37703055fecf",
+      "created_at": "2026-09-09T06:57:10.436Z"
+    },
+    {
+      "admin_id": "a0000000-0000-0000-0000-000000000001",
+      "action": "CREATE_ROUND",
+      "entity_type": "ROUND",
+      "entity_id": "63440d38-2970-43ee-a8ec-aa21be05444a",
+      "timestamp": "2026-09-09T06:57:23.103Z",
+      "metadata": {
+        "round_number": 3,
+        "event_name": "technical quiz"
+      },
+      "id": "fcdc60e9-cb19-4172-9409-5a1d25d03d25",
+      "created_at": "2026-09-09T06:57:23.103Z"
+    },
+    {
+      "admin_id": "a0000000-0000-0000-0000-000000000001",
+      "action": "UPDATE_ROUND",
+      "entity_type": "ROUND",
+      "entity_id": "17982fa5-e610-4040-8ff2-3c8a4c2a1a2f",
+      "timestamp": "2026-09-09T06:57:56.641Z",
+      "metadata": {
+        "round_name": "Round 2",
+        "round_number": 2,
+        "description": "technical quiz Examination Round 2",
+        "is_active": true
+      },
+      "id": "898058ee-c653-4d99-bef3-63465a439901",
+      "created_at": "2026-09-09T06:57:56.642Z"
     }
   ],
   "system_settings": {

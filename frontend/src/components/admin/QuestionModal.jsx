@@ -261,8 +261,8 @@ export default function QuestionModal({
                 })
               ) : (
                 <>
-                  <option value={1}>Round 1 (Prelims / Screening)</option>
-                  <option value={2}>Round 2 (Grand Finals)</option>
+                  <option value={1}>Round 1</option>
+                  <option value={2}>Round 2</option>
                 </>
               )}
             </select>

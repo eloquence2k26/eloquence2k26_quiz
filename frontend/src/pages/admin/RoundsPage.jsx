@@ -144,7 +144,7 @@ export default function RoundsPage() {
       event_id: event?.id || '',
       event_name: event?.title || '',
       round_number: nextNum,
-      round_name: `Round ${nextNum}${nextNum === 1 ? ' (Screening)' : nextNum === 2 ? ' (Grand Finals)' : ''}`,
+      round_name: `Round ${nextNum}`,
       description: `${event?.title || 'Symposium'} Examination Round ${nextNum}`,
       is_active: true
     });
@@ -415,11 +415,6 @@ export default function RoundsPage() {
                       <h2 className="text-lg sm:text-xl font-black text-slate-900 dark:text-white capitalize">
                         {event.title}
                       </h2>
-                      {event.code && (
-                        <span className="px-2.5 py-0.5 rounded-lg font-mono font-bold text-xs bg-brand-50 dark:bg-brand-950/60 text-brand-700 dark:text-brand-300 border border-brand-200 dark:border-brand-800">
-                          {event.code}
-                        </span>
-                      )}
                       <Badge variant="info" size="sm">
                         {eventRounds.length} {eventRounds.length === 1 ? 'Round' : 'Rounds'}
                       </Badge>
@@ -440,7 +435,7 @@ export default function RoundsPage() {
                 </div>
 
                 {/* EVENT ROUNDS SECTION */}
-                <div className="space-y-4">
+                <div>
                   {eventRounds.length === 0 ? (
                     <div className="p-8 rounded-2xl border-2 border-dashed border-slate-200 dark:border-slate-800 text-center bg-slate-50/50 dark:bg-slate-800/20">
                       <Layers className="w-8 h-8 text-slate-300 dark:text-slate-600 mx-auto mb-2" />
@@ -448,7 +443,7 @@ export default function RoundsPage() {
                         No Rounds Configured for {event.title}
                       </h4>
                       <p className="text-[11px] text-slate-500 mt-1 mb-3">
-                        Set up examination stages (e.g. Round 1 Screening, Round 2 Grand Finals) for this event.
+                        Set up examination stages for this event.
                       </p>
                       <button
                         onClick={() => handleOpenCreateModalForEvent(event)}
@@ -459,13 +454,14 @@ export default function RoundsPage() {
                       </button>
                     </div>
                   ) : (
-                    eventRounds.map((r) => {
-                      const hasQuizzes = r.quizzes && r.quizzes.length > 0;
-                      return (
-                        <div
-                          key={r.id || `${r.event_name}-${r.round_number}`}
-                          className="bg-slate-50/70 dark:bg-slate-950/50 border border-slate-200/90 dark:border-slate-800 rounded-2xl p-5 shadow-xs transition-all hover:border-brand-300 dark:hover:border-brand-900/60"
-                        >
+                    <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
+                      {eventRounds.map((r) => {
+                        const hasQuizzes = r.quizzes && r.quizzes.length > 0;
+                        return (
+                          <div
+                            key={r.id || `${r.event_name}-${r.round_number}`}
+                            className="bg-slate-50/70 dark:bg-slate-950/50 border border-slate-200/90 dark:border-slate-800 rounded-2xl p-5 shadow-xs transition-all hover:border-brand-300 dark:hover:border-brand-900/60 flex flex-col justify-between"
+                          >
                           {/* Round Header Bar */}
                           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-slate-200/60 dark:border-slate-800">
                             <div className="flex items-center gap-3">
@@ -475,16 +471,6 @@ export default function RoundsPage() {
                               <div>
                                 <h3 className="text-sm sm:text-base font-bold text-slate-900 dark:text-white flex items-center gap-2">
                                   <span>{r.round_name || `Round ${r.round_number}`}</span>
-                                  {Number(r.round_number) === 1 && (
-                                    <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-slate-200/70 dark:bg-slate-800 text-slate-700 dark:text-slate-300">
-                                      Screening
-                                    </span>
-                                  )}
-                                  {Number(r.round_number) === 2 && (
-                                    <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-purple-100 dark:bg-purple-900/40 text-purple-700 dark:text-purple-300">
-                                      Grand Finals
-                                    </span>
-                                  )}
                                 </h3>
                                 <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
                                   {r.description || `${event.title} Tournament Round ${r.round_number}`}
@@ -563,7 +549,7 @@ export default function RoundsPage() {
                                 </button>
                               </div>
                             ) : (
-                              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                              <div className="grid grid-cols-1 gap-3">
                                 {r.quizzes.map((q) => (
                                   <div
                                     key={q.id}
@@ -638,7 +624,8 @@ export default function RoundsPage() {
                           </div>
                         </div>
                       );
-                    })
+                    })}
+                    </div>
                   )}
                 </div>
               </div>
@@ -696,11 +683,11 @@ export default function RoundsPage() {
               required
               value={roundFormData.round_name}
               onChange={(e) => setRoundFormData({ ...roundFormData, round_name: e.target.value })}
-              placeholder="e.g. Round 2 (Grand Finals) or Algorithmic Shootout"
+              placeholder="e.g. Round 2 or Algorithmic Shootout"
               className="w-full px-3 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 font-bold"
             />
             <span className="text-[10px] text-slate-400 mt-1 block">
-              Give this stage a recognizable name (e.g. Screening, Grand Finals, Technical Viva)
+              Give this stage a recognizable name (e.g. Technical Viva, Championship Exam)
             </span>
           </div>
 

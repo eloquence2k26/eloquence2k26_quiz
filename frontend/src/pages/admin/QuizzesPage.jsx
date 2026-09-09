@@ -153,11 +153,6 @@ export default function QuizzesPage() {
               <div>
                 <div className="flex items-center justify-between gap-2 mb-3">
                   <div className="flex items-center gap-2">
-                    {q.event_code && (
-                      <span className="px-2 py-0.5 rounded-md font-mono font-bold text-[10px] bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-slate-700">
-                        {q.event_code}
-                      </span>
-                    )}
                     <Badge variant={getRoundBadgeVariant(q.round_number)} size="sm">
                       Round {q.round_number}
                     </Badge>
