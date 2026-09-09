@@ -252,7 +252,7 @@ export default function QuestionModal({
               {roundsList && roundsList.length > 0 ? (
                 roundsList.map((r) => {
                   const num = typeof r === 'object' ? r.round_number : r;
-                  const name = typeof r === 'object' && r.round_name ? ` — ${r.round_name}` : '';
+                  const name = typeof r === 'object' && r.round_name && r.round_name !== `Round ${num}` ? ` — ${r.round_name}` : '';
                   return (
                     <option key={num} value={num}>
                       Round {num}{name}

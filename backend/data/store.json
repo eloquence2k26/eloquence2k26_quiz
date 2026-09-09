@@ -210,26 +210,7 @@
       "created_at": "2026-09-09T06:57:23.093Z"
     }
   ],
-  "questions": [
-    {
-      "question_text": "In distributed computing, what does the CAP theorem state?",
-      "option_a": "Consistency, Availability, Partition tolerance",
-      "option_b": "Concurrency, Atomicity, Performance",
-      "option_c": "Cache, Access, Persistence",
-      "option_d": "Connectivity, Authentication, Privacy",
-      "correct_answer": "A",
-      "marks": 2,
-      "negative_marks": 0.5,
-      "explanation": "CAP theorem proves a system cannot simultaneously guarantee Consistency, Availability, and Partition Tolerance.",
-      "category": "General",
-      "difficulty": "Medium",
-      "event_name": "technical quiz",
-      "round_number": 1,
-      "created_by": "a0000000-0000-0000-0000-000000000001",
-      "id": "50e660fa-b608-4d38-b8f1-307ebfc7e226",
-      "created_at": "2026-09-09T06:09:19.124Z"
-    }
-  ],
+  "questions": [],
   "quizzes": [
     {
       "title": "technical quiz",
@@ -1006,6 +987,40 @@
       },
       "id": "898058ee-c653-4d99-bef3-63465a439901",
       "created_at": "2026-09-09T06:57:56.642Z"
+    },
+    {
+      "admin_id": "a0000000-0000-0000-0000-000000000001",
+      "action": "ADMIN_LOGIN",
+      "entity_type": "AUTH",
+      "entity_id": "a0000000-0000-0000-0000-000000000001",
+      "timestamp": "2026-09-09T08:30:53.123Z",
+      "metadata": {
+        "email": "admin@eloquence.com"
+      },
+      "id": "3643d54a-508a-4f4b-bc76-4f8c0c56d079",
+      "created_at": "2026-09-09T08:30:53.123Z"
+    },
+    {
+      "admin_id": "a0000000-0000-0000-0000-000000000001",
+      "action": "ADMIN_LOGIN",
+      "entity_type": "AUTH",
+      "entity_id": "a0000000-0000-0000-0000-000000000001",
+      "timestamp": "2026-09-09T08:43:22.927Z",
+      "metadata": {
+        "email": "admin@eloquence.com"
+      },
+      "id": "25d52258-44a1-40b7-96af-b299f5bc8004",
+      "created_at": "2026-09-09T08:43:22.928Z"
+    },
+    {
+      "admin_id": "a0000000-0000-0000-0000-000000000001",
+      "action": "DELETE_QUESTION",
+      "entity_type": "QUESTION",
+      "entity_id": "50e660fa-b608-4d38-b8f1-307ebfc7e226",
+      "timestamp": "2026-09-09T08:43:40.908Z",
+      "metadata": {},
+      "id": "16c6857a-7cdc-421d-a8c6-e93f0a3f7391",
+      "created_at": "2026-09-09T08:43:40.908Z"
     }
   ],
   "system_settings": {
