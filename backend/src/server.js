@@ -8,6 +8,10 @@ const server = app.listen(env.PORT, () => {
   logger.info(` Port: http://localhost:${env.PORT}`);
   logger.info(` Environment: ${env.NODE_ENV}`);
   logger.info(`=======================================================`);
+
+  // Start background schedule monitoring for auto-publishing and entry windows
+  const ScheduleService = require('./services/scheduleService');
+  ScheduleService.startScheduler();
 });
 
 process.on('SIGTERM', () => {

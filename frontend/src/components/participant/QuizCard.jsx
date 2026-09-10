@@ -15,6 +15,10 @@ export default function QuizCard({ quiz, participant }) {
   const isTerminated = quiz.attempt_status === 'TERMINATED' || quiz.attempt_status === 'DISQUALIFIED';
   const isInProgress = quiz.attempt_status === 'IN_PROGRESS';
 
+  // Entry window calculations
+  const entryStatus = quiz.entry_window_status;
+  const isEntryClosed = Boolean(entryStatus?.isEntryClosed) && !isInProgress && !isCompleted && !isTerminated;
+
   const handleAction = () => {
     if (isCompleted || isTerminated) {
       if (quiz.attempt_id) {
@@ -22,6 +26,10 @@ export default function QuizCard({ quiz, participant }) {
       } else {
         navigate('/participant/results');
       }
+      return;
+    }
+
+    if (isEntryClosed) {
       return;
     }
 
@@ -38,26 +46,44 @@ export default function QuizCard({ quiz, participant }) {
           <Badge variant={isRound2 ? 'purple' : 'primary'} size="sm">
             Round {quiz.round_number}
           </Badge>
-          {quiz.status === 'Live' && !isCompleted && !isTerminated && (
-            <Badge variant="live" size="sm">
-              LIVE NOW
-            </Badge>
-          )}
-          {isCompleted && (
-            <Badge variant="success" size="sm">
-              COMPLETED
-            </Badge>
-          )}
-          {isTerminated && (
-            <Badge variant="danger" size="sm">
-              TERMINATED
-            </Badge>
-          )}
-          {quiz.status === 'Scheduled' && !isCompleted && (
-            <Badge variant="warning" size="sm">
-              UPCOMING
-            </Badge>
-          )}
+
+          <div className="flex items-center gap-1.5 flex-wrap">
+            {quiz.status === 'Live' && !isCompleted && !isTerminated && (
+              <Badge variant="live" size="sm">
+                LIVE NOW
+              </Badge>
+            )}
+            {entryStatus?.isEntryOpen && (quiz.status === 'Live' || quiz.status === 'Published') && !isCompleted && !isTerminated && (
+              <Badge variant="success" size="sm">
+                5-Min Entry Open
+              </Badge>
+            )}
+            {isEntryClosed && (
+              <Badge variant="danger" size="sm">
+                Entry Closed
+              </Badge>
+            )}
+            {entryStatus?.isLateAllowed && (quiz.status === 'Live' || quiz.status === 'Published') && !isCompleted && (
+              <Badge variant="purple" size="sm">
+                Late Entry Allowed
+              </Badge>
+            )}
+            {isCompleted && (
+              <Badge variant="success" size="sm">
+                COMPLETED
+              </Badge>
+            )}
+            {isTerminated && (
+              <Badge variant="danger" size="sm">
+                TERMINATED
+              </Badge>
+            )}
+            {quiz.status === 'Scheduled' && !isCompleted && (
+              <Badge variant="warning" size="sm">
+                UPCOMING
+              </Badge>
+            )}
+          </div>
         </div>
 
         {/* Quiz Title & Description */}
@@ -125,6 +151,19 @@ export default function QuizCard({ quiz, participant }) {
             <span>Resume Active Exam</span>
             <ArrowRight className="w-4 h-4" />
           </button>
+        ) : isEntryClosed ? (
+          <div className="space-y-1 text-center">
+            <button
+              disabled
+              className="w-full py-2.5 px-4 rounded-xl text-xs font-bold text-rose-600 dark:text-rose-400 bg-rose-50 dark:bg-rose-950/40 border border-rose-200 dark:border-rose-900 cursor-not-allowed flex items-center justify-center gap-2"
+            >
+              <Lock className="w-4 h-4 text-rose-500" />
+              <span>Entry Closed (5m passed)</span>
+            </button>
+            <p className="text-[10px] text-slate-400">
+              5-minute initial entry period ended. Contact admin for late entry.
+            </p>
+          </div>
         ) : quiz.status === 'Live' || quiz.status === 'Published' ? (
           <button
             onClick={handleAction}

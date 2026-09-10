@@ -10,6 +10,7 @@ router.get('/', ParticipantController.getAllParticipants);
 router.post('/', ParticipantController.createParticipant);
 router.post('/bulk-import', ParticipantController.bulkImportParticipants);
 router.get('/:id', ParticipantController.getParticipantById);
+router.put('/:id', ParticipantController.updateParticipant);
 router.patch('/:id/status', ParticipantController.toggleDisableParticipant);
 router.delete('/:id', ParticipantController.deleteParticipant);
 router.post('/assign', ParticipantController.assignToQuiz);

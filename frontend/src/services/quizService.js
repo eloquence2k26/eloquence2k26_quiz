@@ -29,5 +29,10 @@ export const quizService = {
   updateStatus: async (id, status) => {
     const res = await api.patch(`/quizzes/${id}/status`, { status });
     return res.data;
+  },
+
+  toggleLateEntry: async (id, allowLateEntry) => {
+    const res = await api.patch(`/quizzes/${id}/entry-control`, { allow_late_entry: allowLateEntry });
+    return res.data;
   }
 };

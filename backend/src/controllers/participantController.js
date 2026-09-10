@@ -105,6 +105,96 @@ class ParticipantController {
   }
 
   /**
+   * Update participant details
+   */
+  static async updateParticipant(req, res) {
+    try {
+      const { id } = req.params;
+      const {
+        full_name,
+        email,
+        mobile,
+        college,
+        department,
+        year,
+        registration_number,
+        event,
+        round_1_selected,
+        round_2_selected,
+        is_disabled,
+        password
+      } = req.body;
+
+      const participant = db.find('participants', (p) => p.id === id);
+      if (!participant) return error(res, 'Participant not found', 404);
+
+      let cleanEmail = participant.email;
+      if (email && email.trim()) {
+        cleanEmail = email.trim().toLowerCase();
+        if (cleanEmail !== participant.email.toLowerCase()) {
+          const existingUser = db.find('users', (u) => u.email.toLowerCase() === cleanEmail && u.id !== id);
+          if (existingUser) {
+            return error(res, `A user with email "${cleanEmail}" already exists.`, 409);
+          }
+        }
+      }
+
+      let cleanMobile = participant.mobile;
+      if (mobile !== undefined && mobile !== null) {
+        cleanMobile = mobile.trim();
+      }
+
+      // Update users table
+      const userUpdates = {};
+      if (email && email.trim()) {
+        userUpdates.email = cleanEmail;
+      }
+      if (is_disabled !== undefined) {
+        userUpdates.is_active = !Boolean(is_disabled);
+      }
+      if (password && password.trim()) {
+        userUpdates.password_hash = await bcrypt.hash(password.trim(), 10);
+      }
+      if (Object.keys(userUpdates).length > 0) {
+        db.update('users', (u) => u.id === id, userUpdates);
+      }
+
+      // Update profiles table
+      const profileUpdates = {};
+      if (full_name !== undefined) profileUpdates.full_name = full_name.trim();
+      if (mobile !== undefined) profileUpdates.mobile = cleanMobile;
+      if (Object.keys(profileUpdates).length > 0) {
+        db.update('profiles', (p) => p.id === id, profileUpdates);
+      }
+
+      // Update participants table
+      const participantUpdates = {};
+      if (full_name !== undefined) participantUpdates.full_name = full_name.trim();
+      if (email !== undefined) participantUpdates.email = cleanEmail;
+      if (mobile !== undefined) participantUpdates.mobile = cleanMobile;
+      if (college !== undefined) participantUpdates.college = college.trim();
+      if (department !== undefined) participantUpdates.department = department.trim();
+      if (year !== undefined) participantUpdates.year = year.trim();
+      if (registration_number !== undefined) participantUpdates.registration_number = registration_number.trim();
+      if (event !== undefined) participantUpdates.event = event.trim();
+      if (round_1_selected !== undefined) participantUpdates.round_1_selected = Boolean(round_1_selected);
+      if (round_2_selected !== undefined) participantUpdates.round_2_selected = Boolean(round_2_selected);
+      if (is_disabled !== undefined) participantUpdates.is_disabled = Boolean(is_disabled);
+
+      const updatedParticipant = db.update('participants', (p) => p.id === id, participantUpdates);
+
+      AuditService.log(req.user.id, 'UPDATE_PARTICIPANT', 'PARTICIPANT', id, {
+        participant_id: participant.participant_id,
+        updates: Object.keys(participantUpdates)
+      });
+
+      return success(res, updatedParticipant, 'Participant updated successfully');
+    } catch (err) {
+      return error(res, err.message, 500);
+    }
+  }
+
+  /**
    * Delete participant
    */
   static async deleteParticipant(req, res) {
@@ -113,12 +203,24 @@ class ParticipantController {
       const participant = db.find('participants', (p) => p.id === id);
       if (!participant) return error(res, 'Participant not found', 404);
 
+      // Clean up attempt-related child records
+      const attempts = db.filter('exam_attempts', (ea) => ea.participant_id === id);
+      const attemptIds = new Set(attempts.map((a) => a.id));
+
+      if (attemptIds.size > 0) {
+        db.remove('attempt_answers', (aa) => attemptIds.has(aa.attempt_id));
+        db.remove('question_orders', (qo) => attemptIds.has(qo.attempt_id));
+      }
+
       db.remove('participants', (p) => p.id === id);
       db.remove('users', (u) => u.id === id);
       db.remove('profiles', (p) => p.id === id);
       db.remove('quiz_assignments', (qa) => qa.participant_id === id);
       db.remove('exam_attempts', (ea) => ea.participant_id === id);
       db.remove('results', (r) => r.participant_id === id);
+      db.remove('security_violations', (sv) => sv.participant_id === id);
+      db.remove('exam_sessions', (es) => es.participant_id === id);
+      db.remove('round_selections', (rs) => rs.participant_id === id);
 
       AuditService.log(req.user.id, 'DELETE_PARTICIPANT', 'PARTICIPANT', id, {
         participant_id: participant.participant_id,

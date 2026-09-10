@@ -68,7 +68,9 @@ export default function ModifyScheduleModal({ isOpen, onClose, onSave, quiz }) {
         end_date: quiz.end_date || new Date(Date.now() + 86400000 * 7).toISOString().split('T')[0],
         end_time: formatTime(quiz.end_time || '23:59:59'),
         duration_minutes: quiz.duration_minutes || 30,
-        status: quiz.status || 'Scheduled'
+        status: quiz.status || 'Scheduled',
+        entry_window_minutes: quiz.entry_window_minutes || 5,
+        allow_late_entry: Boolean(quiz.allow_late_entry || quiz.late_entry_allowed)
       });
       setValidationError('');
     }
@@ -384,6 +386,53 @@ export default function ModifyScheduleModal({ isOpen, onClose, onSave, quiz }) {
           <p className="text-[11px] text-slate-400">
             Participants can attempt this exam at any time within the start and end window, with a maximum allocated timer of {formData.duration_minutes} minutes.
           </p>
+        </div>
+
+        {/* 5-Minute Entry Window & Automated Publishing Protocol */}
+        <div className="p-4 rounded-2xl bg-indigo-50/70 dark:bg-indigo-950/40 border border-indigo-200 dark:border-indigo-800/60 space-y-3">
+          <div className="flex items-center gap-2 text-xs font-bold text-indigo-900 dark:text-indigo-200 uppercase tracking-wider">
+            <Clock className="w-3.5 h-3.5 text-indigo-600 dark:text-indigo-400" />
+            <span>Automated Publication & 5-Minute Entry Window</span>
+          </div>
+
+          <p className="text-[11px] text-indigo-700 dark:text-indigo-300 leading-relaxed">
+            When the scheduled start time arrives, this examination will <strong>automatically publish itself</strong>. Participants have a <strong>5-minute initial entry window</strong> to enter. Once 5 minutes elapse, entry will be automatically closed unless allowed by an administrator.
+          </p>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
+            <div>
+              <label className="block text-[11px] font-bold text-slate-700 dark:text-slate-300 mb-1">
+                Entry Period (Minutes) *
+              </label>
+              <input
+                type="number"
+                min={1}
+                max={60}
+                required
+                value={formData.entry_window_minutes}
+                onChange={(e) => setFormData({ ...formData, entry_window_minutes: parseInt(e.target.value) || 5 })}
+                className="w-full px-3 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-xs font-bold text-slate-900 dark:text-white"
+              />
+              <span className="text-[10px] text-slate-400 mt-0.5 block">Default is 5 minutes from start time</span>
+            </div>
+
+            <div className="flex flex-col justify-center">
+              <label className="flex items-center gap-2 cursor-pointer mt-3 sm:mt-5">
+                <input
+                  type="checkbox"
+                  checked={formData.allow_late_entry}
+                  onChange={(e) => setFormData({ ...formData, allow_late_entry: e.target.checked })}
+                  className="w-4 h-4 rounded text-brand-600 focus:ring-brand-500 border-slate-300"
+                />
+                <span className="text-xs font-bold text-slate-800 dark:text-slate-200">
+                  Allow late entry after 5 mins
+                </span>
+              </label>
+              <span className="text-[10px] text-slate-400 mt-0.5 block pl-6">
+                Admin override to permit entry after the window ends
+              </span>
+            </div>
+          </div>
         </div>
 
         {/* Action Buttons */}

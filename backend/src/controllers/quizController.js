@@ -1,6 +1,7 @@
 const db = require('../config/db');
 const { success, error } = require('../utils/responseHelper');
 const AuditService = require('../services/auditService');
+const ScheduleService = require('../services/scheduleService');
 
 class QuizController {
   /**
@@ -8,6 +9,9 @@ class QuizController {
    */
   static async getAllQuizzes(req, res) {
     try {
+      // Auto-publish any scheduled quizzes whose time has arrived
+      ScheduleService.checkAndPublishScheduledQuizzes();
+
       const user = req.user;
       let quizzes = db.get('quizzes');
 
@@ -31,6 +35,7 @@ class QuizController {
 
           return {
             ...q,
+            entry_window_status: ScheduleService.getEntryWindowStatus(q),
             attempt_status: attempt ? attempt.status : 'NOT_STARTED',
             attempt_id: attempt ? attempt.id : null,
             result_summary: result
@@ -59,6 +64,7 @@ class QuizController {
         const attemptsCount = db.filter('exam_attempts', (ea) => ea.quiz_id === q.id).length;
         return {
           ...q,
+          entry_window_status: ScheduleService.getEntryWindowStatus(q),
           total_questions: qCount || q.total_questions || 0,
           assigned_participants_count: assignedCount,
           total_attempts_count: attemptsCount
@@ -76,6 +82,9 @@ class QuizController {
    */
   static async getQuizById(req, res) {
     try {
+      // Auto-publish check
+      ScheduleService.checkAndPublishScheduledQuizzes();
+
       const { id } = req.params;
       const quiz = db.find('quizzes', (q) => q.id === id);
       if (!quiz) return error(res, 'Quiz not found', 404);
@@ -104,6 +113,7 @@ class QuizController {
 
       return success(res, {
         ...quiz,
+        entry_window_status: ScheduleService.getEntryWindowStatus(quiz),
         total_questions: totalQCount,
         questions: req.user.role === 'ADMIN' ? questions : undefined,
         assigned_participants_count: assignedParticipants.length
@@ -140,6 +150,8 @@ class QuizController {
         max_violations = 3,
         shuffle_questions = true,
         shuffle_options = true,
+        entry_window_minutes = 5,
+        allow_late_entry = false,
         question_ids = []
       } = req.body;
 
@@ -210,6 +222,8 @@ class QuizController {
         max_violations: Number(max_violations),
         shuffle_questions: Boolean(shuffle_questions),
         shuffle_options: Boolean(shuffle_options),
+        entry_window_minutes: Number(entry_window_minutes) || 5,
+        allow_late_entry: Boolean(allow_late_entry),
         created_by: req.user.id
       });
 
@@ -345,6 +359,41 @@ class QuizController {
       AuditService.log(req.user.id, 'CHANGE_QUIZ_STATUS', 'QUIZ', id, { new_status: status });
 
       return success(res, updated, `Quiz status changed to ${status}`);
+    } catch (err) {
+      return error(res, err.message, 500);
+    }
+  }
+
+  /**
+   * Toggle or configure late entry for a quiz (Admin only)
+   */
+  static async updateEntryControl(req, res) {
+    try {
+      const { id } = req.params;
+      const { allow_late_entry } = req.body;
+
+      const updated = db.update(
+        'quizzes',
+        (q) => q.id === id,
+        {
+          allow_late_entry: Boolean(allow_late_entry),
+          late_entry_allowed: Boolean(allow_late_entry)
+        }
+      );
+
+      if (!updated) return error(res, 'Quiz not found', 404);
+
+      AuditService.log(req.user.id, 'UPDATE_ENTRY_CONTROL', 'QUIZ', id, {
+        allow_late_entry: Boolean(allow_late_entry)
+      });
+
+      return success(
+        res,
+        updated,
+        allow_late_entry
+          ? 'Late entry unlocked. Participants can now enter this exam.'
+          : 'Late entry locked. Initial 5-minute window rule enforced.'
+      );
     } catch (err) {
       return error(res, err.message, 500);
     }

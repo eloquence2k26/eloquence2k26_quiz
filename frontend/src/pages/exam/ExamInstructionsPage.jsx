@@ -115,6 +115,28 @@ export default function ExamInstructionsPage() {
             </div>
           </label>
 
+          {/* Entry Window Status Alerts */}
+          {quiz?.entry_window_status?.isEntryClosed ? (
+            <div className="p-4 rounded-2xl bg-rose-50 dark:bg-rose-950/60 border border-rose-200 dark:border-rose-900/50 flex items-start gap-3">
+              <AlertTriangle className="w-5 h-5 text-rose-600 dark:text-rose-400 flex-shrink-0 mt-0.5" />
+              <div className="text-xs text-rose-900 dark:text-rose-200 leading-relaxed font-medium">
+                <strong>ENTRY PERIOD CLOSED:</strong> The 5-minute initial admission period for this examination has ended. You cannot enter this test arena unless a symposium administrator explicitly unlocks late entry for you.
+              </div>
+            </div>
+          ) : quiz?.entry_window_status?.isEntryOpen ? (
+            <div className="p-3.5 rounded-2xl bg-emerald-50 dark:bg-emerald-950/50 border border-emerald-200 dark:border-emerald-800/60 flex items-center justify-between gap-3 text-xs text-emerald-900 dark:text-emerald-200 font-medium">
+              <div className="flex items-center gap-2">
+                <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
+                <span><strong>5-Minute Entry Window Active:</strong> Please enter the arena before the period concludes.</span>
+              </div>
+              {quiz.entry_window_status.remainingEntrySeconds > 0 && (
+                <span className="font-mono font-bold bg-emerald-100 dark:bg-emerald-900/60 px-2 py-0.5 rounded-lg">
+                  {Math.ceil(quiz.entry_window_status.remainingEntrySeconds / 60)}m left
+                </span>
+              )}
+            </div>
+          ) : null}
+
           {/* Action Buttons */}
           <div className="flex items-center justify-between pt-4 border-t border-slate-100 dark:border-slate-800">
             <Link
@@ -127,10 +149,16 @@ export default function ExamInstructionsPage() {
 
             <button
               onClick={handleEnterExam}
-              disabled={!agreed || starting}
+              disabled={!agreed || starting || quiz?.entry_window_status?.isEntryClosed}
               className="flex items-center gap-2 px-6 py-3 rounded-2xl text-xs font-bold text-white bg-gradient-to-r from-brand-600 to-indigo-600 hover:from-brand-700 hover:to-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed shadow-lg shadow-brand-500/25 transition-all uppercase tracking-wider"
             >
-              <span>{starting ? 'Entering Secure Arena...' : 'Enter Secure Exam'}</span>
+              <span>
+                {quiz?.entry_window_status?.isEntryClosed
+                  ? 'Entry Closed'
+                  : starting
+                  ? 'Entering Secure Arena...'
+                  : 'Enter Secure Exam'}
+              </span>
               <ArrowRight className="w-4 h-4" />
             </button>
           </div>

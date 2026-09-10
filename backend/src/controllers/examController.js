@@ -4,6 +4,7 @@ const TimerService = require('../services/timerService');
 const SessionService = require('../services/sessionService');
 const ScoringService = require('../services/scoringService');
 const AuditService = require('../services/auditService');
+const ScheduleService = require('../services/scheduleService');
 
 // Helper to shuffle array (Fisher-Yates)
 function shuffleArray(array) {
@@ -83,6 +84,34 @@ class ExamController {
       );
       if (completedAttempts.length >= (quiz.max_attempts || 1)) {
         return error(res, 'You have already utilized all allowed attempts for this examination.', 403);
+      }
+
+      // Enforce 5-minute entry window from scheduled start time (for participants creating a new attempt)
+      if (req.user.role === 'PARTICIPANT' && quiz.start_date && quiz.start_time) {
+        const entryStatus = ScheduleService.getEntryWindowStatus(quiz);
+        if (entryStatus.isBeforeStart) {
+          return error(
+            res,
+            `This examination has not started yet. Scheduled to begin at ${quiz.start_time}.`,
+            403
+          );
+        }
+
+        if (entryStatus.isEntryClosed) {
+          const formattedCloseTime = entryStatus.entryCloseTime.toLocaleTimeString([], {
+            hour: '2-digit',
+            minute: '2-digit'
+          });
+          return error(
+            res,
+            `Entry window closed. The initial 5-minute entry period ended at ${formattedCloseTime}. Only symposium administrators can grant late admission.`,
+            403,
+            {
+              entry_closed: true,
+              entry_close_time: entryStatus.entryCloseTime
+            }
+          );
+        }
       }
 
       // Create new Attempt

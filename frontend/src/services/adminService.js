@@ -85,6 +85,11 @@ export const adminService = {
     return res.data;
   },
 
+  updateParticipant: async (id, participantData) => {
+    const res = await api.put(`/participants/${id}`, participantData);
+    return res.data;
+  },
+
   assignParticipantsToQuiz: async (quizId, participantIds, assignAll = false) => {
     const res = await api.post('/participants/assign', {
       quiz_id: quizId,

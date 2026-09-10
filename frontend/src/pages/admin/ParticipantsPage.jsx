@@ -1,23 +1,56 @@
 import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
-import { Search, Filter, Trash2, Ban, CheckCircle, UserPlus, CheckSquare, Sparkles, BookOpen } from 'lucide-react';
+import {
+  Search,
+  Filter,
+  Trash2,
+  Ban,
+  CheckCircle,
+  UserPlus,
+  BookOpen,
+  Edit2,
+  Users,
+  Trophy,
+  CheckCircle2,
+  RefreshCw,
+  School,
+  Phone,
+  Mail,
+  ShieldCheck,
+  Hash,
+  AlertCircle
+} from 'lucide-react';
 import { adminService } from '../../services/adminService';
 import { quizService } from '../../services/quizService';
 import { useToast } from '../../context/ToastContext';
 import Modal from '../../components/common/Modal';
 import Badge from '../../components/common/Badge';
 import Loading from '../../components/common/Loading';
+import EditParticipantModal from '../../components/admin/EditParticipantModal';
+import DeleteParticipantModal from '../../components/admin/DeleteParticipantModal';
 
 export default function ParticipantsPage() {
   const toast = useToast();
   const [participants, setParticipants] = useState([]);
   const [quizzes, setQuizzes] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+
+  // Filters
   const [searchTerm, setSearchTerm] = useState('');
   const [filterCollege, setFilterCollege] = useState('');
-  const [filterRound1, setFilterRound1] = useState('ALL');
+  const [filterRound, setFilterRound] = useState('ALL');
+  const [filterStatus, setFilterStatus] = useState('ALL');
 
-  // Assign Modal
+  // Edit Modal State
+  const [editingParticipant, setEditingParticipant] = useState(null);
+  const [showEditModal, setShowEditModal] = useState(false);
+
+  // Delete Modal State
+  const [deletingParticipant, setDeletingParticipant] = useState(null);
+  const [showDeleteModal, setShowDeleteModal] = useState(false);
+
+  // Assign Modal State
   const [showAssignModal, setShowAssignModal] = useState(false);
   const [selectedQuizId, setSelectedQuizId] = useState('');
   const [selectedParticipantIds, setSelectedParticipantIds] = useState([]);
@@ -27,8 +60,13 @@ export default function ParticipantsPage() {
     fetchData();
   }, []);
 
-  const fetchData = async () => {
-    setLoading(true);
+  const fetchData = async (isManualRefresh = false) => {
+    if (isManualRefresh) {
+      setRefreshing(true);
+    } else {
+      setLoading(true);
+    }
+
     try {
       const [pRes, qRes] = await Promise.all([
         adminService.getParticipants(),
@@ -37,15 +75,56 @@ export default function ParticipantsPage() {
       if (pRes.success) setParticipants(pRes.data || []);
       if (qRes.success) {
         setQuizzes(qRes.data || []);
-        if (qRes.data?.length > 0) setSelectedQuizId(qRes.data[0].id);
+        if (qRes.data?.length > 0 && !selectedQuizId) {
+          setSelectedQuizId(qRes.data[0].id);
+        }
+      }
+      if (isManualRefresh) {
+        toast.success('Participants registry updated');
       }
     } catch (err) {
       toast.error('Failed to load participants');
     } finally {
       setLoading(false);
+      setRefreshing(false);
     }
   };
 
+  // Open Edit Modal
+  const handleEditClick = (p) => {
+    setEditingParticipant(p);
+    setShowEditModal(true);
+  };
+
+  // Save Participant Changes
+  const handleSaveParticipant = async (id, updatedData) => {
+    const res = await adminService.updateParticipant(id, updatedData);
+    if (res.success) {
+      toast.success('Participant updated successfully');
+      fetchData();
+    } else {
+      throw new Error(res.message || 'Failed to update participant');
+    }
+  };
+
+  // Open Delete Modal
+  const handleDeleteClick = (p) => {
+    setDeletingParticipant(p);
+    setShowDeleteModal(true);
+  };
+
+  // Confirm Delete
+  const handleConfirmDelete = async (id) => {
+    const res = await adminService.deleteParticipant(id);
+    if (res.success) {
+      toast.success('Participant deleted successfully');
+      fetchData();
+    } else {
+      toast.error(res.message || 'Failed to delete participant');
+    }
+  };
+
+  // Toggle Disabled / Active Status
   const handleToggleStatus = async (p) => {
     try {
       const newStatus = !p.is_disabled;
@@ -59,21 +138,18 @@ export default function ParticipantsPage() {
     }
   };
 
-  const handleDelete = async (id) => {
-    if (!window.confirm('Are you sure you want to completely delete this participant?')) return;
-    try {
-      const res = await adminService.deleteParticipant(id);
-      if (res.success) {
-        toast.success('Participant deleted');
-        fetchData();
-      }
-    } catch (err) {
-      toast.error('Failed to delete participant');
-    }
-  };
-
+  // Handle Quiz Assignment
   const handleAssignSubmit = async (e) => {
     e.preventDefault();
+    if (!selectedQuizId) {
+      toast.error('Please select an examination');
+      return;
+    }
+    if (!assignAll && selectedParticipantIds.length === 0) {
+      toast.error('Please choose at least one participant or choose Assign All');
+      return;
+    }
+
     try {
       const res = await adminService.assignParticipantsToQuiz(
         selectedQuizId,
@@ -81,12 +157,14 @@ export default function ParticipantsPage() {
         assignAll
       );
       if (res.success) {
-        toast.success(res.message);
+        toast.success(res.message || 'Participants assigned successfully');
         setShowAssignModal(false);
+        setSelectedParticipantIds([]);
+        setAssignAll(false);
         fetchData();
       }
     } catch (err) {
-      toast.error('Failed to assign participants');
+      toast.error(err.response?.data?.message || 'Failed to assign participants');
     }
   };
 
@@ -98,152 +176,425 @@ export default function ParticipantsPage() {
 
   if (loading) return <Loading text="Loading participants registry..." />;
 
+  // Unique colleges for filter dropdown
+  const uniqueColleges = Array.from(
+    new Set(participants.map((p) => p.college).filter(Boolean))
+  ).sort();
+
+  // Filter logic
   let filtered = participants;
-  if (filterRound1 !== 'ALL') {
-    filtered = filtered.filter((p) => Boolean(p.round_1_selected) === (filterRound1 === 'SELECTED'));
+
+  if (filterRound === 'ROUND_1_QUALIFIED') {
+    filtered = filtered.filter((p) => Boolean(p.round_1_selected));
+  } else if (filterRound === 'ROUND_2_WINNER') {
+    filtered = filtered.filter((p) => Boolean(p.round_2_selected));
+  } else if (filterRound === 'CANDIDATE') {
+    filtered = filtered.filter((p) => !p.round_1_selected && !p.round_2_selected);
   }
+
+  if (filterStatus === 'ACTIVE') {
+    filtered = filtered.filter((p) => !p.is_disabled);
+  } else if (filterStatus === 'DISABLED') {
+    filtered = filtered.filter((p) => Boolean(p.is_disabled));
+  }
+
   if (filterCollege) {
-    filtered = filtered.filter((p) => p.college.toLowerCase().includes(filterCollege.toLowerCase()));
+    filtered = filtered.filter((p) => p.college?.toLowerCase().includes(filterCollege.toLowerCase()));
   }
+
   if (searchTerm) {
-    const term = searchTerm.toLowerCase();
-    filtered = filtered.filter((p) =>
-      p.full_name.toLowerCase().includes(term) ||
-      p.participant_id.toLowerCase().includes(term) ||
-      p.email.toLowerCase().includes(term) ||
-      p.college.toLowerCase().includes(term)
+    const term = searchTerm.toLowerCase().trim();
+    filtered = filtered.filter(
+      (p) =>
+        p.full_name?.toLowerCase().includes(term) ||
+        p.participant_id?.toLowerCase().includes(term) ||
+        p.registration_number?.toLowerCase().includes(term) ||
+        p.email?.toLowerCase().includes(term) ||
+        p.mobile?.toLowerCase().includes(term) ||
+        p.college?.toLowerCase().includes(term) ||
+        p.department?.toLowerCase().includes(term)
     );
   }
+
+  // Summary Metrics
+  const totalCount = participants.length;
+  const round1QualifiedCount = participants.filter((p) => p.round_1_selected).length;
+  const round2WinnerCount = participants.filter((p) => p.round_2_selected).length;
+  const disabledCount = participants.filter((p) => p.is_disabled).length;
+  const activeCount = totalCount - disabledCount;
 
   return (
     <div className="space-y-6">
       {/* Top Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
-          <h1 className="text-xl sm:text-2xl font-black text-slate-900 dark:text-white">
-            Participants Registry
-          </h1>
-          <p className="text-xs text-slate-500 dark:text-slate-400">
-            Total {participants.length} registered scholars across colleges and universities
+          <div className="flex items-center gap-2">
+            <h1 className="text-xl sm:text-2xl font-black text-slate-900 dark:text-white">
+              Participants Registry
+            </h1>
+            <button
+              type="button"
+              onClick={() => fetchData(true)}
+              disabled={refreshing}
+              className="p-1.5 rounded-lg border border-slate-200 dark:border-slate-800 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-800 transition-all"
+              title="Refresh Registry"
+            >
+              <RefreshCw className={`w-3.5 h-3.5 ${refreshing ? 'animate-spin text-brand-600' : ''}`} />
+            </button>
+          </div>
+          <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+            Manage scholar registrations, edit profiles, qualifications, and account access
           </p>
         </div>
 
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2.5">
           <Link
             to="/admin/user-register"
-            className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-bold text-white bg-brand-600 hover:bg-brand-700 shadow-md shadow-brand-500/20"
+            className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-bold text-white bg-gradient-to-r from-brand-600 to-indigo-600 hover:from-brand-700 hover:to-indigo-700 shadow-md shadow-brand-500/20 transition-all"
           >
-            <UserPlus className="w-4 h-4" />
-            <span>Register / Import Users</span>
+            <UserPlus className="w-3.5 h-3.5" />
+            <span>Register / Import</span>
           </Link>
 
           <button
             onClick={() => setShowAssignModal(true)}
-            className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-bold text-slate-700 dark:text-slate-200 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-700/50 shadow-sm"
+            className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-bold text-slate-700 dark:text-slate-200 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-700/50 shadow-sm transition-all"
           >
-            <BookOpen className="w-4 h-4 text-brand-600" />
-            <span>Assign to Quiz</span>
+            <BookOpen className="w-3.5 h-3.5 text-brand-600 dark:text-brand-400" />
+            <span>Assign Quiz</span>
           </button>
         </div>
       </div>
 
+      {/* Metrics Cards */}
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3.5">
+        <div className="p-4 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-sm">
+          <div className="flex items-center justify-between">
+            <span className="text-[11px] font-bold uppercase tracking-wider text-slate-400">
+              Total Scholars
+            </span>
+            <div className="w-7 h-7 rounded-xl bg-blue-50 dark:bg-blue-950/60 text-blue-600 dark:text-blue-400 flex items-center justify-center">
+              <Users className="w-3.5 h-3.5" />
+            </div>
+          </div>
+          <div className="mt-2 flex items-baseline gap-2">
+            <span className="text-2xl font-black text-slate-900 dark:text-white">
+              {totalCount}
+            </span>
+            <span className="text-[11px] text-slate-400">Registered</span>
+          </div>
+        </div>
+
+        <div className="p-4 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-sm">
+          <div className="flex items-center justify-between">
+            <span className="text-[11px] font-bold uppercase tracking-wider text-slate-400">
+              Round 1 Qualified
+            </span>
+            <div className="w-7 h-7 rounded-xl bg-emerald-50 dark:bg-emerald-950/60 text-emerald-600 dark:text-emerald-400 flex items-center justify-center">
+              <CheckCircle2 className="w-3.5 h-3.5" />
+            </div>
+          </div>
+          <div className="mt-2 flex items-baseline gap-2">
+            <span className="text-2xl font-black text-emerald-600 dark:text-emerald-400">
+              {round1QualifiedCount}
+            </span>
+            <span className="text-[11px] text-slate-400">for Round 2</span>
+          </div>
+        </div>
+
+        <div className="p-4 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-sm">
+          <div className="flex items-center justify-between">
+            <span className="text-[11px] font-bold uppercase tracking-wider text-slate-400">
+              Round 2 Finalists
+            </span>
+            <div className="w-7 h-7 rounded-xl bg-amber-50 dark:bg-amber-950/60 text-amber-600 dark:text-amber-400 flex items-center justify-center">
+              <Trophy className="w-3.5 h-3.5" />
+            </div>
+          </div>
+          <div className="mt-2 flex items-baseline gap-2">
+            <span className="text-2xl font-black text-amber-600 dark:text-amber-400">
+              {round2WinnerCount}
+            </span>
+            <span className="text-[11px] text-slate-400">Achieved</span>
+          </div>
+        </div>
+
+        <div className="p-4 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-sm">
+          <div className="flex items-center justify-between">
+            <span className="text-[11px] font-bold uppercase tracking-wider text-slate-400">
+              Active Accounts
+            </span>
+            <div className="w-7 h-7 rounded-xl bg-indigo-50 dark:bg-indigo-950/60 text-indigo-600 dark:text-indigo-400 flex items-center justify-center">
+              <ShieldCheck className="w-3.5 h-3.5" />
+            </div>
+          </div>
+          <div className="mt-2 flex items-baseline gap-2">
+            <span className="text-2xl font-black text-indigo-600 dark:text-indigo-400">
+              {activeCount}
+            </span>
+            <span className="text-[11px] text-slate-400">
+              {disabledCount > 0 ? `(${disabledCount} disabled)` : 'all active'}
+            </span>
+          </div>
+        </div>
+      </div>
+
       {/* Filter and Search Bar */}
-      <div className="p-4 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl flex flex-wrap items-center gap-3">
-        <div className="relative flex-1 min-w-[220px]">
+      <div className="p-3.5 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl flex flex-wrap items-center gap-3">
+        {/* Search Input */}
+        <div className="relative flex-1 min-w-[240px]">
           <Search className="w-4 h-4 text-slate-400 absolute left-3 top-2.5" />
           <input
             type="text"
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
-            placeholder="Search by name, ID, email, or college..."
-            className="w-full pl-9 pr-3 py-1.5 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-800 text-xs"
+            placeholder="Search by name, ID, Reg No, email, college..."
+            className="w-full pl-9 pr-3 py-2 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-800/80 text-xs font-semibold text-slate-900 dark:text-white placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-brand-500/20 focus:border-brand-500 transition-all"
           />
         </div>
 
+        {/* Round Qualification Filter */}
         <select
-          value={filterRound1}
-          onChange={(e) => setFilterRound1(e.target.value)}
-          className="px-3 py-1.5 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-800 text-xs font-semibold"
+          value={filterRound}
+          onChange={(e) => setFilterRound(e.target.value)}
+          className="px-3 py-2 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-800/80 text-xs font-semibold text-slate-700 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-brand-500/20"
         >
-          <option value="ALL">All Round Status</option>
-          <option value="SELECTED">Round 1 Selected</option>
-          <option value="NOT_SELECTED">Not Selected</option>
+          <option value="ALL">All Progression</option>
+          <option value="ROUND_1_QUALIFIED">Round 1 Qualified</option>
+          <option value="ROUND_2_WINNER">Round 2 Finalists</option>
+          <option value="CANDIDATE">Round 1 Candidates</option>
         </select>
+
+        {/* Account Status Filter */}
+        <select
+          value={filterStatus}
+          onChange={(e) => setFilterStatus(e.target.value)}
+          className="px-3 py-2 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-800/80 text-xs font-semibold text-slate-700 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-brand-500/20"
+        >
+          <option value="ALL">All Accounts</option>
+          <option value="ACTIVE">Active Accounts</option>
+          <option value="DISABLED">Disabled Accounts</option>
+        </select>
+
+        {/* College Filter */}
+        {uniqueColleges.length > 0 && (
+          <select
+            value={filterCollege}
+            onChange={(e) => setFilterCollege(e.target.value)}
+            className="px-3 py-2 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-800/80 text-xs font-semibold text-slate-700 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-brand-500/20 max-w-[200px] truncate"
+          >
+            <option value="">All Colleges ({uniqueColleges.length})</option>
+            {uniqueColleges.map((c) => (
+              <option key={c} value={c}>
+                {c}
+              </option>
+            ))}
+          </select>
+        )}
+
+        {/* Clear Filters Button */}
+        {(searchTerm || filterRound !== 'ALL' || filterStatus !== 'ALL' || filterCollege) && (
+          <button
+            type="button"
+            onClick={() => {
+              setSearchTerm('');
+              setFilterRound('ALL');
+              setFilterStatus('ALL');
+              setFilterCollege('');
+            }}
+            className="px-3 py-2 rounded-xl text-xs font-bold text-slate-500 hover:text-slate-800 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition-all"
+          >
+            Clear Filters
+          </button>
+        )}
       </div>
 
       {/* Participants Table */}
       <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl overflow-hidden shadow-sm">
         <div className="overflow-x-auto">
           <table className="w-full text-left text-xs">
-            <thead className="bg-slate-50 dark:bg-slate-800/60 text-slate-500 font-bold uppercase text-[10px] tracking-wider border-b border-slate-200 dark:border-slate-800">
+            <thead className="bg-slate-50 dark:bg-slate-800/60 text-slate-500 dark:text-slate-400 font-bold uppercase text-[10px] tracking-wider border-b border-slate-200 dark:border-slate-800">
               <tr>
-                <th className="py-3 px-4">Participant ID</th>
-                <th className="py-3 px-4">Name & Email</th>
-                <th className="py-3 px-4">College & Dept</th>
-                <th className="py-3 px-4">Round 1 Status</th>
+                <th className="py-3 px-4">Participant ID / Reg No</th>
+                <th className="py-3 px-4">Scholar Profile</th>
+                <th className="py-3 px-4">Institution & Dept</th>
+                <th className="py-3 px-4">Progression</th>
                 <th className="py-3 px-4">Account Status</th>
+                <th className="py-3 px-4 text-center">Quizzes</th>
                 <th className="py-3 px-4 text-right">Actions</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-slate-100 dark:divide-slate-800 font-medium text-slate-700 dark:text-slate-300">
-              {filtered.map((p) => (
-                <tr key={p.id} className="hover:bg-slate-50/50 dark:hover:bg-slate-800/40">
-                  <td className="py-3.5 px-4 font-mono font-bold text-brand-600 dark:text-brand-400">
-                    {p.participant_id}
-                  </td>
-                  <td className="py-3.5 px-4">
-                    <p className="font-bold text-slate-900 dark:text-white">{p.full_name}</p>
-                    <p className="text-[11px] text-slate-400">{p.email}</p>
-                  </td>
-                  <td className="py-3.5 px-4">
-                    <p className="text-slate-800 dark:text-slate-200">{p.college}</p>
-                    <p className="text-[10px] text-slate-400">{p.department} • {p.year}</p>
-                  </td>
-                  <td className="py-3.5 px-4">
-                    {p.round_1_selected ? (
-                      <Badge variant="success" size="sm">Qualified Round 2</Badge>
-                    ) : (
-                      <Badge variant="default" size="sm">Round 1 Candidate</Badge>
-                    )}
-                  </td>
-                  <td className="py-3.5 px-4">
-                    {p.is_disabled ? (
-                      <Badge variant="danger" size="sm">Disabled</Badge>
-                    ) : (
-                      <Badge variant="success" size="sm">Active</Badge>
-                    )}
-                  </td>
-                  <td className="py-3.5 px-4 text-right">
-                    <div className="flex items-center justify-end gap-2">
-                      <button
-                        onClick={() => handleToggleStatus(p)}
-                        className={`p-1.5 rounded-lg border text-xs font-semibold ${
-                          p.is_disabled
-                            ? 'text-emerald-600 hover:bg-emerald-50 border-emerald-200'
-                            : 'text-amber-600 hover:bg-amber-50 border-amber-200'
-                        }`}
-                        title={p.is_disabled ? 'Enable Account' : 'Disable Account'}
-                      >
-                        {p.is_disabled ? <CheckCircle className="w-4 h-4" /> : <Ban className="w-4 h-4" />}
-                      </button>
-
-                      <button
-                        onClick={() => handleDelete(p.id)}
-                        className="p-1.5 rounded-lg border border-rose-200 text-rose-600 hover:bg-rose-50"
-                        title="Delete Participant"
-                      >
-                        <Trash2 className="w-4 h-4" />
-                      </button>
+            <tbody className="divide-y divide-slate-100 dark:divide-slate-800/80 font-medium text-slate-700 dark:text-slate-300">
+              {filtered.length === 0 ? (
+                <tr>
+                  <td colSpan={7} className="py-12 text-center text-slate-400">
+                    <div className="flex flex-col items-center justify-center gap-2">
+                      <AlertCircle className="w-8 h-8 text-slate-300 dark:text-slate-600" />
+                      <p className="font-bold text-sm text-slate-600 dark:text-slate-300">
+                        No participants found
+                      </p>
+                      <p className="text-xs text-slate-400">
+                        {participants.length === 0
+                          ? 'No participants are registered yet. Click "Register / Import" above to add participants.'
+                          : 'Try changing your search keywords or filter criteria.'}
+                      </p>
                     </div>
                   </td>
                 </tr>
-              ))}
+              ) : (
+                filtered.map((p) => (
+                  <tr
+                    key={p.id}
+                    className="hover:bg-slate-50/70 dark:hover:bg-slate-800/40 transition-colors"
+                  >
+                    {/* Participant ID & Reg No */}
+                    <td className="py-3 px-4">
+                      <div className="font-mono font-bold text-brand-600 dark:text-brand-400">
+                        {p.participant_id}
+                      </div>
+                      <div className="font-mono text-[11px] text-slate-400">
+                        {p.registration_number || '—'}
+                      </div>
+                    </td>
+
+                    {/* Name & Contact */}
+                    <td className="py-3 px-4">
+                      <p className="font-bold text-slate-900 dark:text-white">
+                        {p.full_name}
+                      </p>
+                      <div className="flex items-center gap-2 text-[11px] text-slate-400 mt-0.5">
+                        <span>{p.email}</span>
+                        {p.mobile && (
+                          <>
+                            <span>•</span>
+                            <span className="font-mono">{p.mobile}</span>
+                          </>
+                        )}
+                      </div>
+                    </td>
+
+                    {/* College & Department */}
+                    <td className="py-3 px-4">
+                      <p className="text-slate-800 dark:text-slate-200 font-semibold truncate max-w-[200px]">
+                        {p.college || '—'}
+                      </p>
+                      <p className="text-[10px] text-slate-400">
+                        {p.department || 'General'} • {p.year || '3rd Year'}
+                      </p>
+                    </td>
+
+                    {/* Progression Badges */}
+                    <td className="py-3 px-4">
+                      <div className="flex flex-col gap-1 items-start">
+                        {p.round_2_selected ? (
+                          <Badge variant="warning" size="sm">
+                            🏆 Round 2 Finalist
+                          </Badge>
+                        ) : p.round_1_selected ? (
+                          <Badge variant="success" size="sm">
+                            ✓ Qualified Round 2
+                          </Badge>
+                        ) : (
+                          <span className="text-[10px] font-semibold text-slate-400">
+                            Round 1 Candidate
+                          </span>
+                        )}
+                      </div>
+                    </td>
+
+                    {/* Account Status */}
+                    <td className="py-3 px-4">
+                      {p.is_disabled ? (
+                        <Badge variant="danger" size="sm">
+                          Disabled
+                        </Badge>
+                      ) : (
+                        <Badge variant="success" size="sm">
+                          Active
+                        </Badge>
+                      )}
+                    </td>
+
+                    {/* Quizzes Assigned Count */}
+                    <td className="py-3 px-4 text-center">
+                      <span className="inline-flex items-center justify-center px-2 py-0.5 rounded-full text-[10px] font-bold bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300">
+                        {p.assigned_quizzes_count ?? '—'}
+                      </span>
+                    </td>
+
+                    {/* Actions: Edit, Status, Delete */}
+                    <td className="py-3 px-4 text-right">
+                      <div className="flex items-center justify-end gap-1.5">
+                        {/* Edit Button */}
+                        <button
+                          type="button"
+                          onClick={() => handleEditClick(p)}
+                          className="p-1.5 rounded-lg border border-blue-200 dark:border-blue-900/60 text-blue-600 dark:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-950/40 transition-all"
+                          title="Edit Participant"
+                        >
+                          <Edit2 className="w-3.5 h-3.5" />
+                        </button>
+
+                        {/* Status Toggle Button */}
+                        <button
+                          type="button"
+                          onClick={() => handleToggleStatus(p)}
+                          className={`p-1.5 rounded-lg border transition-all ${
+                            p.is_disabled
+                              ? 'text-emerald-600 hover:bg-emerald-50 dark:text-emerald-400 dark:hover:bg-emerald-950/40 border-emerald-200 dark:border-emerald-900/60'
+                              : 'text-amber-600 hover:bg-amber-50 dark:text-amber-400 dark:hover:bg-amber-950/40 border-amber-200 dark:border-amber-900/60'
+                          }`}
+                          title={p.is_disabled ? 'Enable Account' : 'Disable Account'}
+                        >
+                          {p.is_disabled ? (
+                            <CheckCircle className="w-3.5 h-3.5" />
+                          ) : (
+                            <Ban className="w-3.5 h-3.5" />
+                          )}
+                        </button>
+
+                        {/* Delete Button */}
+                        <button
+                          type="button"
+                          onClick={() => handleDeleteClick(p)}
+                          className="p-1.5 rounded-lg border border-rose-200 dark:border-rose-900/60 text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/40 transition-all"
+                          title="Delete Participant"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                ))
+              )}
             </tbody>
           </table>
         </div>
       </div>
 
-      {/* Assign Modal */}
+      {/* Edit Participant Modal */}
+      <EditParticipantModal
+        isOpen={showEditModal}
+        onClose={() => {
+          setShowEditModal(false);
+          setEditingParticipant(null);
+        }}
+        participant={editingParticipant}
+        onSave={handleSaveParticipant}
+      />
+
+      {/* Delete Participant Modal */}
+      <DeleteParticipantModal
+        isOpen={showDeleteModal}
+        onClose={() => {
+          setShowDeleteModal(false);
+          setDeletingParticipant(null);
+        }}
+        participant={deletingParticipant}
+        onConfirm={handleConfirmDelete}
+      />
+
+      {/* Assign to Quiz Modal */}
       <Modal
         isOpen={showAssignModal}
         onClose={() => setShowAssignModal(false)}
@@ -258,7 +609,7 @@ export default function ParticipantsPage() {
             <select
               value={selectedQuizId}
               onChange={(e) => setSelectedQuizId(e.target.value)}
-              className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-xs font-bold"
+              className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-xs font-bold text-slate-900 dark:text-white"
             >
               {quizzes.map((q) => (
                 <option key={q.id} value={q.id}>
@@ -293,10 +644,14 @@ export default function ParticipantsPage() {
                       key={p.id}
                       onClick={() => toggleSelectParticipant(p.id)}
                       className={`flex items-center justify-between p-2 rounded-lg cursor-pointer text-xs ${
-                        isChecked ? 'bg-blue-50 text-blue-900 font-bold' : 'hover:bg-white'
+                        isChecked
+                          ? 'bg-brand-50 dark:bg-brand-950/60 text-brand-900 dark:text-brand-300 font-bold'
+                          : 'hover:bg-white dark:hover:bg-slate-800'
                       }`}
                     >
-                      <span>{p.full_name} ({p.participant_id})</span>
+                      <span>
+                        {p.full_name} ({p.participant_id})
+                      </span>
                       <span className="text-[10px] text-slate-400">{p.college}</span>
                     </div>
                   );
@@ -305,11 +660,11 @@ export default function ParticipantsPage() {
             )}
           </div>
 
-          <div className="flex items-center justify-end gap-3 pt-3 border-t border-slate-100">
+          <div className="flex items-center justify-end gap-3 pt-3 border-t border-slate-100 dark:border-slate-800">
             <button
               type="button"
               onClick={() => setShowAssignModal(false)}
-              className="px-4 py-2 rounded-xl text-xs font-semibold text-slate-600"
+              className="px-4 py-2 rounded-xl text-xs font-semibold text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800"
             >
               Cancel
             </button>

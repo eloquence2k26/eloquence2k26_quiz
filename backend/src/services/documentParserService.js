@@ -1,5 +1,4 @@
 const path = require('path');
-const pdf = require('pdf-parse');
 const AdmZip = require('adm-zip');
 const XLSX = require('xlsx');
 
@@ -25,8 +24,27 @@ class DocumentParserService {
 
     switch (ext) {
       case '.pdf': {
-        const pdfData = await pdf(buffer);
-        questions = this.parseMCQsFromText(pdfData.text, defaultMeta);
+        let pdfText = '';
+        try {
+          const pdfModule = require('pdf-parse');
+          if (pdfModule.PDFParse) {
+            // pdf-parse v2 class structure
+            const parser = new pdfModule.PDFParse({ data: buffer });
+            const result = await parser.getText();
+            pdfText = result?.text || '';
+            if (parser.destroy) await parser.destroy();
+          } else if (typeof pdfModule === 'function') {
+            // pdf-parse v1 function structure
+            const result = await pdfModule(buffer);
+            pdfText = result?.text || '';
+          }
+        } catch (pdfErr) {
+          console.error('PDF text extraction error:', pdfErr.message);
+          // Fallback string extraction for raw readable text
+          pdfText = buffer.toString('utf8').replace(/[^\x20-\x7E\n\r\t]/g, ' ');
+        }
+
+        questions = this.parseMCQsFromText(pdfText, defaultMeta);
         break;
       }
 
@@ -93,7 +111,6 @@ class DocumentParserService {
 
       return textChunks.join('\n\n');
     } catch (err) {
-      // Fallback: extract any printable strings from buffer
       return buffer.toString('utf8').replace(/[^\x20-\x7E\n\r\t]/g, ' ');
     }
   }
@@ -107,7 +124,6 @@ class DocumentParserService {
       const docEntry = zip.getEntry('word/document.xml');
       if (docEntry) {
         const xml = docEntry.getData().toString('utf8');
-        // Replace paragraph tags with newlines and strip XML tags
         const formatted = xml
           .replace(/<\/w:p>/g, '\n')
           .replace(/<w:tab\/>/g, '\t')
@@ -116,7 +132,6 @@ class DocumentParserService {
       }
     } catch (err) {}
 
-    // Fallback: stringify
     return buffer.toString('utf8').replace(/[^\x20-\x7E\n\r\t]/g, ' ');
   }
 
@@ -133,7 +148,6 @@ class DocumentParserService {
       return [];
     }
 
-    // Helper to find case-insensitive column
     const findCol = (row, candidates) => {
       const keys = Object.keys(row);
       for (const candidate of candidates) {
@@ -147,16 +161,15 @@ class DocumentParserService {
 
     const parsedQuestions = [];
 
-    rawRows.forEach((row, idx) => {
+    rawRows.forEach((row) => {
       const questionText = findCol(row, ['question', 'question_text', 'questiontext', 'q', 'title', 'problem']);
       const optionA = findCol(row, ['option_a', 'optiona', 'a', 'opt_a', 'choice_a', 'choice1']);
       const optionB = findCol(row, ['option_b', 'optionb', 'b', 'opt_b', 'choice_b', 'choice2']);
       const optionC = findCol(row, ['option_c', 'optionc', 'c', 'opt_c', 'choice_c', 'choice3']);
       const optionD = findCol(row, ['option_d', 'optiond', 'd', 'opt_d', 'choice_d', 'choice4']);
-      let answer = findCol(row, ['correct_answer', 'correctanswer', 'answer', 'ans', 'key', 'correct']);
+      const answer = findCol(row, ['correct_answer', 'correctanswer', 'answer', 'ans', 'key', 'correct']);
 
       if (questionText && optionA && optionB) {
-        // Clean answer key to A, B, C, or D
         const cleanAnswer = this.normalizeAnswerKey(answer);
 
         parsedQuestions.push({
@@ -181,7 +194,6 @@ class DocumentParserService {
       return parsedQuestions;
     }
 
-    // If rows didn't match column headers, treat sheet as concatenated text
     const textDump = rawRows.map((r) => Object.values(r).join(' ')).join('\n');
     return this.parseMCQsFromText(textDump, defaultMeta);
   }
@@ -193,21 +205,23 @@ class DocumentParserService {
     try {
       const data = JSON.parse(buffer.toString('utf8'));
       const list = Array.isArray(data) ? data : data.questions || [];
-      return list.map((q) => ({
-        question_text: q.question_text || q.question || '',
-        option_a: q.option_a || q.a || '',
-        option_b: q.option_b || q.b || '',
-        option_c: q.option_c || q.c || '',
-        option_d: q.option_d || q.d || '',
-        correct_answer: this.normalizeAnswerKey(q.correct_answer || q.answer || 'A'),
-        marks: parseFloat(q.marks) || defaultMeta.marks,
-        negative_marks: parseFloat(q.negative_marks) || defaultMeta.negative_marks,
-        category: q.category || defaultMeta.category,
-        difficulty: this.normalizeDifficulty(q.difficulty),
-        explanation: q.explanation || '',
-        event_name: q.event_name || defaultMeta.event_name,
-        round_number: parseInt(q.round_number) || defaultMeta.round_number
-      })).filter((q) => q.question_text && q.option_a && q.option_b);
+      return list
+        .map((q) => ({
+          question_text: q.question_text || q.question || '',
+          option_a: q.option_a || q.a || '',
+          option_b: q.option_b || q.b || '',
+          option_c: q.option_c || q.c || '',
+          option_d: q.option_d || q.d || '',
+          correct_answer: this.normalizeAnswerKey(q.correct_answer || q.answer || 'A'),
+          marks: parseFloat(q.marks) || defaultMeta.marks,
+          negative_marks: parseFloat(q.negative_marks) || defaultMeta.negative_marks,
+          category: q.category || defaultMeta.category,
+          difficulty: this.normalizeDifficulty(q.difficulty),
+          explanation: q.explanation || '',
+          event_name: q.event_name || defaultMeta.event_name,
+          round_number: parseInt(q.round_number) || defaultMeta.round_number
+        }))
+        .filter((q) => q.question_text && q.option_a && q.option_b);
     } catch (err) {
       return [];
     }
@@ -219,18 +233,29 @@ class DocumentParserService {
   static parseMCQsFromText(text, defaultMeta) {
     if (!text || typeof text !== 'string') return [];
 
-    const lines = text
-      .split(/\r?\n/)
+    // Pre-processing: normalize linebreaks and Unicode characters
+    let cleanedText = text
+      .replace(/\r\n/g, '\n')
+      .replace(/\r/g, '\n')
+      .replace(/[\u2018\u2019]/g, "'")
+      .replace(/[\u201C\u201D]/g, '"')
+      .replace(/\u00A0/g, ' ');
+
+    const questions = [];
+
+    // Expand inline options to separate lines so line-by-line parsing works seamlessly
+    // e.g. "A) ... B) ... C) ... D) ..." -> splits each option onto its own line
+    cleanedText = cleanedText.replace(/([ \t]+)(?=(?:[A-D]\s*[\.\)\:\-]|(?:\([A-D]\)|\[[A-D]\]))\s+)/gi, '\n');
+
+    const lines = cleanedText
+      .split('\n')
       .map((l) => l.trim())
       .filter(Boolean);
 
-    const questions = [];
     let currentQ = null;
 
-    // Helper to start a new question
     const finalizeCurrentQuestion = () => {
       if (currentQ && currentQ.question_text) {
-        // Ensure options exist
         if (currentQ.option_a && currentQ.option_b) {
           if (!currentQ.option_c) currentQ.option_c = 'None of the above';
           if (!currentQ.option_d) currentQ.option_d = 'All of the above';
@@ -256,14 +281,14 @@ class DocumentParserService {
       currentQ = null;
     };
 
-    // Regex matchers
-    const qStartRegex = /^(?:(?:Q|Question)\s*(?:\d+|[A-Z])?[:.]?|\d+[\.\)\-:])\s*(.+)/i;
-    const optARegex = /^(?:(?:\(?A\)?[\.\:\-\)]|\bA[\.\)\:])\s*(.+)|(?:\[A\])\s*(.+))/i;
-    const optBRegex = /^(?:(?:\(?B\)?[\.\:\-\)]|\bB[\.\)\:])\s*(.+)|(?:\[B\])\s*(.+))/i;
-    const optCRegex = /^(?:(?:\(?C\)?[\.\:\-\)]|\bC[\.\)\:])\s*(.+)|(?:\[C\])\s*(.+))/i;
-    const optDRegex = /^(?:(?:\(?D\)?[\.\:\-\)]|\bD[\.\)\:])\s*(.+)|(?:\[D\])\s*(.+))/i;
-    const ansRegex = /^(?:(?:Correct\s*Answer|Answer|Ans|Key)\s*[:\-]?\s*\(?([A-D])\)?)/i;
-    const expRegex = /^(?:(?:Explanation|Exp|Reason|Note)\s*[:\-]?\s*(.+))/i;
+    // Valid and tested Regex matchers
+    const qStartRegex = /^(?:(?:Q|Question)\s*(?:\d+|[A-Z])?[\s.:)-]+|\d+[\s.:)-]+|\([0-9]+\)\s*)(.+)/i;
+    const optARegex = /^(?:(?:\(?A\)?|[\[\(]A[\]\)]|\bA)[\s.:)-]+|\[A\]\s*)(.+)/i;
+    const optBRegex = /^(?:(?:\(?B\)?|[\[\(]B[\]\)]|\bB)[\s.:)-]+|\[B\]\s*)(.+)/i;
+    const optCRegex = /^(?:(?:\(?C\)?|[\[\(]C[\]\)]|\bC)[\s.:)-]+|\[C\]\s*)(.+)/i;
+    const optDRegex = /^(?:(?:\(?D\)?|[\[\(]D[\]\)]|\bD)[\s.:)-]+|\[D\]\s*)(.+)/i;
+    const ansRegex = /^(?:(?:Correct\s*Answer|Answer|Ans|Key|Correct\s*Option|Option)[\s.:)-]*(?:Option\s*)?\(?([A-D])\)?)/i;
+    const expRegex = /^(?:(?:Explanation|Exp|Reason|Note|Solution)[\s.:)-]+(.+))/i;
 
     for (let i = 0; i < lines.length; i++) {
       const line = lines[i];
@@ -285,28 +310,28 @@ class DocumentParserService {
       // Check for Option A
       const matchA = line.match(optARegex);
       if (matchA && currentQ && !currentQ.option_a) {
-        currentQ.option_a = matchA[1] || matchA[2] || '';
+        currentQ.option_a = matchA[1] || '';
         continue;
       }
 
       // Check for Option B
       const matchB = line.match(optBRegex);
       if (matchB && currentQ && currentQ.option_a && !currentQ.option_b) {
-        currentQ.option_b = matchB[1] || matchB[2] || '';
+        currentQ.option_b = matchB[1] || '';
         continue;
       }
 
       // Check for Option C
       const matchC = line.match(optCRegex);
       if (matchC && currentQ && currentQ.option_b && !currentQ.option_c) {
-        currentQ.option_c = matchC[1] || matchC[2] || '';
+        currentQ.option_c = matchC[1] || '';
         continue;
       }
 
       // Check for Option D
       const matchD = line.match(optDRegex);
       if (matchD && currentQ && currentQ.option_c && !currentQ.option_d) {
-        currentQ.option_d = matchD[1] || matchD[2] || '';
+        currentQ.option_d = matchD[1] || '';
         continue;
       }
 
@@ -326,11 +351,10 @@ class DocumentParserService {
         continue;
       }
 
-      // If already in a question and no options hit yet, append line to question text
+      // If already in question context and no options hit yet, append to question prompt
       if (currentQ && !currentQ.option_a) {
         currentQ.question_text += ` ${line}`;
       } else if (currentQ && currentQ.option_d) {
-        // Might be continuation of explanation
         if (currentQ.explanation) {
           currentQ.explanation += ` ${line}`;
         }
@@ -339,9 +363,9 @@ class DocumentParserService {
 
     finalizeCurrentQuestion();
 
-    // Fallback: If heuristic didn't capture enough questions, try splitting text by double newlines or question marks
+    // Strategy 2: If standard regex didn't extract any questions, try paragraph-block splitting
     if (questions.length === 0) {
-      const blocks = text.split(/\n\s*\n/);
+      const blocks = cleanedText.split(/\n\s*\n/);
       blocks.forEach((b) => {
         const bLines = b.split('\n').map((l) => l.trim()).filter(Boolean);
         if (bLines.length >= 3) {

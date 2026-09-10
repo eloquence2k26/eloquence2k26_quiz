@@ -28,7 +28,9 @@ import {
   BookOpen,
   FileType,
   Layers,
-  ArrowUpRight
+  ArrowUpRight,
+  Edit2,
+  Trash2
 } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import * as pdfjsLib from 'pdfjs-dist';
@@ -37,6 +39,8 @@ import { adminService } from '../../services/adminService';
 import { useToast } from '../../context/ToastContext';
 import Badge from '../../components/common/Badge';
 import Modal from '../../components/common/Modal';
+import EditParticipantModal from '../../components/admin/EditParticipantModal';
+import DeleteParticipantModal from '../../components/admin/DeleteParticipantModal';
 
 // Configure PDF.js worker
 if (typeof window !== 'undefined' && pdfjsLib.GlobalWorkerOptions) {
@@ -88,6 +92,42 @@ export default function UserRegistrationPage() {
 
   // Directory Search State
   const [searchDirectory, setSearchDirectory] = useState('');
+
+  // Edit & Delete Modal States
+  const [editingParticipant, setEditingParticipant] = useState(null);
+  const [showEditModal, setShowEditModal] = useState(false);
+  const [deletingParticipant, setDeletingParticipant] = useState(null);
+  const [showDeleteModal, setShowDeleteModal] = useState(false);
+
+  const handleEditClick = (p) => {
+    setEditingParticipant(p);
+    setShowEditModal(true);
+  };
+
+  const handleSaveParticipant = async (id, updatedData) => {
+    const res = await adminService.updateParticipant(id, updatedData);
+    if (res.success) {
+      toast.success('Participant updated successfully');
+      fetchParticipants();
+    } else {
+      throw new Error(res.message || 'Failed to update participant');
+    }
+  };
+
+  const handleDeleteClick = (p) => {
+    setDeletingParticipant(p);
+    setShowDeleteModal(true);
+  };
+
+  const handleConfirmDelete = async (id) => {
+    const res = await adminService.deleteParticipant(id);
+    if (res.success) {
+      toast.success('Participant deleted successfully');
+      fetchParticipants();
+    } else {
+      toast.error(res.message || 'Failed to delete participant');
+    }
+  };
 
   useEffect(() => {
     fetchParticipants();
@@ -1238,20 +1278,40 @@ export default function UserRegistrationPage() {
                           <p className="text-[10px] text-slate-400">{p.department}</p>
                         </td>
                         <td className="py-3.5 px-4 text-right">
-                          <button
-                            type="button"
-                            onClick={() =>
-                              handleCopy(
-                                `Participant ID: ${p.participant_id}\nReg No: ${p.registration_number}\nEmail: ${p.email}\nPassword: ${pass}`,
-                                p.id
-                              )
-                            }
-                            className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg border border-slate-200 dark:border-slate-700 hover:border-brand-500 text-xs font-semibold text-slate-700 dark:text-slate-300 hover:text-brand-600"
-                            title="Copy Credentials"
-                          >
-                            {copiedKey === p.id ? <Check className="w-3.5 h-3.5 text-emerald-600" /> : <Copy className="w-3.5 h-3.5" />}
-                            <span>Copy</span>
-                          </button>
+                          <div className="flex items-center justify-end gap-1.5">
+                            <button
+                              type="button"
+                              onClick={() =>
+                                handleCopy(
+                                  `Participant ID: ${p.participant_id}\nReg No: ${p.registration_number}\nEmail: ${p.email}\nPassword: ${pass}`,
+                                  p.id
+                                )
+                              }
+                              className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg border border-slate-200 dark:border-slate-700 hover:border-brand-500 text-xs font-semibold text-slate-700 dark:text-slate-300 hover:text-brand-600"
+                              title="Copy Credentials"
+                            >
+                              {copiedKey === p.id ? <Check className="w-3.5 h-3.5 text-emerald-600" /> : <Copy className="w-3.5 h-3.5" />}
+                              <span>Copy</span>
+                            </button>
+
+                            <button
+                              type="button"
+                              onClick={() => handleEditClick(p)}
+                              className="p-1 rounded-lg border border-blue-200 dark:border-blue-900/60 text-blue-600 dark:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-950/40 transition-all"
+                              title="Edit Participant"
+                            >
+                              <Edit2 className="w-3.5 h-3.5" />
+                            </button>
+
+                            <button
+                              type="button"
+                              onClick={() => handleDeleteClick(p)}
+                              className="p-1 rounded-lg border border-rose-200 dark:border-rose-900/60 text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/40 transition-all"
+                              title="Delete Participant"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
+                          </div>
                         </td>
                       </tr>
                     );
@@ -1304,6 +1364,28 @@ export default function UserRegistrationPage() {
           </div>
         </Modal>
       )}
+
+      {/* Edit Participant Modal */}
+      <EditParticipantModal
+        isOpen={showEditModal}
+        onClose={() => {
+          setShowEditModal(false);
+          setEditingParticipant(null);
+        }}
+        participant={editingParticipant}
+        onSave={handleSaveParticipant}
+      />
+
+      {/* Delete Participant Modal */}
+      <DeleteParticipantModal
+        isOpen={showDeleteModal}
+        onClose={() => {
+          setShowDeleteModal(false);
+          setDeletingParticipant(null);
+        }}
+        participant={deletingParticipant}
+        onConfirm={handleConfirmDelete}
+      />
     </div>
   );
 }
