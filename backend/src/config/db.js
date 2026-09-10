@@ -141,7 +141,6 @@ class DBStore {
         try {
           const { data, error } = await supabase.from(table).select('*');
           if (error) {
-            // If table does not exist or has RLS limitation, log info
             logger.warn(`[DB] Supabase table "${table}" notice: ${error.message}`);
             return { table, data: [] };
           }

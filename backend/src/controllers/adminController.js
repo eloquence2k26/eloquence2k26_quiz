@@ -134,6 +134,56 @@ class AdminController {
       return error(res, err.message, 500);
     }
   }
+
+  /**
+   * Get all registered events and competitions
+   */
+  static async getEvents(req, res) {
+    try {
+      const events = db.get('events') || [];
+      const quizzes = db.get('quizzes') || [];
+      const eventMap = new Map();
+
+      // Seed existing event records
+      events.forEach((e) => {
+        if (e.title) {
+          eventMap.set(e.title.toLowerCase(), {
+            id: e.id,
+            title: e.title,
+            code: e.code || 'ELQ26',
+            description: e.description || ''
+          });
+        }
+      });
+
+      // Gather distinct events from quizzes as well
+      quizzes.forEach((q) => {
+        const title = q.event_name || q.title;
+        if (title && !eventMap.has(title.toLowerCase())) {
+          eventMap.set(title.toLowerCase(), {
+            id: q.event_id || q.id,
+            title,
+            code: q.event_code || 'ELQ26',
+            description: q.description || ''
+          });
+        }
+      });
+
+      // If empty, supply default Eloquence 2026
+      if (eventMap.size === 0) {
+        eventMap.set('eloquence 2026', {
+          id: 'c0000000-0000-0000-0000-000000000001',
+          title: 'Eloquence 2026',
+          code: 'ELQ26',
+          description: 'Official National Symposium Technical MCQ Championship'
+        });
+      }
+
+      return success(res, Array.from(eventMap.values()));
+    } catch (err) {
+      return error(res, err.message, 500);
+    }
+  }
 }
 
 module.exports = AdminController;

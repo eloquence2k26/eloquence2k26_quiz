@@ -1,0 +1,393 @@
+const path = require('path');
+const pdf = require('pdf-parse');
+const AdmZip = require('adm-zip');
+const XLSX = require('xlsx');
+
+class DocumentParserService {
+  /**
+   * Main entrypoint to parse any supported document into questions
+   * @param {Buffer} buffer - Raw file buffer
+   * @param {string} filename - Original file name with extension
+   * @param {object} metadata - Default metadata { event_name, round_number, category, marks, negative_marks }
+   * @returns {Promise<Array<object>>} - List of extracted questions
+   */
+  static async parseDocument(buffer, filename, metadata = {}) {
+    const ext = path.extname(filename || '').toLowerCase();
+    const defaultMeta = {
+      event_name: metadata.event_name || 'Eloquence 2026',
+      round_number: Number(metadata.round_number) || 1,
+      category: metadata.category || 'General',
+      marks: Number(metadata.marks) || 2.0,
+      negative_marks: Number(metadata.negative_marks) || 0.5
+    };
+
+    let questions = [];
+
+    switch (ext) {
+      case '.pdf': {
+        const pdfData = await pdf(buffer);
+        questions = this.parseMCQsFromText(pdfData.text, defaultMeta);
+        break;
+      }
+
+      case '.pptx':
+      case '.ppt': {
+        const pptxText = this.extractTextFromPPTX(buffer);
+        questions = this.parseMCQsFromText(pptxText, defaultMeta);
+        break;
+      }
+
+      case '.docx':
+      case '.doc': {
+        const docxText = this.extractTextFromDOCX(buffer);
+        questions = this.parseMCQsFromText(docxText, defaultMeta);
+        break;
+      }
+
+      case '.xlsx':
+      case '.xls':
+      case '.csv': {
+        questions = this.parseSpreadsheet(buffer, defaultMeta);
+        break;
+      }
+
+      case '.json': {
+        questions = this.parseJSON(buffer, defaultMeta);
+        break;
+      }
+
+      case '.txt':
+      case '.md':
+      default: {
+        const text = buffer.toString('utf8');
+        questions = this.parseMCQsFromText(text, defaultMeta);
+        break;
+      }
+    }
+
+    return questions;
+  }
+
+  /**
+   * Extract text from PPTX slides using adm-zip XML parsing
+   */
+  static extractTextFromPPTX(buffer) {
+    try {
+      const zip = new AdmZip(buffer);
+      const zipEntries = zip.getEntries();
+      const slideEntries = zipEntries
+        .filter((entry) => entry.entryName.startsWith('ppt/slides/slide') && entry.entryName.endsWith('.xml'))
+        .sort((a, b) => a.entryName.localeCompare(b.entryName, undefined, { numeric: true }));
+
+      const textChunks = [];
+
+      slideEntries.forEach((slideEntry) => {
+        const xml = slideEntry.getData().toString('utf8');
+        // Extract all <a:t> text nodes in the slide
+        const matches = xml.match(/<a:t[^>]*>([^<]+)<\/a:t>/g);
+        if (matches && matches.length > 0) {
+          const slideTexts = matches.map((m) => m.replace(/<[^>]+>/g, '').trim()).filter(Boolean);
+          textChunks.push(slideTexts.join('\n'));
+        }
+      });
+
+      return textChunks.join('\n\n');
+    } catch (err) {
+      // Fallback: extract any printable strings from buffer
+      return buffer.toString('utf8').replace(/[^\x20-\x7E\n\r\t]/g, ' ');
+    }
+  }
+
+  /**
+   * Extract text from DOCX document using adm-zip XML parsing
+   */
+  static extractTextFromDOCX(buffer) {
+    try {
+      const zip = new AdmZip(buffer);
+      const docEntry = zip.getEntry('word/document.xml');
+      if (docEntry) {
+        const xml = docEntry.getData().toString('utf8');
+        // Replace paragraph tags with newlines and strip XML tags
+        const formatted = xml
+          .replace(/<\/w:p>/g, '\n')
+          .replace(/<w:tab\/>/g, '\t')
+          .replace(/<[^>]+>/g, '');
+        return formatted;
+      }
+    } catch (err) {}
+
+    // Fallback: stringify
+    return buffer.toString('utf8').replace(/[^\x20-\x7E\n\r\t]/g, ' ');
+  }
+
+  /**
+   * Parse XLSX, XLS, and CSV spreadsheets
+   */
+  static parseSpreadsheet(buffer, defaultMeta) {
+    const workbook = XLSX.read(buffer, { type: 'buffer' });
+    const firstSheetName = workbook.SheetNames[0];
+    const worksheet = workbook.Sheets[firstSheetName];
+    const rawRows = XLSX.utils.sheet_to_json(worksheet, { defval: '' });
+
+    if (!Array.isArray(rawRows) || rawRows.length === 0) {
+      return [];
+    }
+
+    // Helper to find case-insensitive column
+    const findCol = (row, candidates) => {
+      const keys = Object.keys(row);
+      for (const candidate of candidates) {
+        const foundKey = keys.find((k) => k.toLowerCase().replace(/[^a-z0-9]/g, '') === candidate.toLowerCase().replace(/[^a-z0-9]/g, ''));
+        if (foundKey && String(row[foundKey]).trim()) {
+          return String(row[foundKey]).trim();
+        }
+      }
+      return '';
+    };
+
+    const parsedQuestions = [];
+
+    rawRows.forEach((row, idx) => {
+      const questionText = findCol(row, ['question', 'question_text', 'questiontext', 'q', 'title', 'problem']);
+      const optionA = findCol(row, ['option_a', 'optiona', 'a', 'opt_a', 'choice_a', 'choice1']);
+      const optionB = findCol(row, ['option_b', 'optionb', 'b', 'opt_b', 'choice_b', 'choice2']);
+      const optionC = findCol(row, ['option_c', 'optionc', 'c', 'opt_c', 'choice_c', 'choice3']);
+      const optionD = findCol(row, ['option_d', 'optiond', 'd', 'opt_d', 'choice_d', 'choice4']);
+      let answer = findCol(row, ['correct_answer', 'correctanswer', 'answer', 'ans', 'key', 'correct']);
+
+      if (questionText && optionA && optionB) {
+        // Clean answer key to A, B, C, or D
+        const cleanAnswer = this.normalizeAnswerKey(answer);
+
+        parsedQuestions.push({
+          question_text: questionText,
+          option_a: optionA,
+          option_b: optionB,
+          option_c: optionC || 'None of the above',
+          option_d: optionD || 'All of the above',
+          correct_answer: cleanAnswer || 'A',
+          marks: parseFloat(findCol(row, ['marks', 'mark', 'score'])) || defaultMeta.marks,
+          negative_marks: parseFloat(findCol(row, ['negative_marks', 'negative', 'neg'])) || defaultMeta.negative_marks,
+          category: findCol(row, ['category', 'topic', 'subject']) || defaultMeta.category,
+          difficulty: this.normalizeDifficulty(findCol(row, ['difficulty', 'level'])),
+          explanation: findCol(row, ['explanation', 'exp', 'reason', 'solution']),
+          event_name: findCol(row, ['event', 'event_name']) || defaultMeta.event_name,
+          round_number: parseInt(findCol(row, ['round', 'round_number'])) || defaultMeta.round_number
+        });
+      }
+    });
+
+    if (parsedQuestions.length > 0) {
+      return parsedQuestions;
+    }
+
+    // If rows didn't match column headers, treat sheet as concatenated text
+    const textDump = rawRows.map((r) => Object.values(r).join(' ')).join('\n');
+    return this.parseMCQsFromText(textDump, defaultMeta);
+  }
+
+  /**
+   * Parse JSON array of questions
+   */
+  static parseJSON(buffer, defaultMeta) {
+    try {
+      const data = JSON.parse(buffer.toString('utf8'));
+      const list = Array.isArray(data) ? data : data.questions || [];
+      return list.map((q) => ({
+        question_text: q.question_text || q.question || '',
+        option_a: q.option_a || q.a || '',
+        option_b: q.option_b || q.b || '',
+        option_c: q.option_c || q.c || '',
+        option_d: q.option_d || q.d || '',
+        correct_answer: this.normalizeAnswerKey(q.correct_answer || q.answer || 'A'),
+        marks: parseFloat(q.marks) || defaultMeta.marks,
+        negative_marks: parseFloat(q.negative_marks) || defaultMeta.negative_marks,
+        category: q.category || defaultMeta.category,
+        difficulty: this.normalizeDifficulty(q.difficulty),
+        explanation: q.explanation || '',
+        event_name: q.event_name || defaultMeta.event_name,
+        round_number: parseInt(q.round_number) || defaultMeta.round_number
+      })).filter((q) => q.question_text && q.option_a && q.option_b);
+    } catch (err) {
+      return [];
+    }
+  }
+
+  /**
+   * Intelligent Heuristic MCQ Parser for Unstructured Plain Text, PDF text, PPT text, and Word text
+   */
+  static parseMCQsFromText(text, defaultMeta) {
+    if (!text || typeof text !== 'string') return [];
+
+    const lines = text
+      .split(/\r?\n/)
+      .map((l) => l.trim())
+      .filter(Boolean);
+
+    const questions = [];
+    let currentQ = null;
+
+    // Helper to start a new question
+    const finalizeCurrentQuestion = () => {
+      if (currentQ && currentQ.question_text) {
+        // Ensure options exist
+        if (currentQ.option_a && currentQ.option_b) {
+          if (!currentQ.option_c) currentQ.option_c = 'None of the above';
+          if (!currentQ.option_d) currentQ.option_d = 'All of the above';
+          if (!currentQ.correct_answer) currentQ.correct_answer = 'A';
+
+          questions.push({
+            question_text: currentQ.question_text.trim(),
+            option_a: currentQ.option_a.trim(),
+            option_b: currentQ.option_b.trim(),
+            option_c: currentQ.option_c.trim(),
+            option_d: currentQ.option_d.trim(),
+            correct_answer: currentQ.correct_answer,
+            marks: defaultMeta.marks,
+            negative_marks: defaultMeta.negative_marks,
+            category: defaultMeta.category,
+            difficulty: 'Medium',
+            explanation: currentQ.explanation ? currentQ.explanation.trim() : '',
+            event_name: defaultMeta.event_name,
+            round_number: defaultMeta.round_number
+          });
+        }
+      }
+      currentQ = null;
+    };
+
+    // Regex matchers
+    const qStartRegex = /^(?:(?:Q|Question)\s*(?:\d+|[A-Z])?[:.]?|\d+[\.\)\-:])\s*(.+)/i;
+    const optARegex = /^(?:(?:\(?A\)?[\.\:\-\)]|\bA[\.\)\:])\s*(.+)|(?:\[A\])\s*(.+))/i;
+    const optBRegex = /^(?:(?:\(?B\)?[\.\:\-\)]|\bB[\.\)\:])\s*(.+)|(?:\[B\])\s*(.+))/i;
+    const optCRegex = /^(?:(?:\(?C\)?[\.\:\-\)]|\bC[\.\)\:])\s*(.+)|(?:\[C\])\s*(.+))/i;
+    const optDRegex = /^(?:(?:\(?D\)?[\.\:\-\)]|\bD[\.\)\:])\s*(.+)|(?:\[D\])\s*(.+))/i;
+    const ansRegex = /^(?:(?:Correct\s*Answer|Answer|Ans|Key)\s*[:\-]?\s*\(?([A-D])\)?)/i;
+    const expRegex = /^(?:(?:Explanation|Exp|Reason|Note)\s*[:\-]?\s*(.+))/i;
+
+    for (let i = 0; i < lines.length; i++) {
+      const line = lines[i];
+
+      // Check if line is an answer key
+      const ansMatch = line.match(ansRegex);
+      if (ansMatch && currentQ) {
+        currentQ.correct_answer = ansMatch[1].toUpperCase();
+        continue;
+      }
+
+      // Check if line is an explanation
+      const expMatch = line.match(expRegex);
+      if (expMatch && currentQ) {
+        currentQ.explanation = expMatch[1];
+        continue;
+      }
+
+      // Check for Option A
+      const matchA = line.match(optARegex);
+      if (matchA && currentQ && !currentQ.option_a) {
+        currentQ.option_a = matchA[1] || matchA[2] || '';
+        continue;
+      }
+
+      // Check for Option B
+      const matchB = line.match(optBRegex);
+      if (matchB && currentQ && currentQ.option_a && !currentQ.option_b) {
+        currentQ.option_b = matchB[1] || matchB[2] || '';
+        continue;
+      }
+
+      // Check for Option C
+      const matchC = line.match(optCRegex);
+      if (matchC && currentQ && currentQ.option_b && !currentQ.option_c) {
+        currentQ.option_c = matchC[1] || matchC[2] || '';
+        continue;
+      }
+
+      // Check for Option D
+      const matchD = line.match(optDRegex);
+      if (matchD && currentQ && currentQ.option_c && !currentQ.option_d) {
+        currentQ.option_d = matchD[1] || matchD[2] || '';
+        continue;
+      }
+
+      // Check for New Question start
+      const qMatch = line.match(qStartRegex);
+      if (qMatch) {
+        finalizeCurrentQuestion();
+        currentQ = {
+          question_text: qMatch[1],
+          option_a: '',
+          option_b: '',
+          option_c: '',
+          option_d: '',
+          correct_answer: 'A',
+          explanation: ''
+        };
+        continue;
+      }
+
+      // If already in a question and no options hit yet, append line to question text
+      if (currentQ && !currentQ.option_a) {
+        currentQ.question_text += ` ${line}`;
+      } else if (currentQ && currentQ.option_d) {
+        // Might be continuation of explanation
+        if (currentQ.explanation) {
+          currentQ.explanation += ` ${line}`;
+        }
+      }
+    }
+
+    finalizeCurrentQuestion();
+
+    // Fallback: If heuristic didn't capture enough questions, try splitting text by double newlines or question marks
+    if (questions.length === 0) {
+      const blocks = text.split(/\n\s*\n/);
+      blocks.forEach((b) => {
+        const bLines = b.split('\n').map((l) => l.trim()).filter(Boolean);
+        if (bLines.length >= 3) {
+          const qText = bLines[0];
+          const opts = bLines.slice(1);
+          if (opts.length >= 2) {
+            questions.push({
+              question_text: qText.replace(/^[0-9]+[\.\)]\s*/, ''),
+              option_a: opts[0].replace(/^[a-dA-D][\.\)]\s*/, ''),
+              option_b: opts[1].replace(/^[a-dA-D][\.\)]\s*/, ''),
+              option_c: opts[2] ? opts[2].replace(/^[a-dA-D][\.\)]\s*/, '') : 'None of the above',
+              option_d: opts[3] ? opts[3].replace(/^[a-dA-D][\.\)]\s*/, '') : 'All of the above',
+              correct_answer: 'A',
+              marks: defaultMeta.marks,
+              negative_marks: defaultMeta.negative_marks,
+              category: defaultMeta.category,
+              difficulty: 'Medium',
+              explanation: '',
+              event_name: defaultMeta.event_name,
+              round_number: defaultMeta.round_number
+            });
+          }
+        }
+      });
+    }
+
+    return questions;
+  }
+
+  static normalizeAnswerKey(ans) {
+    if (!ans) return 'A';
+    const str = String(ans).toUpperCase().trim();
+    if (str.includes('A') || str === '1') return 'A';
+    if (str.includes('B') || str === '2') return 'B';
+    if (str.includes('C') || str === '3') return 'C';
+    if (str.includes('D') || str === '4') return 'D';
+    return 'A';
+  }
+
+  static normalizeDifficulty(diff) {
+    if (!diff) return 'Medium';
+    const d = String(diff).toLowerCase();
+    if (d.includes('easy')) return 'Easy';
+    if (d.includes('hard') || d.includes('adv')) return 'Hard';
+    return 'Medium';
+  }
+}
+
+module.exports = DocumentParserService;

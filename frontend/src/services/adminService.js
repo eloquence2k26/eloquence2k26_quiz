@@ -52,6 +52,13 @@ export const adminService = {
     return res.data;
   },
 
+  importQuestionsFile: async (formData) => {
+    const res = await api.post('/questions/import-file', formData, {
+      headers: { 'Content-Type': 'multipart/form-data' }
+    });
+    return res.data;
+  },
+
   // Participants
   getParticipants: async (params = {}) => {
     const res = await api.get('/participants', { params });
@@ -84,6 +91,12 @@ export const adminService = {
       participant_ids: participantIds,
       assign_all: assignAll
     });
+    return res.data;
+  },
+
+  // Events Management
+  getEvents: async () => {
+    const res = await api.get('/admin/events');
     return res.data;
   },
 

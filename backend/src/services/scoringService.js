@@ -11,7 +11,11 @@ class ScoringService {
     const quiz = db.find('quizzes', (q) => q.id === attempt.quiz_id);
     if (!quiz) throw new Error('Quiz not found for attempt');
 
-    const quizQuestions = db.filter('quiz_questions', (qq) => qq.quiz_id === attempt.quiz_id);
+    let quizQuestions = db.filter('quiz_questions', (qq) => qq.quiz_id === attempt.quiz_id);
+    let questionItems = quizQuestions.map((qq) => db.find('questions', (item) => item.id === qq.question_id)).filter(Boolean);
+    if (questionItems.length === 0) {
+      questionItems = db.filter('questions', (q) => Number(q.round_number) === Number(quiz.round_number));
+    }
     const answers = db.filter('attempt_answers', (aa) => aa.attempt_id === attemptId);
 
     let attemptedCount = 0;
@@ -20,10 +24,9 @@ class ScoringService {
     let positiveMarks = 0;
     let negativeMarks = 0;
 
-    const totalQuestions = quizQuestions.length;
+    const totalQuestions = questionItems.length;
 
-    quizQuestions.forEach((qq) => {
-      const q = db.find('questions', (item) => item.id === qq.question_id);
+    questionItems.forEach((q) => {
       if (!q) return;
 
       const ans = answers.find((a) => a.question_id === q.id);

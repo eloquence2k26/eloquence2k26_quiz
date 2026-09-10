@@ -322,7 +322,7 @@ export default function QuizSchedulePage() {
               <option value="ALL">All Rounds</option>
               {distinctRounds.map((r) => (
                 <option key={r} value={r}>
-                  Round {r} {r === 1 ? '(Prelims)' : r === 2 ? '(Grand Finals)' : ''}
+                  Round {r}
                 </option>
               ))}
             </select>
@@ -383,7 +383,7 @@ export default function QuizSchedulePage() {
                   <div className="space-y-2 flex-1">
                     <div className="flex flex-wrap items-center gap-2">
                       <Badge variant={getRoundBadgeVariant(q.round_number)} size="sm">
-                        Round {q.round_number} {q.round_number === 1 ? '• Screening' : q.round_number === 2 ? '• Grand Finals' : ''}
+                        Round {q.round_number}
                       </Badge>
 
                       <Badge

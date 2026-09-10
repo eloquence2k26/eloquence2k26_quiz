@@ -5,47 +5,106 @@ const AuditService = require('../services/auditService');
 
 class RoundController {
   /**
-   * Get all symposium rounds (dynamically synced with quizzes and rounds table)
+   * Get all symposium rounds (dynamically synced with events, quizzes, and rounds table)
    */
   static async getAllRounds(req, res) {
     try {
       let rounds = db.get('rounds') || [];
       const quizzes = db.get('quizzes') || [];
       const participants = db.get('participants') || [];
+      let events = db.get('events') || [];
 
-      // Collect all distinct round numbers from quizzes and ensure each has a round record
-      quizzes.forEach((q) => {
-        if (q.round_number && !rounds.some((r) => r.round_number === Number(q.round_number))) {
-          const newRound = db.insert('rounds', {
-            event_id: q.event_id || 'c0000000-0000-0000-0000-000000000001',
-            round_number: Number(q.round_number),
-            round_name: `Round ${q.round_number}`,
-            description: `Symposium Examination Round ${q.round_number}`,
+      // If events collection is empty, extract distinct events from quizzes
+      if (events.length === 0) {
+        const uniqueEvents = new Map();
+        quizzes.forEach((q) => {
+          const t = q.event_name || q.title;
+          if (t && !uniqueEvents.has(t.toLowerCase())) {
+            uniqueEvents.set(t.toLowerCase(), {
+              id: q.event_id || q.id,
+              title: t,
+              code: q.event_code || 'ELQ26',
+              description: q.description || ''
+            });
+          }
+        });
+        events = Array.from(uniqueEvents.values());
+      }
+
+      // Ensure every registered event has at least a Round 1
+      events.forEach((ev) => {
+        const hasRound = rounds.some(
+          (r) => r.event_id === ev.id || (r.event_name && r.event_name.toLowerCase() === ev.title.toLowerCase())
+        );
+        if (!hasRound) {
+          const newR = db.insert('rounds', {
+            event_id: ev.id,
+            event_name: ev.title,
+            round_number: 1,
+            round_name: 'Round 1',
+            description: `${ev.title} Examination Round 1`,
             is_active: true,
-            is_published: ['Published', 'Live'].includes(q.status)
+            is_published: false
           });
-          rounds.push(newRound);
+          rounds.push(newR);
         }
       });
 
-      rounds.sort((a, b) => (a.round_number || 0) - (b.round_number || 0));
-
-      // Enrich with quizzes and qualifiers count
-      const enriched = rounds.map((r) => {
-        const roundQuizzes = quizzes.filter(
-          (q) => q.round_number === r.round_number || q.round_id === r.id
+      // Filter out orphaned rounds whose event does not exist in events or quizzes
+      rounds = rounds.filter((r) => {
+        const matchEv = events.some(
+          (e) => e.id === r.event_id || (r.event_name && e.title.toLowerCase() === r.event_name.toLowerCase())
         );
+        const matchQ = quizzes.some(
+          (q) => q.round_id === r.id || (r.event_name && (q.event_name?.toLowerCase() === r.event_name.toLowerCase() || q.title?.toLowerCase() === r.event_name.toLowerCase()))
+        );
+        return matchEv || matchQ;
+      });
+
+      // Enrich rounds with event details, quizzes, and qualifier counts
+      const enriched = rounds.map((r) => {
+        // Resolve event
+        const parentEvent = events.find(
+          (e) => e.id === r.event_id || (r.event_name && e.title.toLowerCase() === r.event_name.toLowerCase())
+        );
+        const eventTitle = parentEvent ? parentEvent.title : (r.event_name || 'General Event');
+        const eventId = parentEvent ? parentEvent.id : (r.event_id || 'c0000000-0000-0000-0000-000000000001');
+        const eventCode = parentEvent ? parentEvent.code : 'ELQ26';
+
+        // Filter quizzes belonging strictly to this round AND this event
+        const roundQuizzes = quizzes.filter((q) => {
+          const roundMatch = Number(q.round_number) === Number(r.round_number) || q.round_id === r.id;
+          const eventMatch =
+            (eventId && q.event_id === eventId) ||
+            (eventTitle && (
+              q.event_name?.toLowerCase() === eventTitle.toLowerCase() ||
+              q.title?.toLowerCase() === eventTitle.toLowerCase()
+            ));
+          return roundMatch && eventMatch;
+        });
+
+        // Filter participants for this event
+        const eventParticipants = participants.filter(
+          (p) => !p.event || p.event.toLowerCase() === eventTitle.toLowerCase()
+        );
+
         let qualifiersCount = 0;
-        if (r.round_number === 1) {
-          qualifiersCount = participants.length;
-        } else if (r.round_number === 2) {
-          qualifiersCount = participants.filter((p) => p.round_1_selected).length;
+        if (Number(r.round_number) === 1) {
+          qualifiersCount = eventParticipants.length || participants.length;
+        } else if (Number(r.round_number) === 2) {
+          qualifiersCount = eventParticipants.filter((p) => p.round_1_selected).length;
         } else {
-          qualifiersCount = participants.filter((p) => p[`round_${r.round_number}_selected`] || p.round_1_selected).length;
+          qualifiersCount = eventParticipants.filter(
+            (p) => p[`round_${r.round_number}_selected`] || p.round_1_selected
+          ).length;
         }
 
         return {
           ...r,
+          event_id: eventId,
+          event_name: eventTitle,
+          event_code: eventCode,
+          round_name: r.round_name || `Round ${r.round_number}`,
           quizzes_count: roundQuizzes.length,
           quizzes: roundQuizzes.map((q) => ({
             id: q.id,
@@ -60,6 +119,13 @@ class RoundController {
         };
       });
 
+      // Sort by event name, then round number
+      enriched.sort((a, b) => {
+        const cmp = (a.event_name || '').localeCompare(b.event_name || '');
+        if (cmp !== 0) return cmp;
+        return (Number(a.round_number) || 0) - (Number(b.round_number) || 0);
+      });
+
       return success(res, enriched);
     } catch (err) {
       return error(res, err.message, 500);
@@ -67,50 +133,95 @@ class RoundController {
   }
 
   /**
-   * Create or register a new round
+   * Create or register a new round scoped to an event
    */
   static async createRound(req, res) {
     try {
-      const { round_number, round_name, description, event_id } = req.body;
+      const { round_number, round_name, description, event_id, event_name } = req.body;
       if (!round_number) {
         return error(res, 'round_number is required', 400);
       }
 
       const num = Number(round_number);
-      const existing = db.find('rounds', (r) => r.round_number === num);
+      const events = db.get('events') || [];
+      const quizzes = db.get('quizzes') || [];
+
+      // Find or resolve event
+      let targetEvent = events.find(
+        (e) => (event_id && e.id === event_id) || (event_name && e.title.toLowerCase() === event_name.trim().toLowerCase())
+      );
+
+      if (!targetEvent && (event_name || event_id)) {
+        const title = (event_name && event_name.trim()) || 'Symposium Competition';
+        const code = title.replace(/[^a-zA-Z0-9]/g, '').substring(0, 6).toUpperCase() || 'ELQ26';
+        targetEvent = db.insert('events', {
+          title,
+          code,
+          description: `${title} symposium event`,
+          is_active: true
+        });
+      }
+
+      const resolvedEventId = targetEvent ? targetEvent.id : (event_id || 'c0000000-0000-0000-0000-000000000001');
+      const resolvedEventTitle = targetEvent ? targetEvent.title : (event_name || 'General Event');
+
+      // Check if this round number already exists for this event
+      const existing = db.find(
+        'rounds',
+        (r) =>
+          Number(r.round_number) === num &&
+          (r.event_id === resolvedEventId || (r.event_name && r.event_name.toLowerCase() === resolvedEventTitle.toLowerCase()))
+      );
+
       if (existing) {
-        // If already exists, update name/description if provided
+        // If already exists, update name/description
         const updated = db.update('rounds', (r) => r.id === existing.id, {
           round_name: round_name ? round_name.trim() : existing.round_name,
-          description: description ? description.trim() : existing.description
+          description: description !== undefined ? description.trim() : existing.description,
+          event_id: resolvedEventId,
+          event_name: resolvedEventTitle
         });
-        return success(res, updated, 'Round already exists and was updated');
+        return success(res, updated, `Round ${num} already exists for this event and was updated`);
       }
 
       const newRound = db.insert('rounds', {
-        event_id: event_id || 'c0000000-0000-0000-0000-000000000001',
+        event_id: resolvedEventId,
+        event_name: resolvedEventTitle,
         round_number: num,
         round_name: round_name ? round_name.trim() : `Round ${num}`,
-        description: description ? description.trim() : `Symposium Examination Round ${num}`,
+        description: description ? description.trim() : `${resolvedEventTitle} Examination Round ${num}`,
         is_active: true,
         is_published: false
       });
 
-      AuditService.log(req.user.id, 'CREATE_ROUND', 'ROUND', newRound.id, { round_number: num });
+      // If any quizzes for this event match this round number, link them
+      quizzes.forEach((q) => {
+        const matchesEvent =
+          (resolvedEventId && q.event_id === resolvedEventId) ||
+          (resolvedEventTitle && (q.event_name?.toLowerCase() === resolvedEventTitle.toLowerCase() || q.title?.toLowerCase() === resolvedEventTitle.toLowerCase()));
+        if (matchesEvent && Number(q.round_number) === num && !q.round_id) {
+          db.update('quizzes', (qz) => qz.id === q.id, { round_id: newRound.id });
+        }
+      });
 
-      return success(res, newRound, `Round ${num} created successfully`, 201);
+      AuditService.log(req.user.id, 'CREATE_ROUND', 'ROUND', newRound.id, {
+        round_number: num,
+        event_name: resolvedEventTitle
+      });
+
+      return success(res, newRound, `${newRound.round_name} created successfully`, 201);
     } catch (err) {
       return error(res, err.message, 500);
     }
   }
 
   /**
-   * Update round details
+   * Update round details (name, number, description, status)
    */
   static async updateRound(req, res) {
     try {
       const { id } = req.params;
-      const { round_name, description, is_active, is_published } = req.body;
+      const { round_name, round_number, description, is_active, is_published } = req.body;
 
       const round = db.find('rounds', (r) => r.id === id || String(r.round_number) === String(id));
       if (!round) {
@@ -119,11 +230,20 @@ class RoundController {
 
       const updates = {};
       if (round_name !== undefined) updates.round_name = round_name.trim();
+      if (round_number !== undefined) updates.round_number = Number(round_number);
       if (description !== undefined) updates.description = description.trim();
       if (is_active !== undefined) updates.is_active = Boolean(is_active);
       if (is_published !== undefined) updates.is_published = Boolean(is_published);
 
       const updated = db.update('rounds', (r) => r.id === round.id, updates);
+
+      // If round_number changed, sync linked quizzes
+      if (round_number !== undefined && Number(round_number) !== Number(round.round_number)) {
+        db.update('quizzes', (q) => q.round_id === round.id, {
+          round_number: Number(round_number)
+        });
+      }
+
       AuditService.log(req.user.id, 'UPDATE_ROUND', 'ROUND', round.id, updates);
 
       return success(res, updated, 'Round updated successfully');
@@ -147,7 +267,10 @@ class RoundController {
 
       const associatedQuizzes = db.filter(
         'quizzes',
-        (q) => q.round_number === round.round_number || q.round_id === round.id
+        (q) => q.round_id === round.id || (
+          Number(q.round_number) === Number(round.round_number) &&
+          (q.event_id === round.event_id || (round.event_name && q.event_name?.toLowerCase() === round.event_name?.toLowerCase()))
+        )
       );
 
       if (associatedQuizzes.length > 0 && !force) {
@@ -160,7 +283,7 @@ class RoundController {
       }
 
       if (associatedQuizzes.length > 0 && force) {
-        // Unlink associated quizzes and reassign them to Round 1 so they are not deleted
+        // Unlink associated quizzes and reassign them to Round 1 of that event
         associatedQuizzes.forEach((q) => {
           db.update('quizzes', (qz) => qz.id === q.id, {
             round_id: null,
@@ -175,7 +298,7 @@ class RoundController {
       return success(
         res,
         { deleted_id: round.id, round_number: round.round_number },
-        `Round ${round.round_number} deleted successfully`
+        `Round ${round.round_name || round.round_number} deleted successfully`
       );
     } catch (err) {
       return error(res, err.message, 500);

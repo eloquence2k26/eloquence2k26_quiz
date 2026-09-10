@@ -49,7 +49,12 @@ class QuizController {
 
       // For admin: enrich with question count & assigned count
       const enrichedAdmin = quizzes.map((q) => {
-        const qCount = db.filter('quiz_questions', (qq) => qq.quiz_id === q.id).length;
+        const roundQuestions = db.filter('questions', (quest) => {
+          const matchesRound = Number(quest.round_number) === Number(q.round_number);
+          const matchesEvent = !quest.event_name || quest.event_name === q.event_name || quest.event_name === q.title;
+          return matchesRound && matchesEvent;
+        });
+        const qCount = db.filter('quiz_questions', (qq) => qq.quiz_id === q.id).length || roundQuestions.length;
         const assignedCount = db.filter('quiz_assignments', (qa) => qa.quiz_id === q.id).length;
         const attemptsCount = db.filter('exam_attempts', (ea) => ea.quiz_id === q.id).length;
         return {
@@ -76,18 +81,30 @@ class QuizController {
       if (!quiz) return error(res, 'Quiz not found', 404);
 
       const quizQuestions = db.filter('quiz_questions', (qq) => qq.quiz_id === id);
-      const questionIds = quizQuestions.map((qq) => qq.question_id);
-
       let questions = [];
-      if (req.user.role === 'ADMIN') {
-        questions = db.filter('questions', (q) => questionIds.includes(q.id));
+
+      if (quizQuestions.length > 0) {
+        const questionIds = quizQuestions.map((qq) => qq.question_id);
+        if (req.user.role === 'ADMIN') {
+          questions = db.filter('questions', (q) => questionIds.includes(q.id));
+        }
+      } else {
+        const roundQuestions = db.filter('questions', (q) => {
+          const matchesRound = Number(q.round_number) === Number(quiz.round_number);
+          const matchesEvent = !q.event_name || q.event_name === quiz.event_name || q.event_name === quiz.title;
+          return matchesRound && matchesEvent;
+        });
+        if (req.user.role === 'ADMIN') {
+          questions = roundQuestions;
+        }
       }
 
       const assignedParticipants = db.filter('quiz_assignments', (qa) => qa.quiz_id === id);
+      const totalQCount = quizQuestions.length > 0 ? quizQuestions.length : (questions.length || quiz.total_questions || 0);
 
       return success(res, {
         ...quiz,
-        total_questions: quizQuestions.length,
+        total_questions: totalQCount,
         questions: req.user.role === 'ADMIN' ? questions : undefined,
         assigned_participants_count: assignedParticipants.length
       });
@@ -104,7 +121,8 @@ class QuizController {
       const {
         title,
         description,
-        event_name = 'Eloquence 2026',
+        event_name,
+        event_code,
         round_number = 1,
         duration_minutes = 30,
         start_date,
@@ -129,11 +147,25 @@ class QuizController {
         return error(res, 'Title, start date, and end date are required', 400);
       }
 
+      // Sync or create the Event in the events collection
+      const eventTitle = (event_name && event_name.trim()) || title.trim();
+      const codeClean = event_code ? event_code.trim().toUpperCase() : (eventTitle.replace(/[^a-zA-Z0-9]/g, '').substring(0, 6).toUpperCase() || 'ELQ26');
+      
+      let eventRecord = db.find('events', (e) => (e.code && e.code.toUpperCase() === codeClean) || e.title.toLowerCase() === eventTitle.toLowerCase());
+      if (!eventRecord) {
+        eventRecord = db.insert('events', {
+          title: eventTitle,
+          code: codeClean,
+          description: description || `${eventTitle} symposium event`,
+          is_active: true
+        });
+      }
+
       const numRound = Number(round_number) || 1;
-      let roundRecord = db.find('rounds', (r) => r.round_number === numRound);
+      let roundRecord = db.find('rounds', (r) => r.round_number === numRound && (r.event_id === eventRecord.id || !r.event_id));
       if (!roundRecord) {
         roundRecord = db.insert('rounds', {
-          event_id: 'c0000000-0000-0000-0000-000000000001',
+          event_id: eventRecord.id,
           round_number: numRound,
           round_name: `Round ${numRound}`,
           description: `Symposium Examination Round ${numRound}`,
@@ -142,13 +174,26 @@ class QuizController {
         });
       }
 
+      // Auto resolve questions from Question Bank matching this event and round if not explicitly provided
+      let resolvedQuestionIds = Array.isArray(question_ids) && question_ids.length > 0 ? question_ids : [];
+      if (resolvedQuestionIds.length === 0) {
+        const matchingQuestions = db.filter('questions', (q) => {
+          const matchesRound = Number(q.round_number) === numRound;
+          const matchesEvent = !q.event_name || q.event_name === eventRecord.title || q.event_name === title;
+          return matchesRound && matchesEvent;
+        });
+        resolvedQuestionIds = matchingQuestions.map((q) => q.id);
+      }
+
       const newQuiz = db.insert('quizzes', {
         title,
         description,
-        event_name,
+        event_id: eventRecord.id,
+        event_name: eventRecord.title,
+        event_code: eventRecord.code,
         round_id: roundRecord.id,
         round_number: numRound,
-        total_questions: question_ids.length,
+        total_questions: resolvedQuestionIds.length,
         duration_minutes: Number(duration_minutes),
         start_date,
         start_time,
@@ -168,9 +213,9 @@ class QuizController {
         created_by: req.user.id
       });
 
-      // Link questions if provided
-      if (Array.isArray(question_ids) && question_ids.length > 0) {
-        question_ids.forEach((qId, index) => {
+      // Link questions
+      if (resolvedQuestionIds.length > 0) {
+        resolvedQuestionIds.forEach((qId, index) => {
           db.insert('quiz_questions', {
             quiz_id: newQuiz.id,
             question_id: qId,
@@ -179,9 +224,9 @@ class QuizController {
         });
       }
 
-      AuditService.log(req.user.id, 'CREATE_QUIZ', 'QUIZ', newQuiz.id, { title: newQuiz.title });
+      AuditService.log(req.user.id, 'CREATE_QUIZ', 'QUIZ', newQuiz.id, { title: newQuiz.title, event_code: eventRecord.code });
 
-      return success(res, newQuiz, 'Quiz created successfully', 201);
+      return success(res, newQuiz, 'Event & Quiz created successfully', 201);
     } catch (err) {
       return error(res, err.message, 500);
     }
@@ -197,6 +242,10 @@ class QuizController {
 
       const existing = db.find('quizzes', (q) => q.id === id);
       if (!existing) return error(res, 'Quiz not found', 404);
+
+      if (updates.event_code) {
+        updates.event_code = updates.event_code.trim().toUpperCase();
+      }
 
       if (updates.question_ids && Array.isArray(updates.question_ids)) {
         // Replace existing question associations
@@ -215,10 +264,10 @@ class QuizController {
       if (updates.round_number !== undefined) {
         const numRound = Number(updates.round_number) || 1;
         updates.round_number = numRound;
-        let roundRecord = db.find('rounds', (r) => r.round_number === numRound);
+        let roundRecord = db.find('rounds', (r) => r.round_number === numRound && (!existing.event_id || r.event_id === existing.event_id));
         if (!roundRecord) {
           roundRecord = db.insert('rounds', {
-            event_id: 'c0000000-0000-0000-0000-000000000001',
+            event_id: existing.event_id || 'c0000000-0000-0000-0000-000000000001',
             round_number: numRound,
             round_name: `Round ${numRound}`,
             description: `Symposium Examination Round ${numRound}`,
@@ -231,9 +280,18 @@ class QuizController {
 
       const updated = db.update('quizzes', (q) => q.id === id, updates);
 
+      // Sync event record if title or code updated
+      if (existing.event_id && (updates.event_name || updates.event_code || updates.description)) {
+        db.update('events', (e) => e.id === existing.event_id, {
+          ...(updates.event_name ? { title: updates.event_name } : {}),
+          ...(updates.event_code ? { code: updates.event_code } : {}),
+          ...(updates.description ? { description: updates.description } : {})
+        });
+      }
+
       AuditService.log(req.user.id, 'UPDATE_QUIZ', 'QUIZ', id, { updates });
 
-      return success(res, updated, 'Quiz updated successfully');
+      return success(res, updated, 'Event updated successfully');
     } catch (err) {
       return error(res, err.message, 500);
     }
@@ -252,9 +310,17 @@ class QuizController {
       db.remove('quiz_questions', (qq) => qq.quiz_id === id);
       db.remove('quiz_assignments', (qa) => qa.quiz_id === id);
 
+      // If no other quizzes use this event_id, clean up the event
+      if (existing.event_id) {
+        const otherQuizzesWithEvent = db.find('quizzes', (q) => q.event_id === existing.event_id);
+        if (!otherQuizzesWithEvent) {
+          db.remove('events', (e) => e.id === existing.event_id);
+        }
+      }
+
       AuditService.log(req.user.id, 'DELETE_QUIZ', 'QUIZ', id, { title: existing.title });
 
-      return success(res, {}, 'Quiz deleted successfully');
+      return success(res, {}, 'Event and Quiz deleted successfully');
     } catch (err) {
       return error(res, err.message, 500);
     }
