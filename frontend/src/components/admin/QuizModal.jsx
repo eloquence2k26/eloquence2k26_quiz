@@ -28,7 +28,7 @@ export default function QuizModal({ isOpen, onClose, onSave, initialData = null,
     status: 'Live',
     desktop_only: false,
     fullscreen_required: true,
-    max_violations: 3,
+    max_violations: 1,
     shuffle_questions: true,
     shuffle_options: true,
     question_ids: []
@@ -95,7 +95,7 @@ export default function QuizModal({ isOpen, onClose, onSave, initialData = null,
         status: initialData.status || 'Live',
         desktop_only: Boolean(initialData.desktop_only),
         fullscreen_required: initialData.fullscreen_required !== false,
-        max_violations: initialData.max_violations || 3,
+        max_violations: initialData.max_violations !== undefined ? initialData.max_violations : 1,
         shuffle_questions: initialData.shuffle_questions !== false,
         shuffle_options: initialData.shuffle_options !== false,
         question_ids: initialData.questions
@@ -272,7 +272,7 @@ export default function QuizModal({ isOpen, onClose, onSave, initialData = null,
                 min={1}
                 max={10}
                 value={formData.max_violations}
-                onChange={(e) => setFormData({ ...formData, max_violations: parseInt(e.target.value) || 3 })}
+                onChange={(e) => setFormData({ ...formData, max_violations: parseInt(e.target.value) || 1 })}
                 className="w-full px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-sm text-slate-900 dark:text-white"
               />
             </div>

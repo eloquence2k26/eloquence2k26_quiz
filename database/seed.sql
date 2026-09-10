@@ -24,13 +24,12 @@ VALUES
     }'::jsonb)
 ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value;
 
--- 2. CREATE DEFAULT ADMIN USER (Password: 'admin123' bcrypt hash: $2a$10$7rDvh7x5O0wKevE1o7bVxe93zI7uQk8wEwPshv9v14X9pC9G.rD8C or standard)
--- Using a standard bcrypt hash for 'admin123'
+-- 2. CREATE DEFAULT ADMIN USER (Password: 'admin123')
 INSERT INTO public.users (id, email, password_hash, role, is_active)
 VALUES (
     'a0000000-0000-0000-0000-000000000001',
     'admin@eloquence.com',
-    '$2a$10$xR0ZzU60Pz3LpQj27vKx..ZtY9a/K61QjZ2y2/gJg3XhR5nF1g5yG', -- admin123
+    '$2a$10$Xn2MkXCYNMW6Pc0sYhVUReZqYXz11wVvgaDNRkpvJjvbp6sdVQLxG', -- admin123
     'ADMIN',
     TRUE
 )
@@ -60,7 +59,7 @@ INSERT INTO public.users (id, email, password_hash, role, is_active)
 VALUES (
     'b0000000-0000-0000-0000-000000000001',
     'alex.chen@university.edu',
-    '$2a$10$xR0ZzU60Pz3LpQj27vKx..ZtY9a/K61QjZ2y2/gJg3XhR5nF1g5yG', -- participant123
+    '$2a$10$pEHrgO9kAXdhzEBXhdtieOtkhFUZNy.MaJ143U52ypTexumYPTg5i', -- participant123
     'PARTICIPANT',
     TRUE
 )
@@ -97,7 +96,7 @@ INSERT INTO public.users (id, email, password_hash, role, is_active)
 VALUES (
     'b0000000-0000-0000-0000-000000000002',
     'priya.sharma@college.edu',
-    '$2a$10$xR0ZzU60Pz3LpQj27vKx..ZtY9a/K61QjZ2y2/gJg3XhR5nF1g5yG',
+    '$2a$10$pEHrgO9kAXdhzEBXhdtieOtkhFUZNy.MaJ143U52ypTexumYPTg5i',
     'PARTICIPANT',
     TRUE
 )
@@ -134,7 +133,7 @@ INSERT INTO public.users (id, email, password_hash, role, is_active)
 VALUES (
     'b0000000-0000-0000-0000-000000000003',
     'rahul.verma@tech.ac.in',
-    '$2a$10$xR0ZzU60Pz3LpQj27vKx..ZtY9a/K61QjZ2y2/gJg3XhR5nF1g5yG',
+    '$2a$10$pEHrgO9kAXdhzEBXhdtieOtkhFUZNy.MaJ143U52ypTexumYPTg5i',
     'PARTICIPANT',
     TRUE
 )

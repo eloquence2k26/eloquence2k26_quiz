@@ -225,7 +225,7 @@ class ExamController {
         event_name: quiz.event_name,
         round_number: quiz.round_number,
         duration_minutes: quiz.duration_minutes,
-        max_violations: quiz.max_violations || 3,
+        max_violations: quiz.max_violations !== undefined ? quiz.max_violations : 1,
         fullscreen_required: quiz.fullscreen_required !== false,
         negative_marking: quiz.negative_marking,
         negative_mark_value: quiz.negative_mark_value,
@@ -308,7 +308,21 @@ class ExamController {
       }
 
       const quiz = db.find('quizzes', (q) => q.id === attempt.quiz_id);
-      const maxAllowedViolations = (quiz && quiz.max_violations) || 3;
+      const maxAllowedViolations = (quiz && quiz.max_violations !== undefined) ? Number(quiz.max_violations) : 1;
+
+      // Classify severity
+      const isCritical = [
+        'GEMINI_ASSISTANT_TRIGGER',
+        'MOBILE_LONG_PRESS',
+        'CIRCLE_TO_SEARCH',
+        'SPLIT_SCREEN',
+        'SCREEN_CAPTURE',
+        'DEVTOOLS_INSPECTION',
+        'TAB_SWITCH',
+        'FULLSCREEN_EXIT',
+        'WINDOW_BLUR',
+        'MULTIPLE_SESSION'
+      ].includes(violation_type);
 
       // Log violation
       const violation = db.insert('security_violations', {
@@ -317,7 +331,7 @@ class ExamController {
         quiz_id: attempt.quiz_id,
         violation_type: violation_type || 'SUSPICIOUS_ACTIVITY',
         description: description || 'Proctoring security anomaly detected',
-        severity: ['TAB_SWITCH', 'FULLSCREEN_EXIT', 'MULTIPLE_SESSION'].includes(violation_type) ? 'HIGH' : 'MEDIUM',
+        severity: isCritical ? 'HIGH' : 'MEDIUM',
         timestamp: new Date().toISOString(),
         ip_address: ipAddress,
         user_agent: userAgent,
@@ -327,9 +341,9 @@ class ExamController {
       const newViolationCount = (attempt.violation_count || 0) + 1;
       db.update('exam_attempts', (a) => a.id === attemptId, { violation_count: newViolationCount });
 
-      // Check if limit exceeded -> Auto Terminate
-      if (newViolationCount >= maxAllowedViolations) {
-        const termReason = `Terminated automatically after exceeding ${maxAllowedViolations} security violations (Latest: ${violation_type})`;
+      // Check if limit reached or strict single-strike active -> Auto Terminate Immediately
+      if (newViolationCount >= maxAllowedViolations || metadata.strict_single_strike) {
+        const termReason = description || `Terminated automatically due to security violation (${violation_type})`;
         db.update('exam_attempts', (a) => a.id === attemptId, {
           status: 'TERMINATED',
           termination_reason: termReason,
@@ -343,7 +357,8 @@ class ExamController {
         AuditService.log(null, 'AUTO_TERMINATE_EXAM', 'EXAM_ATTEMPT', attemptId, {
           participant_id: attempt.participant_id,
           reason: termReason,
-          violations: newViolationCount
+          violations: newViolationCount,
+          violation_type
         });
 
         return success(res, {
@@ -353,14 +368,14 @@ class ExamController {
           violation_count: newViolationCount,
           max_violations: maxAllowedViolations,
           result: finalResult
-        }, 'Security limit exceeded. Exam terminated.');
+        }, 'Security violation detected. Exam terminated immediately.');
       }
 
       return success(res, {
         terminated: false,
         warning_number: newViolationCount,
         max_violations: maxAllowedViolations,
-        remaining_warnings: maxAllowedViolations - newViolationCount
+        remaining_warnings: Math.max(0, maxAllowedViolations - newViolationCount)
       }, `Security warning ${newViolationCount} of ${maxAllowedViolations}`);
     } catch (err) {
       return error(res, err.message, 500);

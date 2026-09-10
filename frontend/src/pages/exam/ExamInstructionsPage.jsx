@@ -68,33 +68,33 @@ export default function ExamInstructionsPage() {
 
         {/* Instructions Body */}
         <div className="p-6 sm:p-10 space-y-6">
-          <div className="p-4 rounded-2xl bg-amber-50 dark:bg-amber-950/60 border border-amber-200 dark:border-amber-900/50 flex items-start gap-3">
-            <AlertTriangle className="w-5 h-5 text-amber-600 dark:text-amber-400 flex-shrink-0 mt-0.5" />
-            <div className="text-xs text-amber-900 dark:text-amber-200 leading-relaxed font-medium">
-              <strong>MANDATORY PROCTORING PROTOCOL:</strong> This online examination is monitored by real-time automated security heuristics. Exiting fullscreen mode, switching browser tabs, opening dev tools, or attempting clipboard operations will log violations and will terminate your test.
+          <div className="p-4 rounded-2xl bg-rose-50 dark:bg-rose-950/60 border border-rose-200 dark:border-rose-900/50 flex items-start gap-3">
+            <AlertTriangle className="w-5 h-5 text-rose-600 dark:text-rose-400 flex-shrink-0 mt-0.5" />
+            <div className="text-xs text-rose-900 dark:text-rose-200 leading-relaxed font-medium">
+              <strong>STRICT ZERO-TOLERANCE PROCTORING PROTOCOL:</strong> This examination is protected by automated AI proctoring algorithms. Any single violation — including mobile long-press gestures (Circle to Search / Gemini), switching tabs, taking screenshots, exiting fullscreen, or split-screen multitasking — will <strong>INSTANTLY TERMINATE</strong> your examination on the 1st occurrence without warning.
             </div>
           </div>
 
           <div className="space-y-3">
             <h3 className="text-xs font-bold uppercase tracking-wider text-slate-900 dark:text-white">
-              Rules & Guidelines
+              Strict Rules & Proctoring Policies
             </h3>
             <ul className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs text-slate-600 dark:text-slate-300">
               <li className="flex items-start gap-2 p-2.5 rounded-xl bg-slate-50 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-700">
                 <Monitor className="w-4 h-4 text-brand-500 mt-0.5 flex-shrink-0" />
-                <span>Fullscreen mode is strictly required throughout the exam.</span>
+                <span>Fullscreen mode is strictly locked. Exiting fullscreen terminates test.</span>
               </li>
               <li className="flex items-start gap-2 p-2.5 rounded-xl bg-slate-50 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-700">
                 <Eye className="w-4 h-4 text-brand-500 mt-0.5 flex-shrink-0" />
-                <span>Do not switch tabs, minimize windows, or lose window focus.</span>
+                <span>No tab switching, window minimization, or app backgrounding allowed.</span>
               </li>
               <li className="flex items-start gap-2 p-2.5 rounded-xl bg-slate-50 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-700">
                 <Copy className="w-4 h-4 text-brand-500 mt-0.5 flex-shrink-0" />
-                <span>Copying text, right-clicking, and pasting answers are blocked.</span>
+                <span>Mobile long-press (Gemini / AI search / text selection) is blocked & tracked.</span>
               </li>
               <li className="flex items-start gap-2 p-2.5 rounded-xl bg-slate-50 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-700">
-                <ShieldCheck className="w-4 h-4 text-brand-500 mt-0.5 flex-shrink-0" />
-                <span>{quiz?.max_violations || 3} security warnings will cause instant termination.</span>
+                <ShieldCheck className="w-4 h-4 text-rose-500 mt-0.5 flex-shrink-0" />
+                <span>Zero Tolerance: 1 security violation = Instant test termination.</span>
               </li>
             </ul>
           </div>

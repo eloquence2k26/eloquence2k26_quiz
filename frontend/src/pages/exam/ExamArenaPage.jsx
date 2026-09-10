@@ -47,7 +47,7 @@ export default function ExamArenaPage() {
     navigate(`/exam/terminated/${quizId}`);
   }, [quizId, navigate]);
 
-  // Hook up automated anti-cheating monitoring
+  // Hook up automated anti-cheating monitoring with strict zero-tolerance default
   const {
     violationCount,
     latestViolation,
@@ -57,7 +57,7 @@ export default function ExamArenaPage() {
   } = useAntiCheating({
     attemptId,
     enabled: Boolean(attemptId),
-    maxViolations: quiz?.max_violations || 3,
+    maxViolations: quiz?.max_violations !== undefined ? quiz.max_violations : 1,
     fullscreenRequired: quiz?.fullscreen_required !== false,
     onTerminated: handleTerminated
   });
@@ -221,14 +221,14 @@ export default function ExamArenaPage() {
   const reviewCount = questions.filter((q) => q.is_marked_for_review).length;
 
   return (
-    <div className="min-h-screen flex flex-col bg-slate-100 dark:bg-slate-950 text-slate-900 dark:text-slate-100">
+    <div className="min-h-screen flex flex-col bg-slate-100 dark:bg-slate-950 text-slate-900 dark:text-slate-100 select-none cursor-default [-webkit-touch-callout:none] [-webkit-user-select:none] [user-select:none]">
       {/* Top Header */}
       <ExamHeader
         quizTitle={quiz?.title || 'Symposium Examination'}
         roundNumber={quiz?.round_number || 1}
         remainingSeconds={remainingSeconds}
         violationCount={violationCount}
-        maxViolations={quiz?.max_violations || 3}
+        maxViolations={quiz?.max_violations !== undefined ? quiz.max_violations : 1}
         onSubmitClick={() => setShowSubmitConfirm(true)}
       />
 
@@ -398,7 +398,7 @@ export default function ExamArenaPage() {
         isOpen={showWarningModal}
         onClose={closeWarningModal}
         warningNumber={violationCount}
-        maxViolations={quiz?.max_violations || 3}
+        maxViolations={quiz?.max_violations !== undefined ? quiz.max_violations : 1}
         violationType={latestViolation?.type}
         description={latestViolation?.description}
       />

@@ -19,14 +19,39 @@ class AuthController {
       let user = null;
 
       if (email) {
-        user = db.find('users', (u) => u.email.toLowerCase() === email.trim().toLowerCase());
+        if (db.client) {
+          const { data: dbUsers } = await db.client.from('users').select('*').ilike('email', email.trim());
+          if (dbUsers && dbUsers.length > 0) {
+            user = dbUsers[0];
+          }
+        }
+        if (!user) {
+          user = db.find('users', (u) => u.email.toLowerCase() === email.trim().toLowerCase());
+        }
       } else if (participant_id) {
-        const participant = db.find(
-          'participants',
-          (p) => p.participant_id.toLowerCase() === participant_id.trim().toLowerCase()
-        );
+        let participant = null;
+        if (db.client) {
+          const { data: dbParts } = await db.client.from('participants').select('*').ilike('participant_id', participant_id.trim());
+          if (dbParts && dbParts.length > 0) {
+            participant = dbParts[0];
+          }
+        }
+        if (!participant) {
+          participant = db.find(
+            'participants',
+            (p) => p.participant_id.toLowerCase() === participant_id.trim().toLowerCase()
+          );
+        }
         if (participant) {
-          user = db.find('users', (u) => u.id === participant.id);
+          if (db.client) {
+            const { data: dbUsers } = await db.client.from('users').select('*').eq('id', participant.id);
+            if (dbUsers && dbUsers.length > 0) {
+              user = dbUsers[0];
+            }
+          }
+          if (!user) {
+            user = db.find('users', (u) => u.id === participant.id);
+          }
         }
       }
 
@@ -40,7 +65,11 @@ class AuthController {
 
       // Check if participant is disabled
       if (user.role === 'PARTICIPANT') {
-        const participant = db.find('participants', (p) => p.id === user.id);
+        let participant = db.find('participants', (p) => p.id === user.id);
+        if (!participant && db.client) {
+          const { data: dbParts } = await db.client.from('participants').select('*').eq('id', user.id);
+          if (dbParts && dbParts.length > 0) participant = dbParts[0];
+        }
         if (participant && participant.is_disabled) {
           return error(res, 'Your participation has been revoked or disabled.', 403);
         }
@@ -51,9 +80,30 @@ class AuthController {
         return error(res, 'Invalid email/ID or password', 401);
       }
 
-      const profile = db.find('profiles', (p) => p.id === user.id) || {};
-      const participantData = user.role === 'PARTICIPANT' ? db.find('participants', (p) => p.id === user.id) : null;
-      const adminData = user.role === 'ADMIN' ? db.find('admins', (a) => a.id === user.id) : null;
+      let profile = db.find('profiles', (p) => p.id === user.id);
+      if (!profile && db.client) {
+        const { data: dbProfiles } = await db.client.from('profiles').select('*').eq('id', user.id);
+        if (dbProfiles && dbProfiles.length > 0) profile = dbProfiles[0];
+      }
+      profile = profile || {};
+
+      let participantData = null;
+      if (user.role === 'PARTICIPANT') {
+        participantData = db.find('participants', (p) => p.id === user.id);
+        if (!participantData && db.client) {
+          const { data: dbParts } = await db.client.from('participants').select('*').eq('id', user.id);
+          if (dbParts && dbParts.length > 0) participantData = dbParts[0];
+        }
+      }
+
+      let adminData = null;
+      if (user.role === 'ADMIN') {
+        adminData = db.find('admins', (a) => a.id === user.id);
+        if (!adminData && db.client) {
+          const { data: dbAdmins } = await db.client.from('admins').select('*').eq('id', user.id);
+          if (dbAdmins && dbAdmins.length > 0) adminData = dbAdmins[0];
+        }
+      }
 
       const token = generateToken({
         id: user.id,
@@ -71,7 +121,7 @@ class AuthController {
           id: user.id,
           email: user.email,
           role: user.role,
-          full_name: profile.full_name || (participantData ? participantData.full_name : 'User'),
+          full_name: profile.full_name || (participantData ? participantData.full_name : (adminData ? adminData.full_name : 'User')),
           avatar_url: profile.avatar_url || null,
           participant: participantData,
           admin: adminData
@@ -103,13 +153,23 @@ class AuthController {
         return error(res, 'All required fields must be provided.', 400);
       }
 
-      const existingUser = db.find('users', (u) => u.email.toLowerCase() === email.trim().toLowerCase());
+      let existingUser = db.find('users', (u) => u.email.toLowerCase() === email.trim().toLowerCase());
+      if (!existingUser && db.client) {
+        const { data: dbUsers } = await db.client.from('users').select('*').ilike('email', email.trim());
+        if (dbUsers && dbUsers.length > 0) existingUser = dbUsers[0];
+      }
       if (existingUser) {
         return error(res, 'Email already registered. Please login.', 409);
       }
 
       const password_hash = await bcrypt.hash(password, 10);
-      const participantCount = db.get('participants').length + 1;
+      let participantCount = db.get('participants').length + 1;
+      if (db.client) {
+        const { count } = await db.client.from('participants').select('*', { count: 'exact', head: true });
+        if (count !== null && count !== undefined) {
+          participantCount = count + 1;
+        }
+      }
       const participantId = `ELQ-2026-${String(participantCount).padStart(3, '0')}`;
 
       const newUser = db.insert('users', {

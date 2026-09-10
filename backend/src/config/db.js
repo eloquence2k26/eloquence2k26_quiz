@@ -1,227 +1,232 @@
-const fs = require('fs');
-const path = require('path');
-const bcrypt = require('bcryptjs');
 const { v4: uuidv4 } = require('uuid');
 const supabase = require('./supabase');
+const logger = require('../utils/logger');
 
-const DATA_FILE = path.join(__dirname, '../../data/store.json');
-
-// Default initial dataset
-const getDefaultData = () => {
-  const passwordHash = bcrypt.hashSync('admin123', 10);
-  const participantHash = bcrypt.hashSync('participant123', 10);
-
-  return {
-    users: [
-      {
-        id: 'a0000000-0000-0000-0000-000000000001',
-        email: 'admin@eloquence.com',
-        password_hash: passwordHash,
-        role: 'ADMIN',
-        is_active: true,
-        created_at: new Date().toISOString()
-      },
-      {
-        id: 'b0000000-0000-0000-0000-000000000001',
-        email: 'alex.chen@university.edu',
-        password_hash: participantHash,
-        role: 'PARTICIPANT',
-        is_active: true,
-        created_at: new Date().toISOString()
-      },
-      {
-        id: 'b0000000-0000-0000-0000-000000000002',
-        email: 'priya.sharma@college.edu',
-        password_hash: participantHash,
-        role: 'PARTICIPANT',
-        is_active: true,
-        created_at: new Date().toISOString()
-      },
-      {
-        id: 'b0000000-0000-0000-0000-000000000003',
-        email: 'rahul.verma@tech.ac.in',
-        password_hash: participantHash,
-        role: 'PARTICIPANT',
-        is_active: true,
-        created_at: new Date().toISOString()
-      }
-    ],
-    profiles: [
-      {
-        id: 'a0000000-0000-0000-0000-000000000001',
-        full_name: 'Chief Symposium Admin',
-        mobile: '+91 9876543210',
-        avatar_url: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&q=80&w=250'
-      },
-      {
-        id: 'b0000000-0000-0000-0000-000000000001',
-        full_name: 'Alex Chen',
-        mobile: '+91 9123456780'
-      },
-      {
-        id: 'b0000000-0000-0000-0000-000000000002',
-        full_name: 'Priya Sharma',
-        mobile: '+91 9123456781'
-      },
-      {
-        id: 'b0000000-0000-0000-0000-000000000003',
-        full_name: 'Rahul Verma',
-        mobile: '+91 9123456782'
-      }
-    ],
-    participants: [
-      {
-        id: 'b0000000-0000-0000-0000-000000000001',
-        participant_id: 'ELQ-2026-001',
-        full_name: 'Alex Chen',
-        email: 'alex.chen@university.edu',
-        mobile: '+91 9123456780',
-        college: 'MIT Campus, Anna University',
-        department: 'Computer Science & Engineering',
-        year: '3rd Year',
-        event: 'Technical Quiz',
-        registration_number: 'REG-CS-8901',
-        round_1_selected: false,
-        round_2_selected: false,
-        is_disabled: false,
-        created_at: new Date().toISOString()
-      },
-      {
-        id: 'b0000000-0000-0000-0000-000000000002',
-        participant_id: 'ELQ-2026-002',
-        full_name: 'Priya Sharma',
-        email: 'priya.sharma@college.edu',
-        mobile: '+91 9123456781',
-        college: 'PSG College of Technology',
-        department: 'Information Technology',
-        year: '4th Year',
-        event: 'Technical Quiz',
-        registration_number: 'REG-IT-4421',
-        round_1_selected: false,
-        round_2_selected: false,
-        is_disabled: false,
-        created_at: new Date().toISOString()
-      },
-      {
-        id: 'b0000000-0000-0000-0000-000000000003',
-        participant_id: 'ELQ-2026-003',
-        full_name: 'Rahul Verma',
-        email: 'rahul.verma@tech.ac.in',
-        mobile: '+91 9123456782',
-        college: 'SSN College of Engineering',
-        department: 'Artificial Intelligence & Data Science',
-        year: '2nd Year',
-        event: 'Technical Quiz',
-        registration_number: 'REG-AI-9012',
-        round_1_selected: false,
-        round_2_selected: false,
-        is_disabled: false,
-        created_at: new Date().toISOString()
-      }
-    ],
-    admins: [
-      {
-        id: 'a0000000-0000-0000-0000-000000000001',
-        full_name: 'Chief Symposium Admin',
-        email: 'admin@eloquence.com',
-        admin_level: 'SUPER_ADMIN'
-      }
-    ],
-    events: [],
-    rounds: [],
-    questions: [],
-    quizzes: [],
-    quiz_questions: [],
-    quiz_assignments: [],
-    exam_attempts: [],
-    question_orders: [],
-    attempt_answers: [],
-    results: [],
-    round_selections: [],
-    security_violations: [],
-    exam_sessions: [],
-    announcements: [
-      {
-        id: 'ann-001',
-        title: "Welcome to Eloquence '26 Examination Portal",
-        message: 'All participants must ensure a stable internet connection and browser fullscreen permissions prior to launching an examination.',
-        target_type: 'ALL',
-        created_at: new Date().toISOString()
-      },
-      {
-        id: 'ann-002',
-        title: 'Round 1 MCQ Screening is LIVE',
-        message: 'Round 1 is open for all registered engineering scholars. Complete your attempt within the allotted duration.',
-        target_type: 'ROUND_1',
-        created_at: new Date().toISOString()
-      }
-    ],
-    audit_logs: [
-      {
-        id: uuidv4(),
-        admin_id: 'a0000000-0000-0000-0000-000000000001',
-        action: 'SYSTEM_INITIALIZATION',
-        entity_type: 'SYSTEM',
-        entity_id: 'ROOT',
-        timestamp: new Date().toISOString(),
-        metadata: { info: 'System booted with default seeds and symposium rounds.' }
-      }
-    ],
-    system_settings: {
-      max_violations: 3,
-      fullscreen_required: true,
-      clipboard_monitoring: true,
-      tab_switch_monitoring: true,
-      window_blur_monitoring: true,
-      desktop_only: false,
-      auto_submit_on_expiry: true,
-      show_detailed_results: true
-    }
-  };
+// Known column definitions for sanitizing payloads before sending to Supabase
+const TABLE_COLUMNS = {
+  users: ['id', 'email', 'password_hash', 'role', 'is_active', 'created_at', 'updated_at'],
+  profiles: ['id', 'full_name', 'mobile', 'avatar_url', 'created_at', 'updated_at'],
+  participants: [
+    'id', 'participant_id', 'full_name', 'email', 'mobile', 'college',
+    'department', 'year', 'event', 'registration_number', 'photo_url',
+    'round_1_selected', 'round_2_selected', 'is_disabled', 'created_at', 'updated_at'
+  ],
+  admins: ['id', 'full_name', 'email', 'admin_level', 'created_at'],
+  events: ['id', 'title', 'code', 'description', 'is_active', 'created_at', 'updated_at'],
+  rounds: [
+    'id', 'event_id', 'round_number', 'round_name', 'description',
+    'is_active', 'is_published', 'created_at', 'updated_at'
+  ],
+  quizzes: [
+    'id', 'event_id', 'round_id', 'title', 'description', 'event_name',
+    'round_number', 'total_questions', 'duration_minutes', 'start_date',
+    'start_time', 'end_date', 'end_time', 'start_datetime', 'end_datetime',
+    'max_marks', 'pass_percentage', 'negative_marking', 'negative_mark_value',
+    'max_attempts', 'status', 'desktop_only', 'fullscreen_required',
+    'max_violations', 'shuffle_questions', 'shuffle_options',
+    'show_detailed_results', 'published_participant_ids', 'created_by',
+    'created_at', 'updated_at'
+  ],
+  questions: [
+    'id', 'question_text', 'option_a', 'option_b', 'option_c', 'option_d',
+    'correct_answer', 'marks', 'negative_marks', 'explanation', 'category',
+    'difficulty', 'event_name', 'round_number', 'rounds', 'image_url',
+    'created_by', 'created_at', 'updated_at'
+  ],
+  quiz_questions: ['id', 'quiz_id', 'question_id', 'display_order', 'created_at'],
+  quiz_assignments: ['id', 'quiz_id', 'participant_id', 'assigned_by', 'assigned_at', 'status'],
+  exam_attempts: [
+    'id', 'quiz_id', 'participant_id', 'attempt_number', 'session_id',
+    'status', 'started_at', 'expires_at', 'submitted_at', 'termination_reason',
+    'violation_count', 'ip_address', 'user_agent', 'created_at', 'updated_at'
+  ],
+  question_orders: ['id', 'attempt_id', 'question_id', 'question_order', 'options_order', 'created_at'],
+  attempt_answers: [
+    'id', 'attempt_id', 'question_id', 'selected_option', 'is_marked_for_review',
+    'is_correct', 'marks_awarded', 'answered_at', 'updated_at'
+  ],
+  results: [
+    'id', 'attempt_id', 'quiz_id', 'participant_id', 'total_questions',
+    'attempted_questions', 'correct_answers', 'wrong_answers', 'unanswered_questions',
+    'positive_marks', 'negative_marks', 'final_score', 'percentage', 'rank',
+    'is_passed', 'time_taken_seconds', 'status', 'published_at', 'created_at', 'updated_at'
+  ],
+  round_selections: [
+    'id', 'event_id', 'round_number', 'participant_id', 'score', 'rank',
+    'selected', 'selected_by', 'published_at', 'created_at'
+  ],
+  security_violations: [
+    'id', 'attempt_id', 'participant_id', 'quiz_id', 'violation_type',
+    'description', 'severity', 'timestamp', 'ip_address', 'user_agent', 'metadata'
+  ],
+  exam_sessions: [
+    'id', 'participant_id', 'quiz_id', 'session_id', 'is_active',
+    'last_heartbeat', 'ip_address', 'user_agent', 'created_at', 'updated_at'
+  ],
+  announcements: [
+    'id', 'title', 'message', 'target_type', 'quiz_id', 'is_active',
+    'created_by', 'created_at'
+  ],
+  audit_logs: ['id', 'admin_id', 'action', 'entity_type', 'entity_id', 'timestamp', 'metadata'],
+  system_settings: ['key', 'value', 'updated_at']
 };
+
+const TABLES = Object.keys(TABLE_COLUMNS).filter((t) => t !== 'system_settings');
 
 class DBStore {
   constructor() {
-    this.data = getDefaultData();
+    this.client = supabase;
+    this.data = {
+      users: [],
+      profiles: [],
+      participants: [],
+      admins: [],
+      events: [],
+      rounds: [],
+      quizzes: [],
+      questions: [],
+      quiz_questions: [],
+      quiz_assignments: [],
+      exam_attempts: [],
+      question_orders: [],
+      attempt_answers: [],
+      results: [],
+      round_selections: [],
+      security_violations: [],
+      exam_sessions: [],
+      announcements: [],
+      audit_logs: [],
+      system_settings: {
+        max_violations: 3,
+        fullscreen_required: true,
+        clipboard_monitoring: true,
+        tab_switch_monitoring: true,
+        window_blur_monitoring: true,
+        desktop_only: false,
+        auto_submit_on_expiry: true,
+        show_detailed_results: true
+      }
+    };
+    this.isInitialized = false;
     this.init();
   }
 
-  init() {
+  /**
+   * Sanitize an item object to only valid PostgreSQL table columns
+   */
+  sanitize(collection, item) {
+    if (!item || typeof item !== 'object') return item;
+    const allowed = TABLE_COLUMNS[collection];
+    if (!allowed) {
+      return Object.fromEntries(Object.entries(item).filter(([_, v]) => v !== undefined));
+    }
+    const clean = {};
+    for (const key of allowed) {
+      if (item[key] !== undefined) {
+        clean[key] = item[key];
+      }
+    }
+    return clean;
+  }
+
+  /**
+   * Initialize and hydrate all tables from Supabase PostgreSQL database
+   */
+  async init() {
     try {
-      const dataDir = path.dirname(DATA_FILE);
-      if (!fs.existsSync(dataDir)) {
-        fs.mkdirSync(dataDir, { recursive: true });
+      logger.info('Connecting to Supabase Database...');
+
+      // Fetch all core tables in parallel
+      const loadPromises = TABLES.map(async (table) => {
+        try {
+          const { data, error } = await supabase.from(table).select('*');
+          if (error) {
+            logger.warn(`[DB] Supabase table "${table}" notice: ${error.message}`);
+            return { table, data: [] };
+          }
+          return { table, data: data || [] };
+        } catch (err) {
+          logger.warn(`[DB] Failed to load table "${table}": ${err.message}`);
+          return { table, data: [] };
+        }
+      });
+
+      const results = await Promise.all(loadPromises);
+      for (const res of results) {
+        this.data[res.table] = res.data;
       }
-      if (fs.existsSync(DATA_FILE)) {
-        const content = fs.readFileSync(DATA_FILE, 'utf8');
-        this.data = JSON.parse(content);
-      } else {
-        this.save();
+
+      // Fetch system settings
+      try {
+        const { data: settingsRows, error: settingsErr } = await supabase
+          .from('system_settings')
+          .select('*');
+
+        if (!settingsErr && Array.isArray(settingsRows)) {
+          for (const row of settingsRows) {
+            if (row.key === 'security_config' && typeof row.value === 'object') {
+              this.data.system_settings = { ...this.data.system_settings, ...row.value };
+            } else if (row.key) {
+              this.data.system_settings[row.key] = row.value;
+            }
+          }
+        }
+      } catch (settingsEx) {
+        logger.warn(`[DB] Notice loading system settings: ${settingsEx.message}`);
       }
+
+      this.isInitialized = true;
+      const totalRecords = TABLES.reduce((sum, t) => sum + (this.data[t] ? this.data[t].length : 0), 0);
+      logger.info(`[DB] Connected successfully to Supabase. Loaded ${totalRecords} records across ${TABLES.length} tables.`);
     } catch (err) {
-      console.warn('Local file store init notice, using memory data:', err.message);
+      logger.error(`[DB] Critical error initializing Supabase connection: ${err.message}`);
     }
   }
 
-  save() {
+  /**
+   * Reload single table or all tables from Supabase
+   */
+  async refresh(collection) {
     try {
-      const dataDir = path.dirname(DATA_FILE);
-      if (!fs.existsSync(dataDir)) {
-        fs.mkdirSync(dataDir, { recursive: true });
+      if (collection && collection !== 'system_settings') {
+        const { data, error } = await supabase.from(collection).select('*');
+        if (!error && data) {
+          this.data[collection] = data;
+        }
+        return this.data[collection];
       }
-      fs.writeFileSync(DATA_FILE, JSON.stringify(this.data, null, 2), 'utf8');
+      return this.init();
     } catch (err) {
-      console.error('Error saving local store:', err.message);
+      logger.warn(`[DB] Refresh failed for ${collection}: ${err.message}`);
     }
   }
 
   get(collection) {
+    if (collection === 'system_settings') {
+      return this.data.system_settings || {};
+    }
     return this.data[collection] || [];
   }
 
   set(collection, items) {
+    if (collection === 'system_settings') {
+      this.data.system_settings = items;
+      // Persist system_settings to Supabase
+      (async () => {
+        try {
+          await supabase.from('system_settings').upsert({
+            key: 'security_config',
+            value: items,
+            updated_at: new Date().toISOString()
+          });
+        } catch (err) {
+          logger.warn(`[DB] Error persisting system_settings to Supabase: ${err.message}`);
+        }
+      })();
+      return this.data.system_settings;
+    }
+
     this.data[collection] = items;
-    this.save();
     return this.data[collection];
   }
 
@@ -235,30 +240,100 @@ class DBStore {
     return list.filter(predicate);
   }
 
+  /**
+   * Insert record into memory and live Supabase table
+   */
   insert(collection, item) {
     if (!item.id) item.id = uuidv4();
     if (!item.created_at) item.created_at = new Date().toISOString();
     if (!this.data[collection]) this.data[collection] = [];
+
+    // Push to cache
     this.data[collection].push(item);
-    this.save();
+
+    // Save directly to Supabase DB table
+    const cleanItem = this.sanitize(collection, item);
+    (async () => {
+      try {
+        const { error } = await supabase.from(collection).insert([cleanItem]);
+        if (error) {
+          logger.error(`[DB] Supabase insert error on "${collection}": ${error.message}`);
+        }
+      } catch (err) {
+        logger.error(`[DB] Supabase insert exception on "${collection}": ${err.message}`);
+      }
+    })();
+
     return item;
   }
 
+  /**
+   * Update record in memory and live Supabase table
+   */
   update(collection, predicate, updates) {
     const list = this.get(collection);
     const index = list.findIndex(predicate);
     if (index === -1) return null;
-    list[index] = { ...list[index], ...updates, updated_at: new Date().toISOString() };
-    this.save();
-    return list[index];
+
+    const existing = list[index];
+    const updated = { ...existing, ...updates, updated_at: new Date().toISOString() };
+    list[index] = updated;
+
+    // Save directly to Supabase DB table
+    if (updated.id) {
+      const cleanUpdates = this.sanitize(collection, updated);
+      (async () => {
+        try {
+          const { error } = await supabase
+            .from(collection)
+            .update(cleanUpdates)
+            .eq('id', updated.id);
+
+          if (error) {
+            logger.error(`[DB] Supabase update error on "${collection}" ID ${updated.id}: ${error.message}`);
+          }
+        } catch (err) {
+          logger.error(`[DB] Supabase update exception on "${collection}" ID ${updated.id}: ${err.message}`);
+        }
+      })();
+    }
+
+    return updated;
   }
 
+  /**
+   * Remove record in memory and live Supabase table
+   */
   remove(collection, predicate) {
     const list = this.get(collection);
+    const itemsToDelete = list.filter(predicate);
     const initialLen = list.length;
+
     this.data[collection] = list.filter((item) => !predicate(item));
-    this.save();
-    return this.data[collection].length !== initialLen;
+    const wasRemoved = this.data[collection].length !== initialLen;
+
+    // Delete directly from Supabase DB table
+    if (itemsToDelete.length > 0) {
+      const idsToDelete = itemsToDelete.map((item) => item.id).filter(Boolean);
+      if (idsToDelete.length > 0) {
+        (async () => {
+          try {
+            const { error } = await supabase
+              .from(collection)
+              .delete()
+              .in('id', idsToDelete);
+
+            if (error) {
+              logger.error(`[DB] Supabase delete error on "${collection}": ${error.message}`);
+            }
+          } catch (err) {
+            logger.error(`[DB] Supabase delete exception on "${collection}": ${err.message}`);
+          }
+        })();
+      }
+    }
+
+    return wasRemoved;
   }
 }
 

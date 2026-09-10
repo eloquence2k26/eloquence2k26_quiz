@@ -33,12 +33,18 @@ export default function ExamHeader({
         <div className="flex items-center gap-2 px-3 py-1.5 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700">
           <ShieldCheck className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
           <div className="text-[11px] font-semibold text-slate-700 dark:text-slate-300 hidden sm:block">
-            Proctor Active
+            {maxViolations <= 1 ? 'Strict AI Proctoring (Zero Tolerance)' : 'Proctor Active'}
           </div>
-          {violationCount > 0 && (
-            <span className="ml-1 px-1.5 py-0.5 rounded text-[10px] font-bold bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300">
-              {violationCount}/{maxViolations} Warnings
+          {maxViolations <= 1 ? (
+            <span className="ml-1 px-1.5 py-0.5 rounded text-[10px] font-extrabold bg-rose-100 text-rose-800 dark:bg-rose-950 dark:text-rose-300">
+              1 Violation = Terminate
             </span>
+          ) : (
+            violationCount > 0 && (
+              <span className="ml-1 px-1.5 py-0.5 rounded text-[10px] font-bold bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300">
+                {violationCount}/{maxViolations} Warnings
+              </span>
+            )
           )}
         </div>
 
