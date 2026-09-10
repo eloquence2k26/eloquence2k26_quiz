@@ -440,41 +440,66 @@ class DocumentParserService {
 
   /**
    * Filter out page numbers, footer markers, and isolated margin numbers dumped from PDF tables
+   * Protects genuine numeric MCQ options (e.g. 23, 5, 6, 10) by only removing sequential runs (1, 2, 3...)
    */
   static cleanSolitaryNumbersAndFooters(rawLines) {
     const isFooter = (l) =>
       /^--\s*\d+\s*(?:of|\/)\s*\d+\s*--$/i.test(l) ||
       /^Page\s+\d+(?:\s*(?:of|\/)\s*\d+)?$/i.test(l) ||
       /^(?:Technical\s+Quiz|Department\s+of|Eloquence\s*2026?|Semester\s+\d+)\s*$/i.test(l);
-    const isSolitaryNum = (l) => /^\d+[\.\)]?$/.test(l.trim());
-    const isOpt = (l) =>
-      /^[A-D][\.\:\)\-]\s+/i.test(l) ||
-      /^\([A-Da-d1-4]\)/i.test(l) ||
-      /^\[[A-Da-d1-4]\]/i.test(l);
+
+    const parseNum = (l) => {
+      const m = l.trim().match(/^(\d+)[\.\)]?$/);
+      return m ? parseInt(m[1], 10) : null;
+    };
+
+    // Detect sequential runs of >= 3 ascending integers (e.g. margin serials 1., 2., 3. or 8., 9., 10.)
+    const marginIndices = new Set();
+    let currentRun = [];
+
+    for (let i = 0; i < rawLines.length; i++) {
+      const val = parseNum(rawLines[i]);
+      if (val !== null) {
+        if (currentRun.length === 0) {
+          currentRun.push({ index: i, val });
+        } else {
+          const last = currentRun[currentRun.length - 1];
+          if (val === last.val + 1) {
+            currentRun.push({ index: i, val });
+          } else {
+            if (currentRun.length >= 3) {
+              currentRun.forEach((item) => marginIndices.add(item.index));
+            }
+            currentRun = [{ index: i, val }];
+          }
+        }
+      } else {
+        if (currentRun.length >= 3) {
+          currentRun.forEach((item) => marginIndices.add(item.index));
+        }
+        currentRun = [];
+      }
+    }
+    if (currentRun.length >= 3) {
+      currentRun.forEach((item) => marginIndices.add(item.index));
+    }
 
     const cleanLines = [];
     for (let i = 0; i < rawLines.length; i++) {
       const l = rawLines[i].trim();
       if (!l) continue;
       if (isFooter(l)) continue;
+      if (marginIndices.has(i)) continue;
 
-      if (isSolitaryNum(l)) {
+      // Filter lone page numbers that sit immediately next to footers
+      if (/^\d+$/.test(l)) {
         const prev = i > 0 ? rawLines[i - 1].trim() : '';
         const next = i + 1 < rawLines.length ? rawLines[i + 1].trim() : '';
-
-        // Cluster of margin numbers (1., 2., 3., etc.)
-        if (isSolitaryNum(prev) || isSolitaryNum(next)) {
-          continue;
-        }
-        // Sandwiched between options (e.g. C) False ... 1 ... D) True)
-        if (isOpt(prev) || isOpt(next)) {
-          continue;
-        }
-        // Pure page numbers or solitary numbers at end of text
-        if (!next || /^\d+$/.test(l)) {
+        if (isFooter(prev) || isFooter(next) || (!next && i > rawLines.length - 3)) {
           continue;
         }
       }
+
       cleanLines.push(l);
     }
     return cleanLines;
@@ -526,6 +551,7 @@ class DocumentParserService {
     let currentPrompt = [];
     let currentOptions = {};
     let currentAnswer = null;
+    let currentAnswerText = '';
     let currentExp = '';
     let currentQNum = null;
     let currentOptKey = null;
@@ -563,12 +589,37 @@ class DocumentParserService {
           event_name: meta.event_name,
           round_number: meta.round_number
         });
-      } else if (currentPrompt.length >= 5 && (currentAnswer || currentQNum)) {
+      } else if (currentPrompt.length >= 3 && (currentAnswer || currentQNum)) {
         // Case 2: Unlabeled options (e.g. DOCX table rows without A/B/C/D prefixes)
-        const d = currentPrompt.pop();
-        const c = currentPrompt.pop();
-        const b = currentPrompt.pop();
-        const a = currentPrompt.pop();
+        let a = '', b = '', c = '', d = '';
+        if (currentPrompt.length >= 5) {
+          d = currentPrompt.pop();
+          c = currentPrompt.pop();
+          b = currentPrompt.pop();
+          a = currentPrompt.pop();
+        } else if (currentPrompt.length === 4) {
+          c = currentPrompt.pop();
+          b = currentPrompt.pop();
+          a = currentPrompt.pop();
+          d = 'None of the above';
+        } else if (currentPrompt.length === 3) {
+          b = currentPrompt.pop();
+          a = currentPrompt.pop();
+          c = 'None of the above';
+          d = 'All of the above';
+        }
+
+        // If the answer line specified a value, e.g. "Answer: C) #" or "Answer: C"
+        // and option C or D was missing/empty or placeholder:
+        if (currentAnswerText) {
+          if (currentAnswer === 'C' && (!c || c === 'None of the above')) {
+            if (d === 'None of the above' && c) d = c;
+            c = currentAnswerText;
+          } else if (currentAnswer === 'D' && (!d || d === 'None of the above' || d === 'All of the above')) {
+            d = currentAnswerText;
+          }
+        }
+
         let promptText = currentPrompt.join(' ').trim();
         promptText = promptText.replace(/^(?:PYTHON\s+MCQ\s+QUESTIONS?|TECHNICAL\s+QUIZ|MULTIPLE\s+CHOICE\s+QUESTIONS?|QUESTIONS?\s*BANK)\s*/i, '').trim();
 
@@ -585,8 +636,8 @@ class DocumentParserService {
           question_text: promptText,
           option_a: a,
           option_b: b,
-          option_c: c,
-          option_d: d,
+          option_c: c || 'None of the above',
+          option_d: d || 'All of the above',
           correct_answer: finalAns,
           marks: meta.marks,
           negative_marks: meta.negative_marks,
@@ -609,8 +660,14 @@ class DocumentParserService {
         const letterMatch = rawAns.match(/(?:Option\s*)?\(?([A-Da-d1-4]|iv|iii|ii|i)\)?/i);
         if (letterMatch) {
           currentAnswer = this.normalizeAnswerKey(letterMatch[1]);
+          // Capture answer value text after letter: e.g. from "C) #" -> "#", or "B) 5" -> "5"
+          const afterLetter = rawAns.replace(/^(?:Option\s*)?\(?[A-Da-d1-4]|iv|iii|ii|i\)?[\s.:\)\-]*/i, '').trim();
+          if (afterLetter) {
+            currentAnswerText = afterLetter;
+          }
         } else {
           currentAnswer = this.matchAnswerTextToOption(rawAns, currentOptions) || this.normalizeAnswerKey(rawAns);
+          currentAnswerText = rawAns;
         }
         state = 'ANSWER';
         currentOptKey = null;
@@ -629,10 +686,11 @@ class DocumentParserService {
       // 3. Question marker line (e.g. 1. , Q1. )
       const qMatch = line.match(qMarkerRegex);
       if (qMatch && !optHeaderRegex.test(line)) {
-        if ((currentPrompt.length > 0 && currentOptions.A && currentOptions.B) || (currentPrompt.length >= 5 && currentAnswer)) {
+        if ((currentPrompt.length > 0 && currentOptions.A && currentOptions.B) || (currentPrompt.length >= 3 && currentAnswer)) {
           pushQuestion();
           currentOptions = {};
           currentAnswer = null;
+          currentAnswerText = '';
           currentExp = '';
           currentOptKey = null;
         }
@@ -661,6 +719,7 @@ class DocumentParserService {
           pushQuestion();
           currentOptions = {};
           currentAnswer = null;
+          currentAnswerText = '';
           currentExp = '';
           currentPrompt = [];
         }
@@ -676,6 +735,7 @@ class DocumentParserService {
         pushQuestion();
         currentOptions = {};
         currentAnswer = null;
+        currentAnswerText = '';
         currentExp = '';
         currentOptKey = null;
         currentPrompt = [line];
@@ -689,6 +749,7 @@ class DocumentParserService {
           pushQuestion();
           currentOptions = {};
           currentAnswer = null;
+          currentAnswerText = '';
           currentExp = '';
           currentOptKey = null;
           currentPrompt = [line];
