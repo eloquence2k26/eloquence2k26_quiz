@@ -5,7 +5,7 @@ import { examService } from '../services/examService';
 export function useAntiCheating({
   attemptId,
   enabled = true,
-  maxViolations = 3,
+  maxViolations = 1,
   fullscreenRequired = true,
   onTerminated
 }) {
@@ -13,14 +13,40 @@ export function useAntiCheating({
   const [latestViolation, setLatestViolation] = useState(null);
   const [showWarningModal, setShowWarningModal] = useState(false);
   const lastEventTimeRef = useRef(0);
+  const isTerminatedRef = useRef(false);
 
   const handleViolation = useCallback(async (violation) => {
+    if (isTerminatedRef.current) return;
+
     const now = Date.now();
-    // Debounce duplicate events within 800ms
-    if (now - lastEventTimeRef.current < 800) return;
+    // Debounce duplicate events within 500ms
+    if (now - lastEventTimeRef.current < 500) return;
     lastEventTimeRef.current = now;
 
     setLatestViolation(violation);
+
+    // If zero-tolerance single-violation rule is active (maxViolations <= 1)
+    if (maxViolations <= 1) {
+      isTerminatedRef.current = true;
+      try {
+        if (attemptId) {
+          const res = await examService.recordSecurityEvent(attemptId, violation.type, violation.description, {
+            timestamp: new Date().toISOString(),
+            strict_single_strike: true
+          });
+          if (onTerminated) {
+            onTerminated(res?.data?.reason || violation.description, res?.data?.result);
+          }
+        } else if (onTerminated) {
+          onTerminated(violation.description, null);
+        }
+      } catch (err) {
+        if (onTerminated) {
+          onTerminated(violation.description, null);
+        }
+      }
+      return;
+    }
 
     try {
       if (attemptId) {
@@ -30,8 +56,9 @@ export function useAntiCheating({
 
         if (res.success && res.data) {
           if (res.data.terminated) {
+            isTerminatedRef.current = true;
             if (onTerminated) {
-              onTerminated(res.data.reason || 'Security violations limit exceeded', res.data.result);
+              onTerminated(res.data.reason || violation.description, res.data.result);
             }
           } else {
             const count = res.data.warning_number || violationCount + 1;
@@ -45,7 +72,8 @@ export function useAntiCheating({
       setViolationCount((prev) => {
         const next = prev + 1;
         if (next >= maxViolations && onTerminated) {
-          onTerminated('Repeated proctoring security anomalies', null);
+          isTerminatedRef.current = true;
+          onTerminated(violation.description || 'Proctoring security limit exceeded', null);
         } else {
           setShowWarningModal(true);
         }

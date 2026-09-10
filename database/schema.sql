@@ -108,6 +108,7 @@ CREATE TABLE IF NOT EXISTS public.quizzes (
     shuffle_questions BOOLEAN DEFAULT TRUE,
     shuffle_options BOOLEAN DEFAULT TRUE,
     show_detailed_results BOOLEAN DEFAULT TRUE,
+    published_participant_ids JSONB DEFAULT '[]'::jsonb,
     created_by UUID REFERENCES public.users(id) ON DELETE SET NULL,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
@@ -127,6 +128,10 @@ CREATE TABLE IF NOT EXISTS public.questions (
     explanation TEXT,
     category VARCHAR(100) DEFAULT 'General',
     difficulty VARCHAR(20) DEFAULT 'Medium' CHECK (difficulty IN ('Easy', 'Medium', 'Hard')),
+    event_name VARCHAR(255) DEFAULT 'Eloquence 2026',
+    round_number INT DEFAULT 1,
+    rounds JSONB DEFAULT '[]'::jsonb,
+    image_url TEXT,
     created_by UUID REFERENCES public.users(id) ON DELETE SET NULL,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
