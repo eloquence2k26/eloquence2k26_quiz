@@ -37,6 +37,7 @@ import RoundSelectionPage from '../pages/admin/RoundSelectionPage';
 import RoundsPage from '../pages/admin/RoundsPage';
 import AnnouncementsPage from '../pages/admin/AnnouncementsPage';
 import ViolationsPage from '../pages/admin/ViolationsPage';
+import ExamRestartsPage from '../pages/admin/ExamRestartsPage';
 import ReportsPage from '../pages/admin/ReportsPage';
 import SettingsPage from '../pages/admin/SettingsPage';
 
@@ -79,6 +80,7 @@ export default function AppRoutes() {
           <Route path="/admin/questions" element={<QuestionsPage />} />
           <Route path="/admin/schedule" element={<QuizSchedulePage />} />
           <Route path="/admin/live-exams" element={<LiveExamsPage />} />
+          <Route path="/admin/restarts" element={<ExamRestartsPage />} />
           <Route path="/admin/results" element={<ResultsPage />} />
           <Route path="/admin/round-selection" element={<RoundSelectionPage />} />
           <Route path="/admin/rounds" element={<RoundsPage />} />

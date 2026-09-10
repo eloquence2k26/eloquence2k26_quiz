@@ -412,6 +412,192 @@ class DocumentParserService {
     if (d.includes('hard') || d.includes('adv')) return 'Hard';
     return 'Medium';
   }
+
+  /**
+   * Main entrypoint to parse any supported document into participant registration records
+   * @param {Buffer} buffer - Raw file buffer
+   * @param {string} filename - Original file name with extension
+   * @param {object} defaultMeta - { event_name, college, department, year }
+   * @returns {Promise<Array<object>>} - List of extracted participant objects
+   */
+  static async parseParticipantsFromDocument(buffer, filename, defaultMeta = {}) {
+    const ext = path.extname(filename || '').toLowerCase();
+    const eventName = defaultMeta.event_name || 'Technical Quiz';
+    let participants = [];
+
+    switch (ext) {
+      case '.xlsx':
+      case '.xls':
+      case '.csv': {
+        const workbook = XLSX.read(buffer, { type: 'buffer', cellDates: true });
+        const sheetName = workbook.SheetNames[0];
+        const rows = XLSX.utils.sheet_to_json(workbook.Sheets[sheetName], { defval: '' });
+
+        participants = rows.map((row, idx) => {
+          const keys = Object.keys(row);
+          const findVal = (patterns) => {
+            const matchedKey = keys.find((k) =>
+              patterns.some((p) => k.toLowerCase().replace(/[^a-z0-9]/g, '').includes(p))
+            );
+            return matchedKey ? String(row[matchedKey]).trim() : '';
+          };
+
+          const fullName = findVal(['fullname', 'name', 'studentname', 'candidatename', 'participantname']) || `Participant ${idx + 1}`;
+          const email = findVal(['email', 'mail', 'emailaddress']);
+          const mobile = findVal(['mobile', 'phone', 'contact', 'phonenumber', 'mobilenumber', 'cell', 'tel']);
+          const college = findVal(['college', 'institution', 'university', 'collegename', 'inst']) || defaultMeta.college || 'Engineering College';
+          const department = findVal(['department', 'dept', 'branch', 'course', 'stream']) || defaultMeta.department || 'Computer Science & Engineering';
+          const year = findVal(['year', 'batch', 'yearofstudy', 'yr']) || defaultMeta.year || '3rd Year';
+          const regNo = findVal(['regno', 'registerno', 'registrationnumber', 'rollno', 'studentid', 'idno']) || `REG-${Date.now().toString().slice(-4)}${idx + 1}`;
+          const event = findVal(['event', 'eventname', 'competition', 'track']) || eventName;
+
+          return {
+            full_name: fullName,
+            email: email,
+            mobile: mobile,
+            college: college,
+            department: department,
+            year: year,
+            registration_number: regNo,
+            event: event
+          };
+        }).filter((p) => p.full_name && (p.email || p.mobile));
+        break;
+      }
+
+      case '.json': {
+        try {
+          const content = JSON.parse(buffer.toString('utf8'));
+          const list = Array.isArray(content) ? content : (content.participants || [content]);
+          participants = list.map((item, idx) => ({
+            full_name: item.full_name || item.name || `Participant ${idx + 1}`,
+            email: item.email || '',
+            mobile: item.mobile || item.phone || '',
+            college: item.college || defaultMeta.college || 'Engineering College',
+            department: item.department || item.dept || defaultMeta.department || 'Computer Science',
+            year: item.year || defaultMeta.year || '3rd Year',
+            registration_number: item.registration_number || item.reg_no || `REG-${idx + 1}`,
+            event: item.event || item.event_name || eventName
+          })).filter((p) => p.full_name);
+        } catch (e) {
+          console.error('JSON participant parsing error:', e.message);
+        }
+        break;
+      }
+
+      case '.pdf': {
+        let pdfText = '';
+        try {
+          const pdfModule = require('pdf-parse');
+          if (pdfModule.PDFParse) {
+            const parser = new pdfModule.PDFParse({ data: buffer });
+            const result = await parser.getText();
+            pdfText = result?.text || '';
+            if (parser.destroy) await parser.destroy();
+          } else if (typeof pdfModule === 'function') {
+            const result = await pdfModule(buffer);
+            pdfText = result?.text || '';
+          }
+        } catch (pdfErr) {
+          pdfText = buffer.toString('utf8').replace(/[^\x20-\x7E\n\r\t]/g, ' ');
+        }
+        participants = this.extractParticipantsFromText(pdfText, defaultMeta);
+        break;
+      }
+
+      case '.docx':
+      case '.doc': {
+        const docxText = this.extractTextFromDOCX(buffer);
+        participants = this.extractParticipantsFromText(docxText, defaultMeta);
+        break;
+      }
+
+      default: {
+        const txt = buffer.toString('utf8');
+        participants = this.extractParticipantsFromText(txt, defaultMeta);
+        break;
+      }
+    }
+
+    return participants;
+  }
+
+  /**
+   * Extract participant records from unstructured text (PDF, Word, Text)
+   */
+  static extractParticipantsFromText(text, defaultMeta = {}) {
+    if (!text || typeof text !== 'string') return [];
+    const lines = text.split(/\r?\n/).map((l) => l.trim()).filter((l) => l.length > 3);
+    const participants = [];
+    const eventName = defaultMeta.event_name || 'Technical Quiz';
+
+    const emailRegex = /([a-zA-Z0-9._-]+@[a-zA-Z0-9._-]+\.[a-zA-Z0-9._-]+)/gi;
+    const phoneRegex = /(\+?\d{1,3}[-.\s]?)?\(?\d{3}\)?[-.\s]?\d{3}[-.\s]?\d{4}|\b\d{10}\b/g;
+
+    for (let i = 0; i < lines.length; i++) {
+      const line = lines[i];
+
+      // Skip header lines
+      if (/(name|email|phone|college|department|reg\s*no|serial|s\.no)/i.test(line) && line.split(/[,|\t;]/).length >= 3) {
+        continue;
+      }
+
+      // Check if delimited row (CSV / TSV / Pipe in PDF or Text)
+      const parts = line.split(/[,|\t;]/).map((p) => p.trim());
+      if (parts.length >= 3) {
+        const emails = line.match(emailRegex);
+        const phones = line.match(phoneRegex);
+
+        const email = emails ? emails[0].toLowerCase() : '';
+        const phone = phones ? phones[0].replace(/\D/g, '') : '';
+        const fullName = parts[0].replace(/^[\d.)\s-]+/, '').trim();
+
+        if (fullName && fullName.length >= 2 && !fullName.includes('@')) {
+          participants.push({
+            full_name: fullName,
+            email: email,
+            mobile: phone,
+            college: parts[3] || defaultMeta.college || 'Engineering College',
+            department: parts[4] || defaultMeta.department || 'Computer Science & Engineering',
+            year: parts[5] || defaultMeta.year || '3rd Year',
+            registration_number: parts[6] || `REG-${Date.now().toString().slice(-4)}${participants.length + 1}`,
+            event: eventName
+          });
+          continue;
+        }
+      }
+
+      // If line contains an email or phone, attempt regex entity extraction
+      const emails = line.match(emailRegex);
+      const phones = line.match(phoneRegex);
+      if (emails || phones) {
+        const email = emails ? emails[0].toLowerCase() : '';
+        const phone = phones ? phones[0].replace(/\D/g, '') : '';
+        const cleanName = line
+          .replace(emailRegex, '')
+          .replace(phoneRegex, '')
+          .replace(/[,|;:\-\t]/g, ' ')
+          .replace(/\s+/g, ' ')
+          .replace(/^[\d.)\s-]+/, '')
+          .trim();
+
+        if (cleanName && cleanName.length >= 2) {
+          participants.push({
+            full_name: cleanName,
+            email: email,
+            mobile: phone,
+            college: defaultMeta.college || 'Engineering College',
+            department: defaultMeta.department || 'Computer Science & Engineering',
+            year: defaultMeta.year || '3rd Year',
+            registration_number: `REG-${Date.now().toString().slice(-4)}${participants.length + 1}`,
+            event: eventName
+          });
+        }
+      }
+    }
+
+    return participants;
+  }
 }
 
 module.exports = DocumentParserService;

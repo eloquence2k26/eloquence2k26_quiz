@@ -18,7 +18,10 @@ import {
   Mail,
   ShieldCheck,
   Hash,
-  AlertCircle
+  AlertCircle,
+  Upload,
+  Layers,
+  FileText
 } from 'lucide-react';
 import { adminService } from '../../services/adminService';
 import { quizService } from '../../services/quizService';
@@ -28,19 +31,26 @@ import Badge from '../../components/common/Badge';
 import Loading from '../../components/common/Loading';
 import EditParticipantModal from '../../components/admin/EditParticipantModal';
 import DeleteParticipantModal from '../../components/admin/DeleteParticipantModal';
+import MultiFormatParticipantImportModal from '../../components/admin/MultiFormatParticipantImportModal';
+import ManualRegisterParticipantModal from '../../components/admin/ManualRegisterParticipantModal';
 
 export default function ParticipantsPage() {
   const toast = useToast();
   const [participants, setParticipants] = useState([]);
+  const [events, setEvents] = useState([]);
   const [quizzes, setQuizzes] = useState([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
 
   // Filters
   const [searchTerm, setSearchTerm] = useState('');
-  const [filterCollege, setFilterCollege] = useState('');
-  const [filterRound, setFilterRound] = useState('ALL');
-  const [filterStatus, setFilterStatus] = useState('ALL');
+  const [filterEvent, setFilterEvent] = useState('ALL');
+
+  // Manual Register Modal State
+  const [showManualRegisterModal, setShowManualRegisterModal] = useState(false);
+
+  // Multi-format Doc Import Modal State
+  const [showDocImportModal, setShowDocImportModal] = useState(false);
 
   // Edit Modal State
   const [editingParticipant, setEditingParticipant] = useState(null);
@@ -68,9 +78,10 @@ export default function ParticipantsPage() {
     }
 
     try {
-      const [pRes, qRes] = await Promise.all([
+      const [pRes, qRes, eRes] = await Promise.all([
         adminService.getParticipants(),
-        quizService.getAllQuizzes()
+        quizService.getAllQuizzes(),
+        adminService.getEvents().catch(() => ({ success: false, data: [] }))
       ]);
       if (pRes.success) setParticipants(pRes.data || []);
       if (qRes.success) {
@@ -78,6 +89,9 @@ export default function ParticipantsPage() {
         if (qRes.data?.length > 0 && !selectedQuizId) {
           setSelectedQuizId(qRes.data[0].id);
         }
+      }
+      if (eRes && eRes.success && eRes.data) {
+        setEvents(eRes.data.map((e) => (typeof e === 'string' ? e : e.title || e.name || '')));
       }
       if (isManualRefresh) {
         toast.success('Participants registry updated');
@@ -176,30 +190,13 @@ export default function ParticipantsPage() {
 
   if (loading) return <Loading text="Loading participants registry..." />;
 
-  // Unique colleges for filter dropdown
-  const uniqueColleges = Array.from(
-    new Set(participants.map((p) => p.college).filter(Boolean))
-  ).sort();
-
   // Filter logic
   let filtered = participants;
 
-  if (filterRound === 'ROUND_1_QUALIFIED') {
-    filtered = filtered.filter((p) => Boolean(p.round_1_selected));
-  } else if (filterRound === 'ROUND_2_WINNER') {
-    filtered = filtered.filter((p) => Boolean(p.round_2_selected));
-  } else if (filterRound === 'CANDIDATE') {
-    filtered = filtered.filter((p) => !p.round_1_selected && !p.round_2_selected);
-  }
-
-  if (filterStatus === 'ACTIVE') {
-    filtered = filtered.filter((p) => !p.is_disabled);
-  } else if (filterStatus === 'DISABLED') {
-    filtered = filtered.filter((p) => Boolean(p.is_disabled));
-  }
-
-  if (filterCollege) {
-    filtered = filtered.filter((p) => p.college?.toLowerCase().includes(filterCollege.toLowerCase()));
+  if (filterEvent && filterEvent !== 'ALL') {
+    filtered = filtered.filter(
+      (p) => (p.event || 'Technical Quiz').toLowerCase() === filterEvent.toLowerCase()
+    );
   }
 
   if (searchTerm) {
@@ -212,7 +209,8 @@ export default function ParticipantsPage() {
         p.email?.toLowerCase().includes(term) ||
         p.mobile?.toLowerCase().includes(term) ||
         p.college?.toLowerCase().includes(term) ||
-        p.department?.toLowerCase().includes(term)
+        p.department?.toLowerCase().includes(term) ||
+        p.event?.toLowerCase().includes(term)
     );
   }
 
@@ -222,6 +220,13 @@ export default function ParticipantsPage() {
   const round2WinnerCount = participants.filter((p) => p.round_2_selected).length;
   const disabledCount = participants.filter((p) => p.is_disabled).length;
   const activeCount = totalCount - disabledCount;
+
+  // Build unique event options combining event state & participant event fields
+  const eventOptionsSet = new Set(events.filter(Boolean));
+  participants.forEach((p) => {
+    if (p.event) eventOptionsSet.add(p.event);
+  });
+  const eventOptions = Array.from(eventOptionsSet);
 
   return (
     <div className="space-y-6">
@@ -243,18 +248,26 @@ export default function ParticipantsPage() {
             </button>
           </div>
           <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
-            Manage scholar registrations, edit profiles, qualifications, and account access
+            Manage scholar registrations, event rosters, qualification, and quiz access
           </p>
         </div>
 
-        <div className="flex items-center gap-2.5">
-          <Link
-            to="/admin/user-register"
+        <div className="flex flex-wrap items-center gap-2.5">
+          <button
+            onClick={() => setShowManualRegisterModal(true)}
             className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-bold text-white bg-gradient-to-r from-brand-600 to-indigo-600 hover:from-brand-700 hover:to-indigo-700 shadow-md shadow-brand-500/20 transition-all"
           >
             <UserPlus className="w-3.5 h-3.5" />
-            <span>Register / Import</span>
-          </Link>
+            <span>+ Manual Register</span>
+          </button>
+
+          <button
+            onClick={() => setShowDocImportModal(true)}
+            className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-bold text-white bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 shadow-md shadow-emerald-500/20 transition-all"
+          >
+            <Upload className="w-3.5 h-3.5" />
+            <span>Upload List (PDF/Excel/Word)</span>
+          </button>
 
           <button
             onClick={() => setShowAssignModal(true)}
@@ -339,7 +352,7 @@ export default function ParticipantsPage() {
         </div>
       </div>
 
-      {/* Filter and Search Bar */}
+      {/* Filter and Search Bar: Replaced 3 old dropdowns with Event Selector and Multi-Format Upload Trigger */}
       <div className="p-3.5 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl flex flex-wrap items-center gap-3">
         {/* Search Input */}
         <div className="relative flex-1 min-w-[240px]">
@@ -348,59 +361,58 @@ export default function ParticipantsPage() {
             type="text"
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
-            placeholder="Search by name, ID, Reg No, email, college..."
+            placeholder="Search scholars by name, ID, Reg No, email, college, event..."
             className="w-full pl-9 pr-3 py-2 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-800/80 text-xs font-semibold text-slate-900 dark:text-white placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-brand-500/20 focus:border-brand-500 transition-all"
           />
         </div>
 
-        {/* Round Qualification Filter */}
-        <select
-          value={filterRound}
-          onChange={(e) => setFilterRound(e.target.value)}
-          className="px-3 py-2 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-800/80 text-xs font-semibold text-slate-700 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-brand-500/20"
-        >
-          <option value="ALL">All Progression</option>
-          <option value="ROUND_1_QUALIFIED">Round 1 Qualified</option>
-          <option value="ROUND_2_WINNER">Round 2 Finalists</option>
-          <option value="CANDIDATE">Round 1 Candidates</option>
-        </select>
+        {/* Event Selection Dropdown */}
+        <div className="flex items-center gap-2">
+          <div className="relative">
+            <select
+              value={filterEvent}
+              onChange={(e) => setFilterEvent(e.target.value)}
+              className="pl-3 pr-8 py-2 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-800/80 text-xs font-bold text-slate-800 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-brand-500/20 cursor-pointer min-w-[190px]"
+            >
+              <option value="ALL">All Events ({eventOptions.length > 0 ? eventOptions.length : 'All'})</option>
+              {eventOptions.map((ev) => (
+                <option key={ev} value={ev}>
+                  {ev}
+                </option>
+              ))}
+            </select>
+          </div>
+        </div>
 
-        {/* Account Status Filter */}
-        <select
-          value={filterStatus}
-          onChange={(e) => setFilterStatus(e.target.value)}
-          className="px-3 py-2 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-800/80 text-xs font-semibold text-slate-700 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-brand-500/20"
+        {/* Quick Manual Register Button */}
+        <button
+          type="button"
+          onClick={() => setShowManualRegisterModal(true)}
+          className="flex items-center gap-1.5 px-3 py-2 rounded-xl border border-brand-300 dark:border-brand-800 bg-brand-50 dark:bg-brand-950/40 text-xs font-bold text-brand-700 dark:text-brand-300 hover:bg-brand-100 dark:hover:bg-brand-900/50 transition-all"
+          title="Manually register an individual participant"
         >
-          <option value="ALL">All Accounts</option>
-          <option value="ACTIVE">Active Accounts</option>
-          <option value="DISABLED">Disabled Accounts</option>
-        </select>
+          <UserPlus className="w-3.5 h-3.5 text-brand-600 dark:text-brand-400" />
+          <span>+ Add Participant</span>
+        </button>
 
-        {/* College Filter */}
-        {uniqueColleges.length > 0 && (
-          <select
-            value={filterCollege}
-            onChange={(e) => setFilterCollege(e.target.value)}
-            className="px-3 py-2 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-800/80 text-xs font-semibold text-slate-700 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-brand-500/20 max-w-[200px] truncate"
-          >
-            <option value="">All Colleges ({uniqueColleges.length})</option>
-            {uniqueColleges.map((c) => (
-              <option key={c} value={c}>
-                {c}
-              </option>
-            ))}
-          </select>
-        )}
+        {/* Quick Upload from Document Button */}
+        <button
+          type="button"
+          onClick={() => setShowDocImportModal(true)}
+          className="flex items-center gap-1.5 px-3 py-2 rounded-xl border border-emerald-300 dark:border-emerald-800 bg-emerald-50 dark:bg-emerald-950/40 text-xs font-bold text-emerald-700 dark:text-emerald-300 hover:bg-emerald-100 dark:hover:bg-emerald-900/50 transition-all"
+          title="Import participants from PDF, Excel, Word, or CSV"
+        >
+          <FileText className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
+          <span>Upload File</span>
+        </button>
 
         {/* Clear Filters Button */}
-        {(searchTerm || filterRound !== 'ALL' || filterStatus !== 'ALL' || filterCollege) && (
+        {(searchTerm || filterEvent !== 'ALL') && (
           <button
             type="button"
             onClick={() => {
               setSearchTerm('');
-              setFilterRound('ALL');
-              setFilterStatus('ALL');
-              setFilterCollege('');
+              setFilterEvent('ALL');
             }}
             className="px-3 py-2 rounded-xl text-xs font-bold text-slate-500 hover:text-slate-800 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition-all"
           >
@@ -418,6 +430,7 @@ export default function ParticipantsPage() {
                 <th className="py-3 px-4">Participant ID / Reg No</th>
                 <th className="py-3 px-4">Scholar Profile</th>
                 <th className="py-3 px-4">Institution & Dept</th>
+                <th className="py-3 px-4">Event</th>
                 <th className="py-3 px-4">Progression</th>
                 <th className="py-3 px-4">Account Status</th>
                 <th className="py-3 px-4 text-center">Quizzes</th>
@@ -427,7 +440,7 @@ export default function ParticipantsPage() {
             <tbody className="divide-y divide-slate-100 dark:divide-slate-800/80 font-medium text-slate-700 dark:text-slate-300">
               {filtered.length === 0 ? (
                 <tr>
-                  <td colSpan={7} className="py-12 text-center text-slate-400">
+                  <td colSpan={8} className="py-12 text-center text-slate-400">
                     <div className="flex flex-col items-center justify-center gap-2">
                       <AlertCircle className="w-8 h-8 text-slate-300 dark:text-slate-600" />
                       <p className="font-bold text-sm text-slate-600 dark:text-slate-300">
@@ -435,8 +448,8 @@ export default function ParticipantsPage() {
                       </p>
                       <p className="text-xs text-slate-400">
                         {participants.length === 0
-                          ? 'No participants are registered yet. Click "Register / Import" above to add participants.'
-                          : 'Try changing your search keywords or filter criteria.'}
+                          ? 'No participants are registered yet. Click "Upload List" above to import candidate rosters.'
+                          : 'Try changing your search keywords or event selection filter.'}
                       </p>
                     </div>
                   </td>
@@ -481,6 +494,13 @@ export default function ParticipantsPage() {
                       <p className="text-[10px] text-slate-400">
                         {p.department || 'General'} • {p.year || '3rd Year'}
                       </p>
+                    </td>
+
+                    {/* Event Tag */}
+                    <td className="py-3 px-4">
+                      <span className="inline-flex items-center px-2.5 py-1 rounded-lg text-[11px] font-bold bg-brand-50 dark:bg-brand-950/60 text-brand-700 dark:text-brand-300 border border-brand-200/50 dark:border-brand-800/40">
+                        {p.event || 'Technical Quiz'}
+                      </span>
                     </td>
 
                     {/* Progression Badges */}
@@ -571,6 +591,25 @@ export default function ParticipantsPage() {
           </table>
         </div>
       </div>
+
+      {/* Manual Register Participant Modal */}
+      <ManualRegisterParticipantModal
+        isOpen={showManualRegisterModal}
+        onClose={() => setShowManualRegisterModal(false)}
+        onSuccess={() => fetchData(true)}
+        eventsList={eventOptions}
+        initialEvent={filterEvent !== 'ALL' ? filterEvent : (eventOptions[0] || 'Technical Quiz')}
+        totalParticipants={participants.length}
+      />
+
+      {/* Multi-Format Document Import Modal */}
+      <MultiFormatParticipantImportModal
+        isOpen={showDocImportModal}
+        onClose={() => setShowDocImportModal(false)}
+        onSuccess={() => fetchData(true)}
+        eventsList={eventOptions}
+        initialEvent={filterEvent !== 'ALL' ? filterEvent : (eventOptions[0] || 'Technical Quiz')}
+      />
 
       {/* Edit Participant Modal */}
       <EditParticipantModal

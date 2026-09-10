@@ -61,30 +61,32 @@ export default function RoundsPage() {
   const fetchData = async () => {
     setLoading(true);
     try {
-      const [roundsRes, eventsRes, questRes] = await Promise.all([
-        adminService.getRounds(),
-        adminService.getEvents(),
-        adminService.getQuestions()
+      const [roundsRes, eventsRes] = await Promise.all([
+        adminService.getRounds().catch((err) => {
+          console.warn('Rounds fetch notice:', err);
+          return { success: false, data: [] };
+        }),
+        adminService.getEvents().catch((err) => {
+          console.warn('Events fetch notice:', err);
+          return { success: false, data: [] };
+        })
       ]);
 
       let loadedRounds = [];
       let loadedEvents = [];
 
-      if (roundsRes.success) {
+      if (roundsRes && roundsRes.success) {
         loadedRounds = roundsRes.data || [];
         setRounds(loadedRounds);
       }
-      if (eventsRes.success) {
+      if (eventsRes && eventsRes.success) {
         loadedEvents = eventsRes.data || [];
-      }
-      if (questRes.success) {
-        setAllQuestions(questRes.data || []);
       }
 
       // Merge distinct events from rounds in case an event was only in rounds
       const eventMap = new Map();
       loadedEvents.forEach((ev) => {
-        if (ev.title) {
+        if (ev && ev.title) {
           eventMap.set(ev.title.toLowerCase(), ev);
         }
       });
@@ -113,6 +115,7 @@ export default function RoundsPage() {
 
       setEvents(Array.from(eventMap.values()));
     } catch (err) {
+      console.error('RoundsPage fetchData error:', err);
       toast.error('Failed to load tournament rounds & events');
     } finally {
       setLoading(false);

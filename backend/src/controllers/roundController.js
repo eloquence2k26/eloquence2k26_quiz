@@ -14,14 +14,32 @@ class RoundController {
       const participants = db.get('participants') || [];
       let events = db.get('events') || [];
 
-      // If events collection is empty, extract distinct events from quizzes
+      // If rounds is empty in memory, fetch live from Supabase
+      if (rounds.length === 0 && db.client) {
+        const { data: dbRounds } = await db.client.from('rounds').select('*');
+        if (dbRounds && dbRounds.length > 0) {
+          rounds = dbRounds;
+          db.data.rounds = dbRounds;
+        }
+      }
+
+      // If events is empty in memory, fetch live from Supabase
+      if (events.length === 0 && db.client) {
+        const { data: dbEvents } = await db.client.from('events').select('*');
+        if (dbEvents && dbEvents.length > 0) {
+          events = dbEvents;
+          db.data.events = dbEvents;
+        }
+      }
+
+      // If events collection is still empty, extract distinct events from quizzes or fallback
       if (events.length === 0) {
         const uniqueEvents = new Map();
         quizzes.forEach((q) => {
           const t = q.event_name || q.title;
           if (t && !uniqueEvents.has(t.toLowerCase())) {
             uniqueEvents.set(t.toLowerCase(), {
-              id: q.event_id || q.id,
+              id: q.event_id || q.id || 'c0000000-0000-0000-0000-000000000001',
               title: t,
               code: q.event_code || 'ELQ26',
               description: q.description || ''
@@ -31,34 +49,33 @@ class RoundController {
         events = Array.from(uniqueEvents.values());
       }
 
+      if (events.length === 0) {
+        events = [{
+          id: 'c0000000-0000-0000-0000-000000000001',
+          title: 'Technical Quiz',
+          code: 'ELQ26',
+          description: 'Official National Symposium Technical MCQ Championship'
+        }];
+      }
+
       // Ensure every registered event has at least a Round 1
       events.forEach((ev) => {
         const hasRound = rounds.some(
           (r) => r.event_id === ev.id || (r.event_name && r.event_name.toLowerCase() === ev.title.toLowerCase())
         );
         if (!hasRound) {
-          const newR = db.insert('rounds', {
-            event_id: ev.id,
+          const newR = {
+            id: `rnd-1-${ev.id || 'default'}`,
+            event_id: ev.id || 'c0000000-0000-0000-0000-000000000001',
             event_name: ev.title,
             round_number: 1,
             round_name: 'Round 1',
             description: `${ev.title} Examination Round 1`,
             is_active: true,
             is_published: false
-          });
+          };
           rounds.push(newR);
         }
-      });
-
-      // Filter out orphaned rounds whose event does not exist in events or quizzes
-      rounds = rounds.filter((r) => {
-        const matchEv = events.some(
-          (e) => e.id === r.event_id || (r.event_name && e.title.toLowerCase() === r.event_name.toLowerCase())
-        );
-        const matchQ = quizzes.some(
-          (q) => q.round_id === r.id || (r.event_name && (q.event_name?.toLowerCase() === r.event_name.toLowerCase() || q.title?.toLowerCase() === r.event_name.toLowerCase()))
-        );
-        return matchEv || matchQ;
       });
 
       // Enrich rounds with event details, quizzes, and qualifier counts

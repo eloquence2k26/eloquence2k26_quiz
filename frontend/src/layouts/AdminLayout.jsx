@@ -13,6 +13,7 @@ import {
   Layers,
   Bell,
   ShieldAlert,
+  RotateCcw,
   FileSpreadsheet,
   Settings,
   LogOut,
@@ -53,6 +54,7 @@ export default function AdminLayout() {
   // Operations & proctoring items
   const operationsItems = [
     { label: 'Live Exams', icon: Activity, path: '/admin/live-exams' },
+    { label: 'Exam Restarts', icon: RotateCcw, path: '/admin/restarts' },
     { label: 'Announcements', icon: Bell, path: '/admin/announcements' },
     { label: 'Security Violations', icon: ShieldAlert, path: '/admin/violations' },
     { label: 'Reports', icon: FileSpreadsheet, path: '/admin/reports' },
@@ -348,13 +350,21 @@ export default function AdminLayout() {
 
           <div className="flex items-center gap-3">
             <Link
+              to="/admin/restarts"
+              className="hidden sm:flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-amber-50 dark:bg-amber-950/60 border border-amber-200 dark:border-amber-800 text-amber-700 dark:text-amber-300 text-xs font-bold hover:bg-amber-100 transition-colors"
+            >
+              <RotateCcw className="w-3.5 h-3.5" />
+              <span>Exam Restarts</span>
+            </Link>
+
+            <Link
               to="/admin/user-register"
-              className="hidden sm:flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-brand-50 dark:bg-brand-950/60 border border-brand-200 dark:border-brand-800 text-brand-700 dark:text-brand-300 text-xs font-bold hover:bg-brand-100 transition-colors"
+              className="hidden md:flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-brand-50 dark:bg-brand-950/60 border border-brand-200 dark:border-brand-800 text-brand-700 dark:text-brand-300 text-xs font-bold hover:bg-brand-100 transition-colors"
             >
               <UserPlus className="w-3.5 h-3.5" />
               <span>Register Users</span>
             </Link>
-            <div className="hidden md:flex items-center gap-2 px-3 py-1.5 rounded-full bg-emerald-50 dark:bg-emerald-950/60 border border-emerald-200 dark:border-emerald-800 text-emerald-700 dark:text-emerald-300 text-xs font-semibold">
+            <div className="hidden lg:flex items-center gap-2 px-3 py-1.5 rounded-full bg-emerald-50 dark:bg-emerald-950/60 border border-emerald-200 dark:border-emerald-800 text-emerald-700 dark:text-emerald-300 text-xs font-semibold">
               <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
               Proctor Active
             </div>

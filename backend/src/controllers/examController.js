@@ -310,7 +310,7 @@ class ExamController {
       const quiz = db.find('quizzes', (q) => q.id === attempt.quiz_id);
       const maxAllowedViolations = (quiz && quiz.max_violations !== undefined) ? Number(quiz.max_violations) : 1;
 
-      // Classify severity
+      // Classify severity - Major AI cheating & DevTools are strictly CRITICAL
       const isCritical = [
         'GEMINI_ASSISTANT_TRIGGER',
         'MOBILE_LONG_PRESS',
@@ -318,11 +318,35 @@ class ExamController {
         'SPLIT_SCREEN',
         'SCREEN_CAPTURE',
         'DEVTOOLS_INSPECTION',
+        'DEBUGGER_TRAP',
+        'AI_EXTENSION_DETECTED',
+        'AUTOMATION_DETECTED',
+        'MULTIPLE_DISPLAYS',
+        'MOUSE_LEAVE_WINDOW',
+        'ANOMALOUS_SPEED_BOT_OR_AI',
         'TAB_SWITCH',
         'FULLSCREEN_EXIT',
         'WINDOW_BLUR',
         'MULTIPLE_SESSION'
       ].includes(violation_type);
+
+      // Instant zero-tolerance disqualification events (Terminates on 1st detection)
+      const isZeroToleranceInstantKill = [
+        'GEMINI_ASSISTANT_TRIGGER',
+        'MOBILE_LONG_PRESS',
+        'CIRCLE_TO_SEARCH',
+        'SPLIT_SCREEN',
+        'MULTI_TOUCH_GESTURE',
+        'SCREEN_CAPTURE',
+        'DEVTOOLS_INSPECTION',
+        'DEBUGGER_TRAP',
+        'AI_EXTENSION_DETECTED',
+        'AUTOMATION_DETECTED',
+        'MULTIPLE_SESSION',
+        'TAB_SWITCH',
+        'FULLSCREEN_EXIT',
+        'WINDOW_BLUR'
+      ].includes(violation_type) || Boolean(metadata?.instant_kill) || Boolean(metadata?.strict_single_strike);
 
       // Log violation
       const violation = db.insert('security_violations', {
@@ -341,16 +365,20 @@ class ExamController {
       const newViolationCount = (attempt.violation_count || 0) + 1;
       db.update('exam_attempts', (a) => a.id === attemptId, { violation_count: newViolationCount });
 
-      // Check if limit reached or strict single-strike active -> Auto Terminate Immediately
-      if (newViolationCount >= maxAllowedViolations || metadata.strict_single_strike) {
-        const termReason = description || `Terminated automatically due to security violation (${violation_type})`;
+      // Check if limit reached, strict single-strike active, or zero-tolerance instant kill -> Auto Terminate Immediately
+      if (
+        newViolationCount >= maxAllowedViolations ||
+        metadata.strict_single_strike ||
+        isZeroToleranceInstantKill
+      ) {
+        const termReason = description || `Disqualified automatically due to security violation (${violation_type})`;
         db.update('exam_attempts', (a) => a.id === attemptId, {
           status: 'TERMINATED',
           termination_reason: termReason,
           submitted_at: new Date().toISOString()
         });
 
-        // Calculate score for partial submission
+        // Calculate score for partial submission (disqualified)
         const finalResult = ScoringService.calculateAttemptResult(attemptId);
         SessionService.endSession(attempt.participant_id, attempt.quiz_id);
 
@@ -358,7 +386,8 @@ class ExamController {
           participant_id: attempt.participant_id,
           reason: termReason,
           violations: newViolationCount,
-          violation_type
+          violation_type,
+          instant_kill: isZeroToleranceInstantKill
         });
 
         return success(res, {
@@ -513,6 +542,140 @@ class ExamController {
       AuditService.log(req.user.id, 'ADMIN_EXTEND_TIME', 'EXAM_ATTEMPT', attemptId, { extra_minutes });
 
       return success(res, { new_expires_at: newExpiry }, `Added ${extra_minutes} minutes to exam attempt`);
+    } catch (err) {
+      return error(res, err.message, 500);
+    }
+  }
+
+  /**
+   * Get all exam attempts across all quizzes with participant and event details
+   */
+  static async getAllAttemptsAdmin(req, res) {
+    try {
+      const { quiz_id, event_name, status, search } = req.query;
+      const attempts = db.get('exam_attempts');
+      const participants = db.get('participants');
+      const quizzes = db.get('quizzes');
+      const results = db.get('results');
+      const violations = db.get('security_violations');
+
+      const enriched = attempts.map((a) => {
+        const p = participants.find((part) => part.id === a.participant_id);
+        const q = quizzes.find((quiz) => quiz.id === a.quiz_id);
+        const r = results.find((res) => res.attempt_id === a.id);
+        const pViolations = violations.filter((v) => v.attempt_id === a.id);
+
+        return {
+          id: a.id,
+          attempt_id: a.id,
+          participant_id: a.participant_id,
+          participant_name: p ? p.full_name : 'Unknown Scholar',
+          participant_code: p ? p.participant_id : 'N/A',
+          registration_number: p ? p.registration_number : '—',
+          email: p ? p.email : '',
+          college: p ? p.college : 'N/A',
+          department: p ? p.department : 'N/A',
+          event_name: (p && p.event) || (q && q.event_name) || (q && q.title) || 'Technical Quiz',
+          quiz_id: a.quiz_id,
+          quiz_title: q ? q.title : 'Examination',
+          round_number: q ? q.round_number : 1,
+          status: a.status,
+          started_at: a.started_at,
+          submitted_at: a.submitted_at,
+          termination_reason: a.termination_reason || null,
+          violation_count: pViolations.length || a.violation_count || 0,
+          score: r ? r.final_score : 0,
+          percentage: r ? r.percentage : 0,
+          is_passed: r ? r.is_passed : false,
+          rank: r ? r.rank : null,
+          updated_at: a.updated_at || a.started_at
+        };
+      });
+
+      // Sort recent first
+      enriched.sort((a, b) => new Date(b.updated_at || b.started_at) - new Date(a.updated_at || a.started_at));
+
+      let filtered = enriched;
+      if (quiz_id && quiz_id !== 'ALL') {
+        filtered = filtered.filter((a) => a.quiz_id === quiz_id);
+      }
+      if (event_name && event_name !== 'ALL') {
+        filtered = filtered.filter(
+          (a) => (a.event_name || '').toLowerCase() === event_name.toLowerCase()
+        );
+      }
+      if (status && status !== 'ALL') {
+        if (status === 'TERMINATED') {
+          filtered = filtered.filter((a) => a.status === 'TERMINATED' || a.status === 'DISQUALIFIED');
+        } else {
+          filtered = filtered.filter((a) => a.status === status);
+        }
+      }
+      if (search) {
+        const term = search.toLowerCase().trim();
+        filtered = filtered.filter(
+          (a) =>
+            a.participant_name.toLowerCase().includes(term) ||
+            a.participant_code.toLowerCase().includes(term) ||
+            a.registration_number.toLowerCase().includes(term) ||
+            a.email.toLowerCase().includes(term) ||
+            a.college.toLowerCase().includes(term) ||
+            a.quiz_title.toLowerCase().includes(term)
+        );
+      }
+
+      return success(res, filtered);
+    } catch (err) {
+      return error(res, err.message, 500);
+    }
+  }
+
+  /**
+   * Admin Restart / Reset Participant's Terminated Exam Attempt
+   * Deletes the terminated attempt, answers, results, and violation strikes
+   * to grant the participant a clean re-attempt.
+   */
+  static async adminRestartAttempt(req, res) {
+    try {
+      const { attemptId } = req.params;
+      const attempt = db.find('exam_attempts', (a) => a.id === attemptId);
+      if (!attempt) return error(res, 'Exam attempt not found', 404);
+
+      const participantId = attempt.participant_id;
+      const quizId = attempt.quiz_id;
+
+      // 1. Remove previous attempt answers & question ordering
+      db.remove('attempt_answers', (aa) => aa.attempt_id === attemptId);
+      db.remove('question_orders', (qo) => qo.attempt_id === attemptId);
+
+      // 2. Remove previous result calculation
+      db.remove('results', (r) => r.attempt_id === attemptId || (r.participant_id === participantId && r.quiz_id === quizId));
+
+      // 3. Remove previous exam session locks
+      db.remove('exam_sessions', (es) => es.participant_id === participantId && es.quiz_id === quizId);
+
+      // 4. Remove previous security violations for this attempt
+      db.remove('security_violations', (sv) => sv.attempt_id === attemptId);
+
+      // 5. Delete the terminated exam attempt record so participant can take it anew
+      db.remove('exam_attempts', (a) => a.id === attemptId);
+
+      // 6. Ensure participant account is active (un-disabled if flagged)
+      db.update('participants', (p) => p.id === participantId, { is_disabled: false });
+      db.update('users', (u) => u.id === participantId, { is_active: true });
+
+      AuditService.log(req.user.id, 'ADMIN_RESTART_EXAM_ATTEMPT', 'EXAM_ATTEMPT', attemptId, {
+        participant_id: participantId,
+        quiz_id: quizId,
+        previous_status: attempt.status,
+        previous_termination_reason: attempt.termination_reason
+      });
+
+      return success(
+        res,
+        { participant_id: participantId, quiz_id: quizId },
+        'Exam attempt successfully reset. Participant can now re-attempt the test.'
+      );
     } catch (err) {
       return error(res, err.message, 500);
     }

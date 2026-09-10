@@ -25,14 +25,16 @@ export function useAntiCheating({
 
     setLatestViolation(violation);
 
-    // If zero-tolerance single-violation rule is active (maxViolations <= 1)
-    if (maxViolations <= 1) {
+    // If zero-tolerance single-violation rule is active or instant kill triggered
+    if (maxViolations <= 1 || violation.metadata?.instant_kill || violation.metadata?.strict_single_strike) {
       isTerminatedRef.current = true;
       try {
         if (attemptId) {
           const res = await examService.recordSecurityEvent(attemptId, violation.type, violation.description, {
+            ...(violation.metadata || {}),
             timestamp: new Date().toISOString(),
-            strict_single_strike: true
+            strict_single_strike: true,
+            instant_kill: true
           });
           if (onTerminated) {
             onTerminated(res?.data?.reason || violation.description, res?.data?.result);
@@ -51,6 +53,7 @@ export function useAntiCheating({
     try {
       if (attemptId) {
         const res = await examService.recordSecurityEvent(attemptId, violation.type, violation.description, {
+          ...(violation.metadata || {}),
           timestamp: new Date().toISOString()
         });
 

@@ -51,11 +51,18 @@ router.post(
   ExamController.adminTerminateAttempt
 );
 
-router.post(
-  '/attempts/:attemptId/extend-time',
+router.get(
+  '/admin/all-attempts',
   authenticate,
   authorize('ADMIN'),
-  ExamController.adminExtendTime
+  ExamController.getAllAttemptsAdmin
+);
+
+router.post(
+  '/attempts/:attemptId/admin-restart',
+  authenticate,
+  authorize('ADMIN'),
+  ExamController.adminRestartAttempt
 );
 
 module.exports = router;

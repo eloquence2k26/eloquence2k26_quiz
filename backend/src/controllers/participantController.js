@@ -2,6 +2,7 @@ const bcrypt = require('bcryptjs');
 const db = require('../config/db');
 const { success, error } = require('../utils/responseHelper');
 const AuditService = require('../services/auditService');
+const DocumentParserService = require('../services/documentParserService');
 
 class ParticipantController {
   /**
@@ -304,6 +305,8 @@ class ParticipantController {
         mobile: cleanMobile
       });
 
+      const eventTarget = (req.body.event || req.body.event_name || 'Technical Quiz').trim();
+
       const newParticipant = db.insert('participants', {
         id: newUser.id,
         participant_id: participantId,
@@ -313,21 +316,27 @@ class ParticipantController {
         college: college ? college.trim() : 'Engineering College',
         department: department ? department.trim() : 'Computer Science & Engineering',
         year: year ? year.trim() : '3rd Year',
-        event: 'Technical Quiz',
+        event: eventTarget,
         registration_number: finalRegNo,
         round_1_selected: false,
         round_2_selected: false,
         is_disabled: false
       });
 
-      // Auto assign to Round 1 quiz
-      if (assign_round1) {
-        const round1Quiz = db.find('quizzes', (q) => q.round_number === 1);
-        if (round1Quiz) {
-          const existingAssign = db.find('quiz_assignments', (qa) => qa.quiz_id === round1Quiz.id && qa.participant_id === newParticipant.id);
+      // Auto assign to Round 1 / matching event quiz
+      if (assign_round1 || req.body.assign_quiz) {
+        const matchingQuiz = db.find(
+          'quizzes',
+          (q) => q.event_name === eventTarget || q.title === eventTarget || q.round_number === 1
+        );
+        if (matchingQuiz) {
+          const existingAssign = db.find(
+            'quiz_assignments',
+            (qa) => qa.quiz_id === matchingQuiz.id && qa.participant_id === newParticipant.id
+          );
           if (!existingAssign) {
             db.insert('quiz_assignments', {
-              quiz_id: round1Quiz.id,
+              quiz_id: matchingQuiz.id,
               participant_id: newParticipant.id,
               assigned_by: req.user.id,
               status: 'ASSIGNED'
@@ -507,6 +516,34 @@ class ParticipantController {
       return success(res, { assignedCount }, `Successfully assigned ${assignedCount} participants to quiz.`);
     } catch (err) {
       return error(res, err.message, 500);
+    }
+  }
+
+  /**
+   * Import participants from uploaded document (PDF, Excel, Word, CSV, JSON, TXT)
+   */
+  static async importParticipantsFile(req, res) {
+    try {
+      if (!req.file) {
+        return error(res, 'No file uploaded. Please select a document (PDF, Excel, Word, CSV, JSON, TXT).', 400);
+      }
+
+      const { event_name = 'Technical Quiz', college = '', department = '', year = '3rd Year', assign_quiz = true } = req.body;
+      const participantsList = await DocumentParserService.parseParticipantsFromDocument(
+        req.file.buffer,
+        req.file.originalname,
+        { event_name, college, department, year }
+      );
+
+      if (!participantsList || participantsList.length === 0) {
+        return error(res, 'No valid participant records could be extracted from the file. Please check file format.', 400);
+      }
+
+      req.body.participants = participantsList;
+      req.body.assign_round1 = assign_quiz !== 'false' && assign_quiz !== false;
+      return await ParticipantController.bulkImportParticipants(req, res);
+    } catch (err) {
+      return error(res, `Failed to parse document: ${err.message}`, 500);
     }
   }
 }

@@ -99,6 +99,13 @@ export const adminService = {
     return res.data;
   },
 
+  importParticipantsFile: async (formData) => {
+    const res = await api.post('/participants/import-file', formData, {
+      headers: { 'Content-Type': 'multipart/form-data' }
+    });
+    return res.data;
+  },
+
   // Events Management
   getEvents: async () => {
     const res = await api.get('/admin/events');
@@ -224,6 +231,17 @@ export const adminService = {
 
   exportParticipantsCSV: async () => {
     const res = await api.get('/reports/participants/csv');
+    return res.data;
+  },
+
+  // Exam Attempt Management & Restarts
+  getAllExamAttempts: async (params = {}) => {
+    const res = await api.get('/exam/admin/all-attempts', { params });
+    return res.data;
+  },
+
+  restartExamAttempt: async (attemptId) => {
+    const res = await api.post(`/exam/attempts/${attemptId}/admin-restart`);
     return res.data;
   }
 };
