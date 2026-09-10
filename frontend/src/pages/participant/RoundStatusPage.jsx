@@ -40,7 +40,7 @@ export default function RoundStatusPage() {
           Symposium Round Qualification
         </h1>
         <p className="text-xs text-slate-500 dark:text-slate-400">
-          Official progression tracking from Round 1 Preliminary screening to Round 2 Grand Finals
+          Official progression tracking from Round 1 to Round 2
         </p>
       </div>
 
@@ -55,7 +55,7 @@ export default function RoundStatusPage() {
               🎉 Congratulations!
             </h2>
             <p className="text-xs sm:text-sm text-emerald-100 max-w-xl mx-auto">
-              You have demonstrated exceptional technical mastery in Round 1 and have been officially selected for <strong>Round 2: Grand Finals & Advanced Mastery</strong>.
+              You have demonstrated exceptional technical mastery in Round 1 and have been officially selected for <strong>Round 2</strong>.
             </p>
           </div>
 

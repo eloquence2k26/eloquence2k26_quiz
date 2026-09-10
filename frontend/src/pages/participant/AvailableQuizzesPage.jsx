@@ -71,8 +71,8 @@ export default function AvailableQuizzesPage() {
             className="px-3 py-1.5 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 text-xs font-semibold text-slate-700 dark:text-slate-300"
           >
             <option value="ALL">All Rounds</option>
-            <option value="1">Round 1 (Prelims)</option>
-            <option value="2">Round 2 (Grand Finals)</option>
+            <option value="1">Round 1</option>
+            <option value="2">Round 2</option>
           </select>
         </div>
       </div>

@@ -30,7 +30,6 @@ import { formatDate, getRoundBadgeVariant } from '../../utils/formatters';
 import Badge from '../../components/common/Badge';
 import Loading from '../../components/common/Loading';
 import ModifyScheduleModal from '../../components/admin/ModifyScheduleModal';
-import QuizModal from '../../components/admin/QuizModal';
 
 export default function QuizSchedulePage() {
   const toast = useToast();
@@ -47,9 +46,6 @@ export default function QuizSchedulePage() {
   // Modals state
   const [modifyModalOpen, setModifyModalOpen] = useState(false);
   const [selectedQuizForSchedule, setSelectedQuizForSchedule] = useState(null);
-
-  const [quizModalOpen, setQuizModalOpen] = useState(false);
-  const [selectedQuizForFullEdit, setSelectedQuizForFullEdit] = useState(null);
 
   useEffect(() => {
     fetchData();
@@ -135,16 +131,26 @@ export default function QuizSchedulePage() {
 
   // --- Handlers ---
 
-  // Create New Schedule (can target specific event)
+  // Create New Schedule (dedicated to timing and schedule parameters)
   const handleCreateSchedule = (event = null) => {
     const targetEvent = event || events[0];
-    setSelectedQuizForFullEdit({
+    setSelectedQuizForSchedule({
+      id: null,
+      event_id: targetEvent?.id,
       event_name: targetEvent?.title || 'Technical Quiz',
       event_code: targetEvent?.code || 'ELQ26',
+      title: `${targetEvent?.title || 'Symposium'} - Examination`,
       round_number: 1,
-      title: `${targetEvent?.title || 'Symposium'} - Round 1`
+      duration_minutes: 30,
+      start_date: new Date().toISOString().split('T')[0],
+      start_time: '09:00',
+      end_date: new Date(Date.now() + 86400000 * 7).toISOString().split('T')[0],
+      end_time: '23:59',
+      status: 'Scheduled',
+      entry_window_minutes: 5,
+      allow_late_entry: false
     });
-    setQuizModalOpen(true);
+    setModifyModalOpen(true);
   };
 
   // Open Modify Schedule Modal
@@ -153,56 +159,23 @@ export default function QuizSchedulePage() {
     setModifyModalOpen(true);
   };
 
-  // Open Full Quiz Edit Modal
-  const handleOpenFullEdit = async (quiz) => {
-    try {
-      const res = await quizService.getQuizById(quiz.id);
-      if (res.success) {
-        setSelectedQuizForFullEdit(res.data);
-      } else {
-        setSelectedQuizForFullEdit(quiz);
-      }
-    } catch (err) {
-      setSelectedQuizForFullEdit(quiz);
-    }
-    setQuizModalOpen(true);
-  };
-
-  // Save Schedule Modification
+  // Save Schedule Modification (Create or Update)
   const handleSaveScheduleModification = async (updatedQuizData) => {
     try {
-      const res = await quizService.updateQuiz(updatedQuizData.id, updatedQuizData);
+      let res;
+      if (updatedQuizData.id) {
+        res = await quizService.updateQuiz(updatedQuizData.id, updatedQuizData);
+      } else {
+        res = await quizService.createQuiz(updatedQuizData);
+      }
       if (res.success) {
-        toast.success('Schedule parameters updated successfully');
+        toast.success(updatedQuizData.id ? 'Schedule parameters updated successfully' : 'Schedule created successfully');
         setModifyModalOpen(false);
         setSelectedQuizForSchedule(null);
         fetchData();
       }
     } catch (err) {
-      toast.error(err.response?.data?.message || 'Error updating schedule');
-    }
-  };
-
-  // Save Full Quiz Edit
-  const handleSaveFullQuiz = async (formData) => {
-    try {
-      if (selectedQuizForFullEdit && selectedQuizForFullEdit.id) {
-        const res = await quizService.updateQuiz(selectedQuizForFullEdit.id, formData);
-        if (res.success) {
-          toast.success('Examination updated successfully');
-          setQuizModalOpen(false);
-          fetchData();
-        }
-      } else {
-        const res = await quizService.createQuiz(formData);
-        if (res.success) {
-          toast.success('New examination scheduled successfully');
-          setQuizModalOpen(false);
-          fetchData();
-        }
-      }
-    } catch (err) {
-      toast.error(err.response?.data?.message || 'Error saving examination');
+      toast.error(err.response?.data?.message || 'Error saving schedule');
     }
   };
 
@@ -720,19 +693,11 @@ export default function QuizSchedulePage() {
                             <div className="flex items-center gap-1.5">
                               <button
                                 onClick={() => handleOpenModifySchedule(q)}
-                                className="flex items-center gap-1 px-2.5 py-1.5 rounded-xl text-xs font-bold text-slate-700 dark:text-slate-300 hover:text-brand-600 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors shadow-2xs"
+                                className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold text-slate-700 dark:text-slate-300 hover:text-brand-600 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors shadow-2xs"
                                 title="Modify schedule dates, times, and duration"
                               >
                                 <Clock className="w-3.5 h-3.5" />
-                                <span>Modify</span>
-                              </button>
-
-                              <button
-                                onClick={() => handleOpenFullEdit(q)}
-                                className="p-1.5 rounded-xl border border-slate-200 dark:border-slate-700 text-slate-500 hover:text-brand-600 hover:bg-white dark:hover:bg-slate-800 transition-colors"
-                                title="Configure full parameters and questions"
-                              >
-                                <Edit2 className="w-3.5 h-3.5" />
+                                <span>Modify Schedule</span>
                               </button>
 
                               <button
@@ -764,17 +729,6 @@ export default function QuizSchedulePage() {
         }}
         onSave={handleSaveScheduleModification}
         quiz={selectedQuizForSchedule}
-      />
-
-      {/* Full Quiz Configuration Modal */}
-      <QuizModal
-        isOpen={quizModalOpen}
-        onClose={() => {
-          setQuizModalOpen(false);
-          setSelectedQuizForFullEdit(null);
-        }}
-        onSave={handleSaveFullQuiz}
-        initialData={selectedQuizForFullEdit}
       />
     </div>
   );

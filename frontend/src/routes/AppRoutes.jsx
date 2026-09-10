@@ -10,7 +10,6 @@ import ExamLayout from '../layouts/ExamLayout';
 
 // Auth Pages
 import LoginPage from '../pages/auth/LoginPage';
-import RegisterPage from '../pages/auth/RegisterPage';
 import ForgotPasswordPage from '../pages/auth/ForgotPasswordPage';
 
 // Participant Pages
@@ -36,7 +35,6 @@ import LiveExamsPage from '../pages/admin/LiveExamsPage';
 import ResultsPage from '../pages/admin/ResultsPage';
 import RoundSelectionPage from '../pages/admin/RoundSelectionPage';
 import RoundsPage from '../pages/admin/RoundsPage';
-import SecondRoundPage from '../pages/admin/SecondRoundPage';
 import AnnouncementsPage from '../pages/admin/AnnouncementsPage';
 import ViolationsPage from '../pages/admin/ViolationsPage';
 import ReportsPage from '../pages/admin/ReportsPage';

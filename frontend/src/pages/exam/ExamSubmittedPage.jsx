@@ -89,7 +89,7 @@ export default function ExamSubmittedPage() {
               <h4 className="text-sm font-black uppercase tracking-wide">🎉 Congratulations! You are Selected for Round 2</h4>
             </div>
             <p className="text-xs text-brand-100">
-              You have officially qualified for the Grand Finals. Check your participant dashboard when the scheduled Round 2 session begins.
+              You have officially qualified for Round 2. Check your participant dashboard when the scheduled Round 2 session begins.
             </p>
           </div>
         )}

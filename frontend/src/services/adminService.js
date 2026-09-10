@@ -105,6 +105,21 @@ export const adminService = {
     return res.data;
   },
 
+  createEvent: async (eventData) => {
+    const res = await api.post('/admin/events', eventData);
+    return res.data;
+  },
+
+  updateEvent: async (id, eventData) => {
+    const res = await api.put(`/admin/events/${id}`, eventData);
+    return res.data;
+  },
+
+  deleteEvent: async (id) => {
+    const res = await api.delete(`/admin/events/${id}`);
+    return res.data;
+  },
+
   // Rounds Management
   getRounds: async () => {
     const res = await api.get('/rounds');

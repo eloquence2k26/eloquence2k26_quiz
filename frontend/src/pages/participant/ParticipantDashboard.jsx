@@ -143,10 +143,10 @@ export default function ParticipantDashboard() {
         />
         <StatsCard
           title="Round Qualification"
-          value={isRound1Selected ? 'Round 2 Finalist' : 'Round 1 Active'}
+          value={isRound1Selected ? 'Round 2 Selected' : 'Round 1 Active'}
           icon={Layers}
           color={isRound1Selected ? 'purple' : 'amber'}
-          subtitle={isRound1Selected ? 'Selected for Finals' : 'Preliminary Round'}
+          subtitle={isRound1Selected ? 'Selected for Round 2' : 'Round 1 Active'}
         />
       </div>
 

@@ -24,13 +24,14 @@ import { adminService } from '../../services/adminService';
 import { quizService } from '../../services/quizService';
 import { useToast } from '../../context/ToastContext';
 import { formatDate, getRoundBadgeVariant } from '../../utils/formatters';
+import { useNavigate } from 'react-router-dom';
 import Badge from '../../components/common/Badge';
 import Modal from '../../components/common/Modal';
 import Loading from '../../components/common/Loading';
-import QuizModal from '../../components/admin/QuizModal';
 
 export default function RoundsPage() {
   const toast = useToast();
+  const navigate = useNavigate();
   const [rounds, setRounds] = useState([]);
   const [events, setEvents] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -41,12 +42,6 @@ export default function RoundsPage() {
   const [deleteModalOpen, setDeleteModalOpen] = useState(false);
   const [targetRound, setTargetRound] = useState(null);
   const [targetEventForNewRound, setTargetEventForNewRound] = useState(null);
-
-  // Quiz Modal integration
-  const [quizModalOpen, setQuizModalOpen] = useState(false);
-  const [editingQuiz, setEditingQuiz] = useState(null);
-  const [prefilledRoundNumber, setPrefilledRoundNumber] = useState(1);
-  const [allQuestions, setAllQuestions] = useState([]);
 
   // Form states
   const [roundFormData, setRoundFormData] = useState({
@@ -240,56 +235,7 @@ export default function RoundsPage() {
     }
   };
 
-  // Open Quiz Creation for a specific event and round
-  const handleAddQuizForRound = (roundNumber, event) => {
-    setPrefilledRoundNumber(roundNumber);
-    setEditingQuiz({
-      event_name: event?.title || 'Eloquence 2026',
-      event_code: event?.code || 'ELQ26',
-      round_number: roundNumber,
-      title: `${event?.title || 'Symposium'} - Round ${roundNumber}`
-    });
-    setQuizModalOpen(true);
-  };
 
-  // Open Quiz Edit
-  const handleEditQuiz = async (quizId) => {
-    try {
-      const res = await quizService.getQuizById(quizId);
-      if (res.success) {
-        setEditingQuiz(res.data);
-        setQuizModalOpen(true);
-      }
-    } catch (err) {
-      toast.error('Failed to load quiz details');
-    }
-  };
-
-  // Save Quiz
-  const handleSaveQuiz = async (formData) => {
-    try {
-      if (editingQuiz && editingQuiz.id) {
-        const res = await quizService.updateQuiz(editingQuiz.id, formData);
-        if (res.success) {
-          toast.success('Examination updated successfully');
-          setQuizModalOpen(false);
-          fetchData();
-        }
-      } else {
-        const res = await quizService.createQuiz({
-          ...formData,
-          round_number: formData.round_number || prefilledRoundNumber
-        });
-        if (res.success) {
-          toast.success('Examination created successfully');
-          setQuizModalOpen(false);
-          fetchData();
-        }
-      }
-    } catch (err) {
-      toast.error(err.response?.data?.message || 'Failed to save examination');
-    }
-  };
 
   // Toggle Quiz Live Status
   const handleToggleQuizStatus = async (quizId, currentStatus) => {
@@ -498,11 +444,12 @@ export default function RoundsPage() {
                               </button>
 
                               <button
-                                onClick={() => handleAddQuizForRound(r.round_number, event)}
+                                onClick={() => navigate('/admin/schedule')}
                                 className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-brand-50 dark:bg-brand-950/60 hover:bg-brand-100 dark:hover:bg-brand-900/60 border border-brand-200 dark:border-brand-800/60 text-brand-700 dark:text-brand-300 text-xs font-bold transition-colors"
+                                title="Schedule examination in Quiz Schedule section"
                               >
-                                <Plus className="w-3.5 h-3.5" />
-                                <span>Add Quiz</span>
+                                <Calendar className="w-3.5 h-3.5" />
+                                <span>Quiz Schedule</span>
                               </button>
                             </div>
                           </div>
@@ -541,11 +488,11 @@ export default function RoundsPage() {
                               <div className="p-4 rounded-xl border border-dashed border-slate-200 dark:border-slate-800 text-center text-xs text-slate-400 bg-white/50 dark:bg-slate-900/30">
                                 <p>No examinations configured for this round yet.</p>
                                 <button
-                                  onClick={() => handleAddQuizForRound(r.round_number, event)}
+                                  onClick={() => navigate('/admin/schedule')}
                                   className="mt-1.5 inline-flex items-center gap-1 text-xs font-bold text-brand-600 dark:text-brand-400 hover:underline"
                                 >
-                                  <Plus className="w-3 h-3" />
-                                  <span>Create Examination</span>
+                                  <Calendar className="w-3 h-3" />
+                                  <span>Configure Schedule in Quiz Schedule</span>
                                 </button>
                               </div>
                             ) : (
@@ -611,10 +558,11 @@ export default function RoundsPage() {
                                       </button>
 
                                       <button
-                                        onClick={() => handleEditQuiz(q.id)}
-                                        className="text-[11px] font-bold text-brand-600 dark:text-brand-400 hover:underline"
+                                        onClick={() => navigate('/admin/schedule')}
+                                        className="text-[11px] font-bold text-brand-600 dark:text-brand-400 hover:underline flex items-center gap-1"
                                       >
-                                        Configure Quiz
+                                        <Calendar className="w-3 h-3" />
+                                        <span>Manage Schedule</span>
                                       </button>
                                     </div>
                                   </div>
@@ -850,18 +798,6 @@ export default function RoundsPage() {
           </div>
         </div>
       </Modal>
-
-      {/* QUIZ CONFIGURATION MODAL */}
-      <QuizModal
-        isOpen={quizModalOpen}
-        onClose={() => {
-          setQuizModalOpen(false);
-          setEditingQuiz(null);
-        }}
-        onSave={handleSaveQuiz}
-        initialData={editingQuiz}
-        allQuestions={allQuestions}
-      />
     </div>
   );
 }

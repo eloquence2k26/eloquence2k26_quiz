@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Link, useLocation, useNavigate, Outlet } from 'react-router-dom';
 import {
   LayoutDashboard,
@@ -18,7 +18,11 @@ import {
   LogOut,
   Menu,
   X,
-  Sparkles
+  Sparkles,
+  ChevronDown,
+  ChevronRight,
+  FolderKanban,
+  ExternalLink
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import ThemeToggle from '../components/common/ThemeToggle';
@@ -29,22 +33,59 @@ export default function AdminLayout() {
   const navigate = useNavigate();
   const [sidebarOpen, setSidebarOpen] = useState(false);
 
-  const menuItems = [
+  // Event Manager Sub-items definition
+  const eventManagerItems = [
+    { label: 'Event Management', icon: BookOpen, path: '/admin/quizzes', desc: 'Manage events & quizzes' },
+    { label: 'Questions', icon: HelpCircle, path: '/admin/questions', desc: 'MCQ question bank' },
+    { label: 'Quiz Schedule', icon: Calendar, path: '/admin/schedule', desc: 'Timeline & entry windows' },
+    { label: 'Rounds', icon: Layers, path: '/admin/rounds', desc: 'Round 1 & Round 2 setup' },
+    { label: 'Round Selection', icon: Filter, path: '/admin/round-selection', desc: 'Qualifiers & promotion' },
+    { label: 'Results', icon: Award, path: '/admin/results', desc: 'Scores & leaderboards' }
+  ];
+
+  // Primary menu items
+  const primaryItems = [
     { label: 'Dashboard', icon: LayoutDashboard, path: '/admin/dashboard' },
     { label: 'Participants', icon: Users, path: '/admin/participants' },
-    { label: 'User Registration', icon: UserPlus, path: '/admin/user-register' },
-    { label: 'Event Management', icon: BookOpen, path: '/admin/quizzes' },
-    { label: 'Questions', icon: HelpCircle, path: '/admin/questions' },
-    { label: 'Quiz Schedule', icon: Calendar, path: '/admin/schedule' },
+    { label: 'User Registration', icon: UserPlus, path: '/admin/user-register' }
+  ];
+
+  // Operations & proctoring items
+  const operationsItems = [
     { label: 'Live Exams', icon: Activity, path: '/admin/live-exams' },
-    { label: 'Results', icon: Award, path: '/admin/results' },
-    { label: 'Round Selection', icon: Filter, path: '/admin/round-selection' },
-    { label: 'Rounds', icon: Layers, path: '/admin/rounds' },
     { label: 'Announcements', icon: Bell, path: '/admin/announcements' },
     { label: 'Security Violations', icon: ShieldAlert, path: '/admin/violations' },
     { label: 'Reports', icon: FileSpreadsheet, path: '/admin/reports' },
     { label: 'Settings', icon: Settings, path: '/admin/settings' }
   ];
+
+  // Check if current route is inside Event Manager
+  const isEventManagerActive = eventManagerItems.some((item) => location.pathname === item.path);
+
+  // Sidebar Event Manager Accordion Dropdown State
+  const [eventManagerOpen, setEventManagerOpen] = useState(true);
+
+  // Top Navbar Event Manager Dropdown State
+  const [topEventMenuOpen, setTopEventMenuOpen] = useState(false);
+  const topDropdownRef = useRef(null);
+
+  // Auto-expand Event Manager section when user navigates to any of its subpages
+  useEffect(() => {
+    if (isEventManagerActive) {
+      setEventManagerOpen(true);
+    }
+  }, [location.pathname, isEventManagerActive]);
+
+  // Click outside listener for top header dropdown
+  useEffect(() => {
+    const handleClickOutside = (event) => {
+      if (topDropdownRef.current && !topDropdownRef.current.contains(event.target)) {
+        setTopEventMenuOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
 
   const handleLogout = () => {
     logout();
@@ -89,27 +130,128 @@ export default function AdminLayout() {
         </div>
 
         {/* Navigation Items */}
-        <div className="flex-1 overflow-y-auto px-3 py-4 space-y-1">
-          {menuItems.map((item) => {
-            const Icon = item.icon;
-            const isActive = location.pathname === item.path;
+        <div className="flex-1 overflow-y-auto px-3 py-4 space-y-4">
+          {/* Main Group */}
+          <div className="space-y-1">
+            <p className="px-3.5 text-[10px] font-bold uppercase tracking-wider text-slate-400">
+              Overview & Scholars
+            </p>
+            {primaryItems.map((item) => {
+              const Icon = item.icon;
+              const isActive = location.pathname === item.path;
 
-            return (
-              <Link
-                key={item.path}
-                to={item.path}
-                onClick={() => setSidebarOpen(false)}
-                className={`flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-xs font-semibold transition-all duration-150 ${
-                  isActive
-                    ? 'bg-brand-50 text-brand-700 dark:bg-brand-950/60 dark:text-brand-300 font-bold border border-brand-200 dark:border-brand-900/50 shadow-sm'
-                    : 'text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800/60 hover:text-slate-900 dark:hover:text-slate-100'
-                }`}
-              >
-                <Icon className={`w-4 h-4 ${isActive ? 'text-brand-600 dark:text-brand-400' : 'text-slate-400'}`} />
-                <span>{item.label}</span>
-              </Link>
-            );
-          })}
+              return (
+                <Link
+                  key={item.path}
+                  to={item.path}
+                  onClick={() => setSidebarOpen(false)}
+                  className={`flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-xs font-semibold transition-all duration-150 ${
+                    isActive
+                      ? 'bg-brand-50 text-brand-700 dark:bg-brand-950/60 dark:text-brand-300 font-bold border border-brand-200 dark:border-brand-900/50 shadow-sm'
+                      : 'text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800/60 hover:text-slate-900 dark:hover:text-slate-100'
+                  }`}
+                >
+                  <Icon className={`w-4 h-4 ${isActive ? 'text-brand-600 dark:text-brand-400' : 'text-slate-400'}`} />
+                  <span>{item.label}</span>
+                </Link>
+              );
+            })}
+          </div>
+
+          {/* Event Manager Section & Dropdown */}
+          <div className="pt-1">
+            <div className="px-3.5 mb-1.5 flex items-center justify-between">
+              <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">
+                Competition Hub
+              </span>
+            </div>
+
+            {/* Event Manager Accordion Dropdown Trigger */}
+            <button
+              type="button"
+              onClick={() => setEventManagerOpen(!eventManagerOpen)}
+              className={`w-full flex items-center justify-between px-3.5 py-2.5 rounded-xl text-xs font-bold transition-all duration-150 border ${
+                isEventManagerActive
+                  ? 'bg-brand-50/80 dark:bg-brand-950/40 text-brand-700 dark:text-brand-300 border-brand-200 dark:border-brand-900/60 shadow-sm'
+                  : 'bg-white dark:bg-slate-900/50 text-slate-700 dark:text-slate-200 border-slate-200/80 dark:border-slate-800/80 hover:bg-slate-100 dark:hover:bg-slate-800/60'
+              }`}
+            >
+              <div className="flex items-center gap-2.5">
+                <div className={`w-6 h-6 rounded-lg flex items-center justify-center ${
+                  isEventManagerActive
+                    ? 'bg-brand-600 text-white shadow-sm shadow-brand-500/30'
+                    : 'bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400'
+                }`}>
+                  <FolderKanban className="w-3.5 h-3.5" />
+                </div>
+                <span className="font-extrabold tracking-tight">Event Manager</span>
+              </div>
+
+              <div className="flex items-center gap-1.5">
+                <span className="px-1.5 py-0.5 rounded-md text-[10px] font-bold bg-brand-100 dark:bg-brand-950 text-brand-700 dark:text-brand-300">
+                  6
+                </span>
+                <ChevronDown
+                  className={`w-3.5 h-3.5 text-slate-400 transition-transform duration-200 ${
+                    eventManagerOpen ? 'rotate-0' : '-rotate-90'
+                  }`}
+                />
+              </div>
+            </button>
+
+            {/* Event Manager Dropdown Items */}
+            {eventManagerOpen && (
+              <div className="mt-1.5 ml-3 pl-3 border-l-2 border-brand-200 dark:border-brand-900/50 space-y-1">
+                {eventManagerItems.map((item) => {
+                  const Icon = item.icon;
+                  const isActive = location.pathname === item.path;
+
+                  return (
+                    <Link
+                      key={item.path}
+                      to={item.path}
+                      onClick={() => setSidebarOpen(false)}
+                      className={`flex items-center gap-2.5 px-3 py-2 rounded-xl text-xs font-semibold transition-all duration-150 ${
+                        isActive
+                          ? 'bg-brand-600 text-white font-bold shadow-sm shadow-brand-500/20'
+                          : 'text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800/60 hover:text-slate-900 dark:hover:text-slate-100'
+                      }`}
+                    >
+                      <Icon className={`w-3.5 h-3.5 flex-shrink-0 ${isActive ? 'text-white' : 'text-slate-400'}`} />
+                      <span className="truncate">{item.label}</span>
+                    </Link>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+
+          {/* Operations & Security Group */}
+          <div className="space-y-1 pt-1">
+            <p className="px-3.5 text-[10px] font-bold uppercase tracking-wider text-slate-400">
+              Proctoring & System
+            </p>
+            {operationsItems.map((item) => {
+              const Icon = item.icon;
+              const isActive = location.pathname === item.path;
+
+              return (
+                <Link
+                  key={item.path}
+                  to={item.path}
+                  onClick={() => setSidebarOpen(false)}
+                  className={`flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-xs font-semibold transition-all duration-150 ${
+                    isActive
+                      ? 'bg-brand-50 text-brand-700 dark:bg-brand-950/60 dark:text-brand-300 font-bold border border-brand-200 dark:border-brand-900/50 shadow-sm'
+                      : 'text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800/60 hover:text-slate-900 dark:hover:text-slate-100'
+                  }`}
+                >
+                  <Icon className={`w-4 h-4 ${isActive ? 'text-brand-600 dark:text-brand-400' : 'text-slate-400'}`} />
+                  <span>{item.label}</span>
+                </Link>
+              );
+            })}
+          </div>
         </div>
 
         {/* User Info & Logout Footer */}
@@ -148,8 +290,59 @@ export default function AdminLayout() {
             >
               <Menu className="w-5 h-5" />
             </button>
-            <div className="hidden sm:block text-xs font-medium text-slate-500 dark:text-slate-400">
-              Department of Computer Science & Engineering • Symposium Examination Console
+
+            {/* Quick Event Manager Switcher Dropdown in Top Header */}
+            <div className="relative" ref={topDropdownRef}>
+              <button
+                type="button"
+                onClick={() => setTopEventMenuOpen(!topEventMenuOpen)}
+                className={`flex items-center gap-2 px-3 py-1.5 rounded-xl text-xs font-bold transition-all border shadow-sm ${
+                  isEventManagerActive
+                    ? 'bg-brand-50 dark:bg-brand-950/60 border-brand-300 dark:border-brand-800 text-brand-700 dark:text-brand-300'
+                    : 'bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700/50'
+                }`}
+              >
+                <FolderKanban className="w-3.5 h-3.5 text-brand-600 dark:text-brand-400" />
+                <span>Event Manager</span>
+                <ChevronDown className={`w-3.5 h-3.5 text-slate-400 transition-transform duration-150 ${topEventMenuOpen ? 'rotate-180' : ''}`} />
+              </button>
+
+              {topEventMenuOpen && (
+                <div className="absolute left-0 mt-2 w-64 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-2xl p-2 z-50 animate-in fade-in slide-in-from-top-2 duration-150">
+                  <div className="px-3 py-1.5 text-[10px] font-extrabold uppercase tracking-wider text-slate-400 flex items-center justify-between">
+                    <span>Event Manager Modules</span>
+                    <span className="px-1.5 py-0.2 rounded text-[9px] bg-brand-100 dark:bg-brand-950 text-brand-600 font-mono">6 Sections</span>
+                  </div>
+                  <div className="space-y-0.5 mt-1">
+                    {eventManagerItems.map((item) => {
+                      const Icon = item.icon;
+                      const isActive = location.pathname === item.path;
+                      return (
+                        <Link
+                          key={item.path}
+                          to={item.path}
+                          onClick={() => setTopEventMenuOpen(false)}
+                          className={`flex items-start gap-2.5 px-3 py-2 rounded-xl transition-all ${
+                            isActive
+                              ? 'bg-brand-50 dark:bg-brand-950/70 text-brand-700 dark:text-brand-300 font-bold border border-brand-200 dark:border-brand-900/60'
+                              : 'text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800'
+                          }`}
+                        >
+                          <Icon className={`w-4 h-4 mt-0.5 flex-shrink-0 ${isActive ? 'text-brand-600 dark:text-brand-400' : 'text-slate-400'}`} />
+                          <div>
+                            <p className="text-xs font-bold leading-none">{item.label}</p>
+                            <p className="text-[10px] text-slate-400 mt-0.5 leading-tight">{item.desc}</p>
+                          </div>
+                        </Link>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+            </div>
+
+            <div className="hidden md:block text-xs font-medium text-slate-400">
+              Department of CSE • Symposium Examination Console
             </div>
           </div>
 
@@ -163,7 +356,7 @@ export default function AdminLayout() {
             </Link>
             <div className="hidden md:flex items-center gap-2 px-3 py-1.5 rounded-full bg-emerald-50 dark:bg-emerald-950/60 border border-emerald-200 dark:border-emerald-800 text-emerald-700 dark:text-emerald-300 text-xs font-semibold">
               <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
-              Proctor Engine Active
+              Proctor Active
             </div>
             <ThemeToggle />
           </div>

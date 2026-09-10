@@ -90,7 +90,7 @@ export default function RoundSelectionPage() {
             Round 1 Qualifiers & Selection Panel
           </h1>
           <p className="text-xs text-slate-500 dark:text-slate-400">
-            Select qualifiers for Round 2 (Grand Finals) using algorithmic Top N or manual curation
+            Select qualifiers for Round 2 using algorithmic Top N or manual curation
           </p>
         </div>
 
