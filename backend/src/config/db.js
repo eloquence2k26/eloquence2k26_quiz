@@ -68,6 +68,7 @@ const TABLE_COLUMNS = {
     'created_by', 'created_at'
   ],
   audit_logs: ['id', 'admin_id', 'action', 'entity_type', 'entity_id', 'timestamp', 'metadata'],
+  roles: ['id', 'name', 'title', 'description', 'permissions', 'badge', 'color', 'created_at', 'updated_at'],
   system_settings: ['key', 'value', 'updated_at']
 };
 
@@ -81,6 +82,7 @@ class DBStore {
       profiles: [],
       participants: [],
       admins: [],
+      roles: [],
       events: [],
       rounds: [],
       quizzes: [],
@@ -178,6 +180,75 @@ class DBStore {
       this.isInitialized = true;
       const totalRecords = TABLES.reduce((sum, t) => sum + (this.data[t] ? this.data[t].length : 0), 0);
       logger.info(`[DB] Connected successfully to Supabase. Loaded ${totalRecords} records across ${TABLES.length} tables.`);
+
+      // Ensure default roles exist in roles table
+      if (!this.data.roles || this.data.roles.length === 0) {
+        this.data.roles = [
+          {
+            id: 'role-super-admin',
+            name: 'SUPER_ADMIN',
+            title: 'Super Administrator / Director',
+            description: 'Full unconstrained system authority over examinations, questions, scholars, proctoring, and server credentials.',
+            permissions: ['All Privileges', 'User & Role Management', 'Proctor Overrides', 'Full DB Sync', 'Attempt Restarts'],
+            badge: 'Level 1 - Core',
+            color: 'from-amber-600 to-orange-600',
+            created_at: new Date().toISOString()
+          },
+          {
+            id: 'role-admin',
+            name: 'ADMIN',
+            title: 'Symposium Admin',
+            description: 'Manages quiz events, question pools, participant registrations, schedule windows, and leaderboards.',
+            permissions: ['Event & Quiz Config', 'Question Bank Authoring', 'Candidate Registration', 'Live Proctoring', 'Results Export'],
+            badge: 'Level 2 - General',
+            color: 'from-brand-600 to-indigo-600',
+            created_at: new Date().toISOString()
+          },
+          {
+            id: 'role-coordinator',
+            name: 'COORDINATOR',
+            title: 'Event Coordinator',
+            description: 'Department coordinator responsible for event-specific quiz questions and preliminary grading.',
+            permissions: ['Question Authoring', 'Event Roster', 'Live Exam Monitoring', 'Candidate Verification'],
+            badge: 'Level 3 - Event',
+            color: 'from-blue-600 to-cyan-600',
+            created_at: new Date().toISOString()
+          },
+          {
+            id: 'role-proctor',
+            name: 'PROCTOR',
+            title: 'Exam Proctor / Invigilator',
+            description: 'Real-time arena monitor tracking security violations, browser focus loss, and mobile gestures.',
+            permissions: ['Live Exam Monitoring', 'Violations Feed', 'Violation Warnings', 'Manual Termination'],
+            badge: 'Level 4 - Proctor',
+            color: 'from-emerald-600 to-teal-600',
+            created_at: new Date().toISOString()
+          },
+          {
+            id: 'role-volunteer',
+            name: 'VOLUNTEER',
+            title: 'Desk Volunteer',
+            description: 'Registration desk staff assisting with participant onboarding, credential lookup, and lab seat allocation.',
+            permissions: ['Candidate Lookup', 'Credential Quick-Fill', 'Registration Verification'],
+            badge: 'Level 5 - Support',
+            color: 'from-purple-600 to-pink-600',
+            created_at: new Date().toISOString()
+          }
+        ];
+      }
+
+      // Ensure root administrator is always active
+      const rootAdmin = (this.data.users || []).find((u) => u.email && u.email.toLowerCase() === 'admin@eloquence.com');
+      if (rootAdmin) {
+        rootAdmin.is_active = true;
+      }
+
+      // Start automatic live background synchronization timer (every 45s)
+      if (!this._bgSyncTimer) {
+        this._bgSyncTimer = setInterval(() => {
+          this.init().catch((e) => logger.warn(`[DB] Background live sync notice: ${e.message}`));
+        }, 45000);
+      }
     } catch (err) {
       logger.error(`[DB] Critical error initializing Supabase connection: ${err.message}`);
     }

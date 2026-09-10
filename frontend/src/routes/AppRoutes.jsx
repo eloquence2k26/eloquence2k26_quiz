@@ -40,6 +40,8 @@ import ViolationsPage from '../pages/admin/ViolationsPage';
 import ExamRestartsPage from '../pages/admin/ExamRestartsPage';
 import ReportsPage from '../pages/admin/ReportsPage';
 import SettingsPage from '../pages/admin/SettingsPage';
+import UsersPage from '../pages/admin/UsersPage';
+import RolesPage from '../pages/admin/RolesPage';
 
 export default function AppRoutes() {
   return (
@@ -70,12 +72,14 @@ export default function AppRoutes() {
       </Route>
 
       {/* Admin Protected Routes */}
-      <Route element={<ProtectedRoute allowedRoles={['ADMIN']} />}>
+      <Route element={<ProtectedRoute allowedRoles={['ADMIN', 'SUPER_ADMIN', 'COORDINATOR', 'PROCTOR']} />}>
         <Route element={<AdminLayout />}>
           <Route path="/admin/dashboard" element={<AdminDashboard />} />
           <Route path="/admin/participants" element={<ParticipantsPage />} />
           <Route path="/admin/user-register" element={<UserRegistrationPage />} />
           <Route path="/admin/register-participants" element={<UserRegistrationPage />} />
+          <Route path="/admin/users" element={<UsersPage />} />
+          <Route path="/admin/roles" element={<RolesPage />} />
           <Route path="/admin/quizzes" element={<QuizzesPage />} />
           <Route path="/admin/questions" element={<QuestionsPage />} />
           <Route path="/admin/schedule" element={<QuizSchedulePage />} />

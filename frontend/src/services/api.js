@@ -32,10 +32,10 @@ api.interceptors.response.use(
   (error) => {
     if (error.response && (error.response.status === 401 || error.response.status === 403)) {
       const isLoginRoute = window.location.pathname.includes('/login');
-      if (!isLoginRoute && error.response.data?.message?.includes('disabled')) {
+      if (!isLoginRoute) {
         localStorage.removeItem('token');
         localStorage.removeItem('user');
-        window.location.href = '/login?msg=disabled';
+        window.location.href = '/login';
       }
     }
     return Promise.reject(error);

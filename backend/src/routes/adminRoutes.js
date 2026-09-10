@@ -17,4 +17,11 @@ router.get('/audit-logs', AdminController.getAuditLogs);
 router.post('/sync-db', AdminController.syncDatabase);
 router.get('/sync-db', AdminController.syncDatabase);
 
+// Staff & User Management
+router.get('/users', AdminController.getUsers);
+router.post('/users', AdminController.createUser);
+router.put('/users/:id', AdminController.updateUser);
+router.delete('/users/:id', AdminController.deleteUser);
+router.get('/roles', AdminController.getRoles);
+
 module.exports = router;

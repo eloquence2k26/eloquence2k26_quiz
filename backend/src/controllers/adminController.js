@@ -146,44 +146,40 @@ class AdminController {
       const questions = db.get('questions') || [];
       const eventMap = new Map();
 
-      // Seed existing event records
-      events.forEach((e) => {
-        if (e.title) {
-          eventMap.set(e.title.toLowerCase(), {
-            id: e.id,
-            title: e.title,
-            code: e.code || 'ELQ26',
-            description: e.description || '',
-            is_active: e.is_active !== false,
-            created_at: e.created_at
-          });
-        }
-      });
-
-      // Gather distinct events from quizzes as well
-      quizzes.forEach((q) => {
-        const title = q.event_name || q.title;
-        if (title && !eventMap.has(title.toLowerCase())) {
-          eventMap.set(title.toLowerCase(), {
-            id: q.event_id || q.id,
-            title,
-            code: q.event_code || 'ELQ26',
-            description: q.description || '',
-            is_active: true,
-            created_at: q.created_at
-          });
-        }
-      });
-
-      // If empty, supply default Eloquence 2026
-      if (eventMap.size === 0) {
-        eventMap.set('eloquence 2026', {
-          id: 'c0000000-0000-0000-0000-000000000001',
-          title: 'Eloquence 2026',
-          code: 'ELQ26',
-          description: 'Official National Symposium Technical MCQ Championship',
-          is_active: true,
-          created_at: new Date().toISOString()
+      // If events exist in the database, use events table as the source of truth
+      if (events.length > 0) {
+        events.forEach((e) => {
+          if (e.title && e.title.trim()) {
+            const key = e.title.trim().toLowerCase();
+            if (!eventMap.has(key)) {
+              eventMap.set(key, {
+                id: e.id,
+                title: e.title.trim(),
+                code: e.code || `EVT-${e.title.trim().slice(0, 4).toUpperCase()}`,
+                description: e.description || '',
+                is_active: e.is_active !== false,
+                created_at: e.created_at || new Date().toISOString()
+              });
+            }
+          }
+        });
+      } else {
+        // Only if events table is completely empty, derive distinct events from existing quizzes
+        quizzes.forEach((q) => {
+          const title = q.event_name || q.title;
+          if (title && title.trim()) {
+            const key = title.trim().toLowerCase();
+            if (!eventMap.has(key)) {
+              eventMap.set(key, {
+                id: q.event_id || q.id,
+                title: title.trim(),
+                code: q.event_code || 'ELQ26',
+                description: q.description || '',
+                is_active: true,
+                created_at: q.created_at || new Date().toISOString()
+              });
+            }
+          }
         });
       }
 
@@ -417,6 +413,292 @@ class AdminController {
         table_stats: tableStats,
         timestamp: new Date().toISOString()
       }, `All ${allTables.length} Supabase database tables successfully synchronized (${totalRecords} live records).`);
+    } catch (err) {
+      return error(res, err.message, 500);
+    }
+  }
+
+  /**
+   * Get all Admin & Staff Users
+   */
+  static async getUsers(req, res) {
+    try {
+      const users = db.get('users') || [];
+      const profiles = db.get('profiles') || [];
+      const admins = db.get('admins') || [];
+
+      // Filter to staff & admin users (exclude or include with tag)
+      const staffUsers = users
+        .filter((u) => u.role !== 'PARTICIPANT' || u.email.toLowerCase().includes('admin'))
+        .map((u) => {
+          const profile = profiles.find((p) => p.id === u.id) || {};
+          const admin = admins.find((a) => a.id === u.id) || {};
+          return {
+            id: u.id,
+            email: u.email,
+            role: u.role || 'ADMIN',
+            admin_level: admin.admin_level || 'ADMIN',
+            full_name: profile.full_name || admin.full_name || u.email.split('@')[0],
+            mobile: profile.mobile || '',
+            is_active: u.is_active !== false,
+            created_at: u.created_at || new Date().toISOString()
+          };
+        });
+
+      return success(res, staffUsers);
+    } catch (err) {
+      return error(res, err.message, 500);
+    }
+  }
+
+  /**
+   * Create a new Admin / Staff User
+   */
+  static async createUser(req, res) {
+    try {
+      const { email, password, full_name, role, admin_level, mobile } = req.body;
+
+      if (!email || !email.trim()) {
+        return error(res, 'Email / Username is required', 400);
+      }
+      if (!password || !password.trim()) {
+        return error(res, 'Password is required', 400);
+      }
+
+      const cleanEmail = email.trim().toLowerCase();
+      const existing = db.find('users', (u) => u.email.toLowerCase() === cleanEmail);
+      if (existing) {
+        return error(res, `A user with email "${cleanEmail}" already exists.`, 409);
+      }
+
+      const selectedRole = (admin_level || role || 'ADMIN').toUpperCase();
+      const bcrypt = require('bcryptjs');
+      const password_hash = await bcrypt.hash(password.trim(), 10);
+
+      const newUser = db.insert('users', {
+        email: cleanEmail,
+        password_hash,
+        role: selectedRole,
+        is_active: true
+      });
+
+      db.insert('profiles', {
+        id: newUser.id,
+        full_name: full_name ? full_name.trim() : cleanEmail.split('@')[0],
+        mobile: mobile ? mobile.trim() : ''
+      });
+
+      db.insert('admins', {
+        id: newUser.id,
+        full_name: full_name ? full_name.trim() : cleanEmail.split('@')[0],
+        email: cleanEmail,
+        admin_level: selectedRole
+      });
+
+      AuditService.log(req.user ? req.user.id : null, 'CREATE_ADMIN_USER', 'USER', newUser.id, {
+        email: cleanEmail,
+        role: selectedRole,
+        admin_level: selectedRole
+      });
+
+      return success(res, {
+        id: newUser.id,
+        email: newUser.email,
+        role: selectedRole,
+        admin_level: selectedRole,
+        full_name: full_name || cleanEmail.split('@')[0],
+        is_active: true
+      }, 'Admin/Staff user created successfully', 201);
+    } catch (err) {
+      return error(res, err.message, 500);
+    }
+  }
+
+  /**
+   * Update an Admin / Staff User
+   */
+  static async updateUser(req, res) {
+    try {
+      const { id } = req.params;
+      const { email, password, full_name, role, admin_level, is_active, mobile } = req.body;
+
+      const user = db.find('users', (u) => u.id === id);
+      if (!user) return error(res, 'User not found', 404);
+
+      const selectedRole = (admin_level || role || user.role || 'ADMIN').toUpperCase();
+      const updates = {
+        role: selectedRole
+      };
+
+      if (email && email.trim()) updates.email = email.trim().toLowerCase();
+      if (is_active !== undefined) updates.is_active = Boolean(is_active);
+
+      if (password && password.trim()) {
+        const bcrypt = require('bcryptjs');
+        updates.password_hash = await bcrypt.hash(password.trim(), 10);
+      }
+
+      db.update('users', (u) => u.id === id, updates);
+
+      // Update Profile
+      const existingProfile = db.find('profiles', (p) => p.id === id);
+      const profileUpdates = {
+        ...(full_name !== undefined && { full_name: full_name.trim() }),
+        ...(mobile !== undefined && { mobile: mobile ? mobile.trim() : '' })
+      };
+      if (existingProfile) {
+        db.update('profiles', (p) => p.id === id, profileUpdates);
+      } else {
+        db.insert('profiles', { id, full_name: full_name || user.email.split('@')[0], mobile: mobile || '' });
+      }
+
+      // Update Admins table
+      const existingAdmin = db.find('admins', (a) => a.id === id);
+      const adminUpdates = {
+        admin_level: selectedRole,
+        ...(full_name !== undefined && { full_name: full_name.trim() }),
+        ...(updates.email && { email: updates.email })
+      };
+      if (existingAdmin) {
+        db.update('admins', (a) => a.id === id, adminUpdates);
+      } else {
+        db.insert('admins', {
+          id,
+          full_name: full_name || user.email.split('@')[0],
+          email: updates.email || user.email,
+          admin_level: selectedRole
+        });
+      }
+
+      AuditService.log(req.user ? req.user.id : null, 'UPDATE_ADMIN_USER', 'USER', id, {
+        email: updates.email || user.email,
+        role: selectedRole,
+        admin_level: selectedRole
+      });
+
+      return success(res, {
+        id,
+        email: updates.email || user.email,
+        role: selectedRole,
+        admin_level: selectedRole,
+        is_active: updates.is_active !== undefined ? updates.is_active : user.is_active
+      }, 'User updated successfully');
+    } catch (err) {
+      return error(res, err.message, 500);
+    }
+  }
+
+  /**
+   * Delete an Admin / Staff User
+   */
+  static async deleteUser(req, res) {
+    try {
+      const { id } = req.params;
+      const user = db.find('users', (u) => u.id === id);
+      if (!user) return error(res, 'User not found', 404);
+
+      if (user.email.toLowerCase() === 'admin@eloquence.com') {
+        return error(res, 'Root administrator account cannot be deleted.', 403);
+      }
+
+      db.remove('users', (u) => u.id === id);
+      db.remove('profiles', (p) => p.id === id);
+      db.remove('admins', (a) => a.id === id);
+
+      AuditService.log(req.user ? req.user.id : null, 'DELETE_ADMIN_USER', 'USER', id, { email: user.email });
+
+      return success(res, {}, 'User account removed successfully');
+    } catch (err) {
+      return error(res, err.message, 500);
+    }
+  }
+
+  /**
+   * Get Roles & Permissions Matrix
+   */
+  static async getRoles(req, res) {
+    try {
+      const roles = [
+        {
+          id: 'role-super-admin',
+          name: 'SUPER_ADMIN',
+          title: 'Super Administrator / Director',
+          description: 'Full unconstrained system authority over examinations, questions, scholars, proctoring, and server credentials.',
+          users_count: (db.get('admins') || []).filter((a) => a.admin_level === 'SUPER_ADMIN').length || 1,
+          permissions: [
+            'All Privileges',
+            'User & Role Management',
+            'Proctor Zero-Tolerance Overrides',
+            'Full Database Synchronization',
+            'Exam Attempt Restarts',
+            'Result Publishing & Cutoffs'
+          ],
+          color: 'from-amber-600 to-orange-600',
+          badge: 'Level 1 - Core'
+        },
+        {
+          id: 'role-admin',
+          name: 'ADMIN',
+          title: 'Symposium Admin',
+          description: 'Manages quiz events, question pools, participant registrations, schedule windows, and leaderboards.',
+          users_count: (db.get('users') || []).filter((u) => u.role === 'ADMIN').length || 1,
+          permissions: [
+            'Event & Quiz Configuration',
+            'Question Bank Creation',
+            'Candidate Registration & Import',
+            'Live Proctoring & Monitoring',
+            'Results Export & Analytics'
+          ],
+          color: 'from-brand-600 to-indigo-600',
+          badge: 'Level 2 - General'
+        },
+        {
+          id: 'role-coordinator',
+          name: 'COORDINATOR',
+          title: 'Event Coordinator',
+          description: 'Department coordinator responsible for event-specific quiz questions, candidate verification, and preliminary grading.',
+          users_count: 0,
+          permissions: [
+            'Question Bank Authoring',
+            'Event Roster Viewing',
+            'Live Exam Monitoring',
+            'Candidate Verification'
+          ],
+          color: 'from-blue-600 to-cyan-600',
+          badge: 'Level 3 - Event'
+        },
+        {
+          id: 'role-proctor',
+          name: 'PROCTOR',
+          title: 'Exam Proctor / Invigilator',
+          description: 'Real-time arena monitor tracking security violations, browser focus loss, and mobile gestures.',
+          users_count: 0,
+          permissions: [
+            'Live Examination Monitoring',
+            'Security Violations Feed',
+            'Violation Warning Issuance',
+            'Attempt Manual Termination'
+          ],
+          color: 'from-emerald-600 to-teal-600',
+          badge: 'Level 4 - Proctor'
+        },
+        {
+          id: 'role-volunteer',
+          name: 'VOLUNTEER',
+          title: 'Desk Volunteer',
+          description: 'Registration desk staff assisting with participant onboarding, credential lookup, and lab seat allocation.',
+          users_count: 0,
+          permissions: [
+            'Candidate Lookup',
+            'Credential Quick-Fill',
+            'Registration Verification'
+          ],
+          color: 'from-purple-600 to-pink-600',
+          badge: 'Level 5 - Support'
+        }
+      ];
+
+      return success(res, roles);
     } catch (err) {
       return error(res, err.message, 500);
     }

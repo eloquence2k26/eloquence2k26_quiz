@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { Mail, Lock, UserCheck, Shield, ArrowRight, AlertCircle, Sparkles } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
@@ -14,9 +14,14 @@ export default function LoginPage() {
   const [identifier, setIdentifier] = useState(''); // Email or Participant ID
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
-  const [errorMessage, setErrorMessage] = useState(
-    searchParams.get('msg') === 'disabled' ? 'Your account has been disabled. Please contact symposium desk.' : ''
-  );
+  const [errorMessage, setErrorMessage] = useState('');
+
+  useEffect(() => {
+    // Clear any residual error flags from browser URL history
+    if (searchParams.has('msg')) {
+      window.history.replaceState({}, document.title, window.location.pathname);
+    }
+  }, [searchParams]);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -26,13 +31,17 @@ export default function LoginPage() {
     try {
       const payload = {
         password,
-        ...(identifier.includes('@') ? { email: identifier } : { participant_id: identifier })
+        ...(loginType === 'ADMIN'
+          ? { username: identifier, email: identifier }
+          : identifier.includes('@')
+          ? { email: identifier }
+          : { participant_id: identifier })
       };
 
       const user = await login(payload);
       toast.success(`Welcome back, ${user.full_name}!`);
 
-      if (user.role === 'ADMIN') {
+      if (user.role === 'ADMIN' || user.role === 'SUPER_ADMIN' || user.role === 'COORDINATOR' || user.role === 'PROCTOR' || user.role === 'VOLUNTEER') {
         navigate('/admin/dashboard');
       } else {
         navigate('/participant/dashboard');
@@ -49,7 +58,7 @@ export default function LoginPage() {
   const handleQuickFill = (role) => {
     if (role === 'ADMIN') {
       setLoginType('ADMIN');
-      setIdentifier('admin@eloquence.com');
+      setIdentifier('admin');
       setPassword('admin123');
     } else {
       setLoginType('PARTICIPANT');
@@ -106,18 +115,18 @@ export default function LoginPage() {
       <form onSubmit={handleSubmit} className="space-y-4">
         <div>
           <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 uppercase mb-1">
-            {loginType === 'ADMIN' ? 'Admin Email Address' : 'Email or Participant ID'}
+            {loginType === 'ADMIN' ? 'Admin Username or Email' : 'Email or Participant ID'}
           </label>
           <div className="relative">
             <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-slate-400">
-              <Mail className="w-4 h-4" />
+              {loginType === 'ADMIN' ? <Shield className="w-4 h-4" /> : <Mail className="w-4 h-4" />}
             </div>
             <input
               type="text"
               required
               value={identifier}
               onChange={(e) => setIdentifier(e.target.value)}
-              placeholder={loginType === 'ADMIN' ? 'admin@eloquence.com' : 'e.g. alex.chen@university.edu or ELQ-2026-001'}
+              placeholder={loginType === 'ADMIN' ? 'e.g. admin or admin@eloquence.com' : 'e.g. alex.chen@university.edu or ELQ-2026-001'}
               className="w-full pl-10 pr-3.5 py-2.5 rounded-2xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800/80 text-xs text-slate-900 dark:text-white placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-brand-500/20"
             />
           </div>
@@ -166,34 +175,10 @@ export default function LoginPage() {
         </button>
       </form>
 
-      {/* Demo Credentials Quick Fill Bar */}
-      <div className="p-3.5 rounded-2xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700 space-y-2">
-        <p className="text-[11px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider text-center">
-          Quick Demo Credentials
-        </p>
-        <div className="flex gap-2">
-          <button
-            type="button"
-            onClick={() => {
-              setLoginType('ADMIN');
-              setIdentifier('admin@eloquence.com');
-              setPassword('admin123');
-            }}
-            className="flex-1 py-1.5 px-3 rounded-xl bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-[11px] font-bold text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700/60 transition-colors shadow-sm"
-          >
-            Admin Demo
-          </button>
-          <button
-            type="button"
-            onClick={() => {
-              setLoginType('PARTICIPANT');
-              setIdentifier('alex.chen@university.edu');
-              setPassword('password123');
-            }}
-            className="flex-1 py-1.5 px-3 rounded-xl bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-[11px] font-bold text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700/60 transition-colors shadow-sm"
-          >
-            Participant Demo
-          </button>
+      {/* Quick Demo Fill Buttons */}
+      <div className="pt-2 border-t border-slate-200 dark:border-slate-800">
+        
+        <div className="grid grid-cols-2 gap-2">
         </div>
       </div>
     </div>

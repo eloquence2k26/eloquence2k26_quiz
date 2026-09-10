@@ -15,8 +15,8 @@ export default function ProtectedRoute({ allowedRoles = [] }) {
   }
 
   if (allowedRoles.length > 0 && !allowedRoles.includes(user.role)) {
-    // If Admin trying to access Participant page -> go to Admin Dashboard
-    if (user.role === 'ADMIN') {
+    // If Admin/Staff trying to access Participant page -> go to Admin Dashboard
+    if (user.role !== 'PARTICIPANT') {
       return <Navigate to="/admin/dashboard" replace />;
     }
     // If Participant trying to access Admin page -> go to Participant Dashboard

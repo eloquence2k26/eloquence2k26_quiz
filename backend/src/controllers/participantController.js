@@ -327,8 +327,11 @@ class ParticipantController {
       if (assign_round1 || req.body.assign_quiz) {
         const matchingQuiz = db.find(
           'quizzes',
-          (q) => q.event_name === eventTarget || q.title === eventTarget || q.round_number === 1
-        );
+          (q) =>
+            (q.event_name && q.event_name.trim().toLowerCase() === eventTarget.toLowerCase()) ||
+            (q.title && q.title.trim().toLowerCase() === eventTarget.toLowerCase())
+        ) || db.find('quizzes', (q) => q.round_number === 1);
+
         if (matchingQuiz) {
           const existingAssign = db.find(
             'quiz_assignments',
@@ -428,29 +431,51 @@ class ParticipantController {
           mobile
         });
 
+        const eventTarget = (
+          item.event ||
+          item.event_name ||
+          req.body.event ||
+          req.body.event_name ||
+          'Technical Quiz'
+        ).toString().trim();
+
         const newParticipant = db.insert('participants', {
           id: newUser.id,
           participant_id: participantId,
           full_name: fullName,
           email,
           mobile,
-          college: (item.college || item.institution || 'Engineering College').toString().trim(),
-          department: (item.department || item.dept || item.branch || 'Computer Science & Engineering').toString().trim(),
-          year: (item.year || '3rd Year').toString().trim(),
-          event: 'Technical Quiz',
+          college: (item.college || item.institution || req.body.college || 'Engineering College').toString().trim(),
+          department: (item.department || item.dept || item.branch || req.body.department || 'Computer Science & Engineering').toString().trim(),
+          year: (item.year || req.body.year || '3rd Year').toString().trim(),
+          event: eventTarget,
           registration_number: (item.registration_number || item.reg_no || `REG-2026-${String(currentCount).padStart(3, '0')}`).toString().trim(),
           round_1_selected: false,
           round_2_selected: false,
           is_disabled: false
         });
 
-        if (round1Quiz) {
-          db.insert('quiz_assignments', {
-            quiz_id: round1Quiz.id,
-            participant_id: newParticipant.id,
-            assigned_by: req.user.id,
-            status: 'ASSIGNED'
-          });
+        // Match event quiz or fallback to round 1 quiz
+        const targetQuiz = db.find(
+          'quizzes',
+          (q) =>
+            (q.event_name && q.event_name.trim().toLowerCase() === eventTarget.toLowerCase()) ||
+            (q.title && q.title.trim().toLowerCase() === eventTarget.toLowerCase())
+        ) || round1Quiz;
+
+        if (targetQuiz) {
+          const existingAssign = db.find(
+            'quiz_assignments',
+            (qa) => qa.quiz_id === targetQuiz.id && qa.participant_id === newParticipant.id
+          );
+          if (!existingAssign) {
+            db.insert('quiz_assignments', {
+              quiz_id: targetQuiz.id,
+              participant_id: newParticipant.id,
+              assigned_by: req.user.id,
+              status: 'ASSIGNED'
+            });
+          }
         }
 
         imported.push({

@@ -65,6 +65,17 @@ export default function ParticipantsPage() {
   const [selectedQuizId, setSelectedQuizId] = useState('');
   const [selectedParticipantIds, setSelectedParticipantIds] = useState([]);
   const [assignAll, setAssignAll] = useState(false);
+  const [assignSearchTerm, setAssignSearchTerm] = useState('');
+
+  const handleOpenAssignForSingleParticipant = (p) => {
+    setSelectedParticipantIds([p.id]);
+    setAssignAll(false);
+    setAssignSearchTerm('');
+    if (quizzes.length > 0 && !selectedQuizId) {
+      setSelectedQuizId(quizzes[0].id);
+    }
+    setShowAssignModal(true);
+  };
 
   useEffect(() => {
     fetchData();
@@ -221,12 +232,10 @@ export default function ParticipantsPage() {
   const disabledCount = participants.filter((p) => p.is_disabled).length;
   const activeCount = totalCount - disabledCount;
 
-  // Build unique event options combining event state & participant event fields
-  const eventOptionsSet = new Set(events.filter(Boolean));
-  participants.forEach((p) => {
-    if (p.event) eventOptionsSet.add(p.event);
-  });
-  const eventOptions = Array.from(eventOptionsSet);
+  // Build unique event options strictly sourced from Event Management (events table)
+  const eventOptions = events && events.length > 0
+    ? events.filter(Boolean)
+    : Array.from(new Set(participants.map((p) => p.event).filter(Boolean)));
 
   return (
     <div className="space-y-6">
@@ -542,9 +551,19 @@ export default function ParticipantsPage() {
                       </span>
                     </td>
 
-                    {/* Actions: Edit, Status, Delete */}
+                    {/* Actions: Assign, Edit, Status, Delete */}
                     <td className="py-3 px-4 text-right">
                       <div className="flex items-center justify-end gap-1.5">
+                        {/* Assign to Quiz Button */}
+                        <button
+                          type="button"
+                          onClick={() => handleOpenAssignForSingleParticipant(p)}
+                          className="p-1.5 rounded-lg border border-purple-200 dark:border-purple-900/60 text-purple-600 dark:text-purple-400 hover:bg-purple-50 dark:hover:bg-purple-950/40 transition-all"
+                          title="Assign to Exam Quiz"
+                        >
+                          <BookOpen className="w-3.5 h-3.5" />
+                        </button>
+
                         {/* Edit Button */}
                         <button
                           type="button"
@@ -600,6 +619,7 @@ export default function ParticipantsPage() {
         eventsList={eventOptions}
         initialEvent={filterEvent !== 'ALL' ? filterEvent : (eventOptions[0] || 'Technical Quiz')}
         totalParticipants={participants.length}
+        existingParticipants={participants}
       />
 
       {/* Multi-Format Document Import Modal */}
@@ -619,6 +639,7 @@ export default function ParticipantsPage() {
           setEditingParticipant(null);
         }}
         participant={editingParticipant}
+        eventsList={eventOptions}
         onSave={handleSaveParticipant}
       />
 
@@ -637,8 +658,20 @@ export default function ParticipantsPage() {
       <Modal
         isOpen={showAssignModal}
         onClose={() => setShowAssignModal(false)}
-        title="Assign Participants to Quiz"
-        maxWidth="max-w-xl"
+        title={
+          <div className="flex items-center gap-2">
+            <BookOpen className="w-5 h-5 text-brand-600" />
+            <div>
+              <h2 className="text-base font-bold text-slate-900 dark:text-white">
+                Assign Participants to Examination Quiz
+              </h2>
+              <p className="text-xs text-slate-500 dark:text-slate-400 font-normal">
+                Select single candidate or batch assign scholars to a specific exam
+              </p>
+            </div>
+          </div>
+        }
+        maxWidth="max-w-2xl"
       >
         <form onSubmit={handleAssignSubmit} className="space-y-4">
           <div>
@@ -648,11 +681,11 @@ export default function ParticipantsPage() {
             <select
               value={selectedQuizId}
               onChange={(e) => setSelectedQuizId(e.target.value)}
-              className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-xs font-bold text-slate-900 dark:text-white"
+              className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-xs font-bold text-slate-900 dark:text-white cursor-pointer"
             >
               {quizzes.map((q) => (
                 <option key={q.id} value={q.id}>
-                  Round {q.round_number}: {q.title} ({q.status})
+                  Round {q.round_number}: {q.title} ({q.status}) — {q.event_name || 'Event'}
                 </option>
               ))}
             </select>
@@ -661,58 +694,114 @@ export default function ParticipantsPage() {
           <div className="space-y-2">
             <div className="flex items-center justify-between">
               <label className="text-xs font-bold text-slate-700 dark:text-slate-300 uppercase">
-                Select Participants ({selectedParticipantIds.length} chosen)
+                Candidates Roster ({assignAll ? `All ${participants.length}` : `${selectedParticipantIds.length} chosen`})
               </label>
-              <label className="flex items-center gap-1.5 text-xs font-bold text-brand-600 cursor-pointer">
+              <label className="flex items-center gap-1.5 text-xs font-bold text-brand-600 cursor-pointer bg-brand-50 dark:bg-brand-950/60 px-2.5 py-1 rounded-lg border border-brand-200 dark:border-brand-800">
                 <input
                   type="checkbox"
                   checked={assignAll}
-                  onChange={(e) => setAssignAll(e.target.checked)}
-                  className="rounded text-brand-600"
+                  onChange={(e) => {
+                    setAssignAll(e.target.checked);
+                    if (e.target.checked) {
+                      setSelectedParticipantIds(participants.map((p) => p.id));
+                    }
+                  }}
+                  className="rounded text-brand-600 h-3.5 w-3.5"
                 />
-                <span>Assign All {participants.length}</span>
+                <span>Select All ({participants.length})</span>
               </label>
             </div>
 
-            {!assignAll && (
-              <div className="max-h-48 overflow-y-auto space-y-1.5 border border-slate-200 dark:border-slate-700 rounded-xl p-2 bg-slate-50 dark:bg-slate-800/40">
-                {participants.map((p) => {
-                  const isChecked = selectedParticipantIds.includes(p.id);
+            {/* Candidate search filter inside modal */}
+            <div className="relative">
+              <Search className="w-3.5 h-3.5 text-slate-400 absolute left-3 top-2.5" />
+              <input
+                type="text"
+                value={assignSearchTerm}
+                onChange={(e) => setAssignSearchTerm(e.target.value)}
+                placeholder="Search candidate by name, ID, registration number, or college..."
+                className="w-full pl-8 pr-3 py-1.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/60 text-xs text-slate-900 dark:text-white placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-brand-500/20"
+              />
+            </div>
+
+            {/* Candidate list with checkboxes */}
+            <div className="max-h-60 overflow-y-auto space-y-1.5 border border-slate-200 dark:border-slate-700 rounded-xl p-2 bg-slate-50 dark:bg-slate-800/40">
+              {participants
+                .filter((p) => {
+                  if (!assignSearchTerm.trim()) return true;
+                  const term = assignSearchTerm.toLowerCase().trim();
+                  return (
+                    p.full_name?.toLowerCase().includes(term) ||
+                    p.participant_id?.toLowerCase().includes(term) ||
+                    p.registration_number?.toLowerCase().includes(term) ||
+                    p.college?.toLowerCase().includes(term) ||
+                    p.event?.toLowerCase().includes(term)
+                  );
+                })
+                .map((p) => {
+                  const isChecked = assignAll || selectedParticipantIds.includes(p.id);
                   return (
                     <div
                       key={p.id}
-                      onClick={() => toggleSelectParticipant(p.id)}
-                      className={`flex items-center justify-between p-2 rounded-lg cursor-pointer text-xs ${
+                      onClick={() => {
+                        if (assignAll) setAssignAll(false);
+                        toggleSelectParticipant(p.id);
+                      }}
+                      className={`flex items-center justify-between p-2 rounded-xl cursor-pointer text-xs transition-all border ${
                         isChecked
-                          ? 'bg-brand-50 dark:bg-brand-950/60 text-brand-900 dark:text-brand-300 font-bold'
-                          : 'hover:bg-white dark:hover:bg-slate-800'
+                          ? 'bg-brand-50/80 dark:bg-brand-950/80 border-brand-300 dark:border-brand-800 text-brand-950 dark:text-brand-200'
+                          : 'bg-white dark:bg-slate-800/60 border-slate-200/80 dark:border-slate-700/60 hover:border-slate-300'
                       }`}
                     >
-                      <span>
-                        {p.full_name} ({p.participant_id})
-                      </span>
-                      <span className="text-[10px] text-slate-400">{p.college}</span>
+                      <div className="flex items-center gap-2.5">
+                        <input
+                          type="checkbox"
+                          checked={isChecked}
+                          onChange={() => {}}
+                          className="rounded text-brand-600 h-3.5 w-3.5 pointer-events-none"
+                        />
+                        <div>
+                          <p className="font-bold text-slate-900 dark:text-white">
+                            {p.full_name}{' '}
+                            <span className="font-mono font-normal text-[10px] text-slate-400">
+                              ({p.participant_id} {p.registration_number ? `• ${p.registration_number}` : ''})
+                            </span>
+                          </p>
+                          <p className="text-[10px] text-slate-500">{p.college} • {p.department}</p>
+                        </div>
+                      </div>
+                      <div className="text-right">
+                        <span className="inline-block px-2 py-0.5 rounded-md text-[10px] font-bold bg-slate-100 dark:bg-slate-700 text-slate-700 dark:text-slate-300">
+                          {p.event || 'Technical Quiz'}
+                        </span>
+                      </div>
                     </div>
                   );
                 })}
-              </div>
-            )}
+            </div>
           </div>
 
-          <div className="flex items-center justify-end gap-3 pt-3 border-t border-slate-100 dark:border-slate-800">
-            <button
-              type="button"
-              onClick={() => setShowAssignModal(false)}
-              className="px-4 py-2 rounded-xl text-xs font-semibold text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800"
-            >
-              Cancel
-            </button>
-            <button
-              type="submit"
-              className="px-5 py-2 rounded-xl text-xs font-bold text-white bg-brand-600 hover:bg-brand-700 shadow-md shadow-brand-500/20"
-            >
-              Confirm Assignment
-            </button>
+          <div className="flex items-center justify-between pt-3 border-t border-slate-100 dark:border-slate-800">
+            <span className="text-xs font-bold text-slate-500">
+              {assignAll
+                ? `All ${participants.length} candidates selected`
+                : `${selectedParticipantIds.length} candidate(s) selected`}
+            </span>
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => setShowAssignModal(false)}
+                className="px-4 py-2 rounded-xl text-xs font-semibold text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800"
+              >
+                Cancel
+              </button>
+              <button
+                type="submit"
+                className="px-5 py-2 rounded-xl text-xs font-bold text-white bg-brand-600 hover:bg-brand-700 shadow-md shadow-brand-500/20 transition-all"
+              >
+                Confirm Assignment ({assignAll ? participants.length : selectedParticipantIds.length})
+              </button>
+            </div>
           </div>
         </form>
       </Modal>

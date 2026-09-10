@@ -18,13 +18,16 @@ import {
 } from 'lucide-react';
 import Modal from '../common/Modal';
 import Badge from '../common/Badge';
+import { adminService } from '../../services/adminService';
 
 export default function EditParticipantModal({
   isOpen,
   onClose,
   participant,
-  onSave
+  onSave,
+  eventsList = []
 }) {
+  const [eventsOptions, setEventsOptions] = useState([]);
   const [formData, setFormData] = useState({
     full_name: '',
     email: '',
@@ -43,6 +46,21 @@ export default function EditParticipantModal({
   const [showPassword, setShowPassword] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
+
+  useEffect(() => {
+    if (eventsList && eventsList.length > 0) {
+      setEventsOptions(eventsList.map((e) => (typeof e === 'string' ? e : e.title || e.name || '')));
+    } else if (isOpen) {
+      adminService
+        .getEvents()
+        .then((res) => {
+          if (res && res.success && res.data && res.data.length > 0) {
+            setEventsOptions(res.data.map((e) => (typeof e === 'string' ? e : e.title || e.name || '')));
+          }
+        })
+        .catch(() => {});
+    }
+  }, [eventsList, isOpen]);
 
   useEffect(() => {
     if (participant) {
@@ -248,13 +266,30 @@ export default function EditParticipantModal({
               <Sparkles className="w-3.5 h-3.5 text-brand-600" />
               <span>Event Track</span>
             </label>
-            <input
-              type="text"
-              value={formData.event}
-              onChange={(e) => setFormData({ ...formData, event: e.target.value })}
-              placeholder="Technical Quiz"
-              className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-800/80 text-xs font-semibold text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-brand-500/20 focus:border-brand-500 transition-all"
-            />
+            {eventsOptions.length > 0 ? (
+              <select
+                value={formData.event}
+                onChange={(e) => setFormData({ ...formData, event: e.target.value })}
+                className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-800/80 text-xs font-bold text-brand-600 dark:text-brand-400 focus:outline-none focus:ring-2 focus:ring-brand-500/20 focus:border-brand-500 transition-all cursor-pointer"
+              >
+                {eventsOptions.map((ev, idx) => (
+                  <option key={idx} value={ev}>
+                    {ev}
+                  </option>
+                ))}
+                {!eventsOptions.includes(formData.event) && formData.event && (
+                  <option value={formData.event}>{formData.event}</option>
+                )}
+              </select>
+            ) : (
+              <input
+                type="text"
+                value={formData.event}
+                onChange={(e) => setFormData({ ...formData, event: e.target.value })}
+                placeholder="Technical Quiz"
+                className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-800/80 text-xs font-semibold text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-brand-500/20 focus:border-brand-500 transition-all"
+              />
+            )}
           </div>
         </div>
 

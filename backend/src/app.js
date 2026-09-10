@@ -47,6 +47,7 @@ app.use('/api/quizzes', quizRoutes);
 app.use('/api/questions', questionRoutes);
 app.use('/api/participants', participantRoutes);
 app.use('/api/exams', examRoutes);
+app.use('/api/exam', examRoutes);
 app.use('/api/results', resultRoutes);
 app.use('/api/rounds', roundRoutes);
 app.use('/api/security', securityRoutes);

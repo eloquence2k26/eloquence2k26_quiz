@@ -25,7 +25,11 @@ import {
   FolderKanban,
   ExternalLink,
   Database,
-  RefreshCw
+  RefreshCw,
+  UserCog,
+  Shield,
+  ShieldCheck,
+  KeyRound
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { adminService } from '../services/adminService';
@@ -54,6 +58,12 @@ export default function AdminLayout() {
     }
   };
 
+  // User Management Sub-items definition
+  const userManagerItems = [
+    { label: 'Users', icon: Users, path: '/admin/users', desc: 'Admin & Staff accounts, logins' },
+    { label: 'Roles', icon: ShieldCheck, path: '/admin/roles', desc: 'Roles & permissions matrix' }
+  ];
+
   // Event Manager Sub-items definition
   const eventManagerItems = [
     { label: 'Event Management', icon: BookOpen, path: '/admin/quizzes', desc: 'Manage events & quizzes' },
@@ -81,22 +91,23 @@ export default function AdminLayout() {
     { label: 'Settings', icon: Settings, path: '/admin/settings' }
   ];
 
-  // Check if current route is inside Event Manager
+  // Check active accordion states
+  const isUserManagerActive = userManagerItems.some((item) => location.pathname === item.path);
   const isEventManagerActive = eventManagerItems.some((item) => location.pathname === item.path);
 
-  // Sidebar Event Manager Accordion Dropdown State
+  // Accordion Dropdown States
+  const [userManagerOpen, setUserManagerOpen] = useState(true);
   const [eventManagerOpen, setEventManagerOpen] = useState(true);
 
   // Top Navbar Event Manager Dropdown State
   const [topEventMenuOpen, setTopEventMenuOpen] = useState(false);
   const topDropdownRef = useRef(null);
 
-  // Auto-expand Event Manager section when user navigates to any of its subpages
+  // Auto-expand sections on navigation
   useEffect(() => {
-    if (isEventManagerActive) {
-      setEventManagerOpen(true);
-    }
-  }, [location.pathname, isEventManagerActive]);
+    if (isUserManagerActive) setUserManagerOpen(true);
+    if (isEventManagerActive) setEventManagerOpen(true);
+  }, [location.pathname, isUserManagerActive, isEventManagerActive]);
 
   // Click outside listener for top header dropdown
   useEffect(() => {
@@ -178,6 +189,74 @@ export default function AdminLayout() {
                 </Link>
               );
             })}
+          </div>
+
+          {/* User Management Section & Dropdown */}
+          <div className="pt-1">
+            <div className="px-3.5 mb-1.5 flex items-center justify-between">
+              <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">
+                Staff & Roles
+              </span>
+            </div>
+
+            {/* User Management Accordion Dropdown Trigger */}
+            <button
+              type="button"
+              onClick={() => setUserManagerOpen(!userManagerOpen)}
+              className={`w-full flex items-center justify-between px-3.5 py-2.5 rounded-xl text-xs font-bold transition-all duration-150 border ${
+                isUserManagerActive
+                  ? 'bg-purple-50/80 dark:bg-purple-950/40 text-purple-700 dark:text-purple-300 border-purple-200 dark:border-purple-900/60 shadow-sm'
+                  : 'bg-white dark:bg-slate-900/50 text-slate-700 dark:text-slate-200 border-slate-200/80 dark:border-slate-800/80 hover:bg-slate-100 dark:hover:bg-slate-800/60'
+              }`}
+            >
+              <div className="flex items-center gap-2.5">
+                <div className={`w-6 h-6 rounded-lg flex items-center justify-center ${
+                  isUserManagerActive
+                    ? 'bg-purple-600 text-white shadow-sm shadow-purple-500/30'
+                    : 'bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400'
+                }`}>
+                  <UserCog className="w-3.5 h-3.5" />
+                </div>
+                <span className="font-extrabold tracking-tight">User Management</span>
+              </div>
+
+              <div className="flex items-center gap-1.5">
+                <span className="px-1.5 py-0.5 rounded-md text-[10px] font-bold bg-purple-100 dark:bg-purple-950 text-purple-700 dark:text-purple-300">
+                  2
+                </span>
+                <ChevronDown
+                  className={`w-3.5 h-3.5 text-slate-400 transition-transform duration-200 ${
+                    userManagerOpen ? 'rotate-0' : '-rotate-90'
+                  }`}
+                />
+              </div>
+            </button>
+
+            {/* User Management Dropdown Items */}
+            {userManagerOpen && (
+              <div className="mt-1.5 ml-3 pl-3 border-l-2 border-purple-200 dark:border-purple-900/50 space-y-1">
+                {userManagerItems.map((item) => {
+                  const Icon = item.icon;
+                  const isActive = location.pathname === item.path;
+
+                  return (
+                    <Link
+                      key={item.path}
+                      to={item.path}
+                      onClick={() => setSidebarOpen(false)}
+                      className={`flex items-center gap-2.5 px-3 py-2 rounded-xl text-xs font-semibold transition-all duration-150 ${
+                        isActive
+                          ? 'bg-purple-600 text-white font-bold shadow-sm shadow-purple-500/20'
+                          : 'text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800/60 hover:text-slate-900 dark:hover:text-slate-100'
+                      }`}
+                    >
+                      <Icon className={`w-3.5 h-3.5 flex-shrink-0 ${isActive ? 'text-white' : 'text-slate-400'}`} />
+                      <span className="truncate">{item.label}</span>
+                    </Link>
+                  );
+                })}
+              </div>
+            )}
           </div>
 
           {/* Event Manager Section & Dropdown */}
@@ -313,27 +392,58 @@ export default function AdminLayout() {
               <Menu className="w-5 h-5" />
             </button>
 
-            {/* Quick Event Manager Switcher Dropdown in Top Header */}
+            {/* Quick User Management Switcher Dropdown in Top Header */}
             <div className="relative" ref={topDropdownRef}>
               <button
                 type="button"
                 onClick={() => setTopEventMenuOpen(!topEventMenuOpen)}
                 className={`flex items-center gap-2 px-3 py-1.5 rounded-xl text-xs font-bold transition-all border shadow-sm ${
-                  isEventManagerActive
+                  isUserManagerActive
+                    ? 'bg-purple-50 dark:bg-purple-950/60 border-purple-300 dark:border-purple-800 text-purple-700 dark:text-purple-300'
+                    : isEventManagerActive
                     ? 'bg-brand-50 dark:bg-brand-950/60 border-brand-300 dark:border-brand-800 text-brand-700 dark:text-brand-300'
                     : 'bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700/50'
                 }`}
               >
-                <FolderKanban className="w-3.5 h-3.5 text-brand-600 dark:text-brand-400" />
-                <span>Event Manager</span>
+                <UserCog className="w-3.5 h-3.5 text-purple-600 dark:text-purple-400" />
+                <span>Manage Portals</span>
                 <ChevronDown className={`w-3.5 h-3.5 text-slate-400 transition-transform duration-150 ${topEventMenuOpen ? 'rotate-180' : ''}`} />
               </button>
 
               {topEventMenuOpen && (
-                <div className="absolute left-0 mt-2 w-64 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-2xl p-2 z-50 animate-in fade-in slide-in-from-top-2 duration-150">
-                  <div className="px-3 py-1.5 text-[10px] font-extrabold uppercase tracking-wider text-slate-400 flex items-center justify-between">
-                    <span>Event Manager Modules</span>
-                    <span className="px-1.5 py-0.2 rounded text-[9px] bg-brand-100 dark:bg-brand-950 text-brand-600 font-mono">6 Sections</span>
+                <div className="absolute left-0 mt-2 w-72 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-2xl p-2 z-50 animate-in fade-in slide-in-from-top-2 duration-150">
+                  <div className="px-3 py-1 text-[10px] font-extrabold uppercase tracking-wider text-purple-600 dark:text-purple-400 flex items-center justify-between">
+                    <span>User Management</span>
+                    <span className="px-1.5 py-0.2 rounded text-[9px] bg-purple-100 dark:bg-purple-950 font-mono">2 Sections</span>
+                  </div>
+                  <div className="space-y-0.5 mt-1 mb-2">
+                    {userManagerItems.map((item) => {
+                      const Icon = item.icon;
+                      const isActive = location.pathname === item.path;
+                      return (
+                        <Link
+                          key={item.path}
+                          to={item.path}
+                          onClick={() => setTopEventMenuOpen(false)}
+                          className={`flex items-start gap-2.5 px-3 py-2 rounded-xl transition-all ${
+                            isActive
+                              ? 'bg-purple-50 dark:bg-purple-950/70 text-purple-700 dark:text-purple-300 font-bold border border-purple-200 dark:border-purple-900/60'
+                              : 'text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800'
+                          }`}
+                        >
+                          <Icon className={`w-4 h-4 mt-0.5 flex-shrink-0 ${isActive ? 'text-purple-600 dark:text-purple-400' : 'text-slate-400'}`} />
+                          <div>
+                            <p className="text-xs font-bold leading-none">{item.label}</p>
+                            <p className="text-[10px] text-slate-400 mt-0.5 leading-tight">{item.desc}</p>
+                          </div>
+                        </Link>
+                      );
+                    })}
+                  </div>
+
+                  <div className="px-3 py-1 text-[10px] font-extrabold uppercase tracking-wider text-brand-600 dark:text-brand-400 flex items-center justify-between border-t border-slate-100 dark:border-slate-800 pt-2">
+                    <span>Event Manager</span>
+                    <span className="px-1.5 py-0.2 rounded text-[9px] bg-brand-100 dark:bg-brand-950 font-mono">6 Sections</span>
                   </div>
                   <div className="space-y-0.5 mt-1">
                     {eventManagerItems.map((item) => {

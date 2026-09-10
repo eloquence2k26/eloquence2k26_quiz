@@ -11,7 +11,7 @@ CREATE TABLE IF NOT EXISTS public.users (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     email VARCHAR(255) UNIQUE NOT NULL,
     password_hash VARCHAR(255) NOT NULL,
-    role VARCHAR(50) NOT NULL CHECK (role IN ('ADMIN', 'PARTICIPANT')),
+    role VARCHAR(50) NOT NULL DEFAULT 'PARTICIPANT',
     is_active BOOLEAN DEFAULT TRUE,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
@@ -300,7 +300,20 @@ CREATE TABLE IF NOT EXISTS public.audit_logs (
     metadata JSONB DEFAULT '{}'::jsonb
 );
 
--- 18. SYSTEM SETTINGS TABLE
+-- 18. ROLES TABLE (User Management & Role-Based Access Control)
+CREATE TABLE IF NOT EXISTS public.roles (
+    id VARCHAR(100) PRIMARY KEY,
+    name VARCHAR(50) UNIQUE NOT NULL,
+    title VARCHAR(255) NOT NULL,
+    description TEXT,
+    permissions JSONB DEFAULT '[]'::jsonb,
+    badge VARCHAR(50) DEFAULT 'General',
+    color VARCHAR(100) DEFAULT 'from-brand-600 to-indigo-600',
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
+-- 19. SYSTEM SETTINGS TABLE
 CREATE TABLE IF NOT EXISTS public.system_settings (
     key VARCHAR(100) PRIMARY KEY,
     value JSONB NOT NULL,

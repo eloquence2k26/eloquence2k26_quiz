@@ -106,12 +106,10 @@ export default function ExamRestartsPage() {
 
   if (loading) return <Loading text="Loading exam restart manager..." />;
 
-  // Unique events list combining state and attempts
-  const allEventsSet = new Set(events.filter(Boolean));
-  attempts.forEach((a) => {
-    if (a.event_name) allEventsSet.add(a.event_name);
-  });
-  const eventOptions = Array.from(allEventsSet);
+  // Unique events list strictly sourced from Event Management (events table)
+  const eventOptions = events && events.length > 0
+    ? events.filter(Boolean)
+    : Array.from(new Set(attempts.map((a) => a.event_name).filter(Boolean)));
 
   // Filter logic
   let filtered = attempts;
