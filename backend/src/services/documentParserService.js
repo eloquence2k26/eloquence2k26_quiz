@@ -403,67 +403,322 @@ class DocumentParserService {
       .replace(/[\u2013\u2014]/g, '-')
       .replace(/\t/g, '    ');
 
-    // Step 2: Remove PDF page numbers and headers
-    cleanText = cleanText
-      .replace(/(?:^|\n)\s*--\s*\d+\s*(?:of|\/)\s*\d+\s*--\s*(?:\n|$)/gi, '\n')
-      .replace(/(?:^|\n)\s*Page\s+\d+\s*(?:of|\/)\s*\d+\s*(?:\n|$)/gi, '\n')
-      .replace(/(?:^|\n)\s*Page\s+\d+\s*(?:\n|$)/gi, '\n');
-
-    // Step 3: Normalize lone question numbers followed by newline
-    cleanText = cleanText
-      .replace(/(?:^|\n)\s*(\d+[\.\)\:\-]|\bQ\d+[\.\)\:\-]?|\d+)\s*\n(?=[A-Za-z])/gi, '\n$1. ')
-      .replace(/\.\.\s+/g, '. ');
-
-    // Step 4: Extract dedicated Answer Key section at the bottom (if present)
+    // Step 2: Extract dedicated Answer Key section at the bottom (if present)
     const { cleanedText: textWithoutKey, answerKeyMap } = this.extractAnswerKeySection(cleanText);
     cleanText = textWithoutKey;
 
-    // Step 5: Expand inline options across the text so line parsing sees them
-    cleanText = this.expandInlineOptions(cleanText);
+    // Step 3: Split into raw lines
+    const rawLines = cleanText.split('\n').map((l) => l.trim()).filter(Boolean);
 
-    // Step 6: Primary Parser - Segmentation by Question Number / Prefix
-    let questions = this.parseByQuestionSegmentation(cleanText, answerKeyMap, meta);
+    // Step 4: Clean solitary margin numbers, table serial numbers, and page footers
+    const filteredLines = this.cleanSolitaryNumbersAndFooters(rawLines);
 
-    // Step 7: Secondary Parser - Option Group Scanning (if primary found 0 questions)
+    // Step 5: Safely expand inline options across lines without corrupting sentences or answer lines
+    const expandedLines = this.expandInlineOptions(filteredLines);
+
+    // Step 6: Primary Strategy - Sequential State-Machine Parser
+    // Handles unnumbered questions, numbered questions, and multi-line options flawlessly
+    let questions = this.parseMCQsSequential(expandedLines, answerKeyMap, meta);
+
+    // Step 7: Fallback Strategy - Segmentation by Question Number / Prefix
     if (questions.length === 0) {
-      questions = this.parseByOptionGroups(cleanText, answerKeyMap, meta);
+      questions = this.parseByQuestionSegmentation(expandedLines.join('\n'), answerKeyMap, meta);
     }
 
-    // Step 8: Tertiary Parser - Paragraph / Block splitting (fallback)
+    // Step 8: Fallback Strategy - Option Group Scanning
     if (questions.length === 0) {
-      questions = this.parseByParagraphBlocks(cleanText, meta);
+      questions = this.parseByOptionGroups(expandedLines.join('\n'), answerKeyMap, meta);
+    }
+
+    // Step 9: Fallback Strategy - Paragraph / Block splitting
+    if (questions.length === 0) {
+      questions = this.parseByParagraphBlocks(expandedLines.join('\n'), meta);
     }
 
     return questions;
   }
 
   /**
-   * Expand inline options onto new lines
-   * Only expands when options have explicit delimiters:
-   * (A), [A], A), A., A:, A-, Option A:
-   * (1), [1], 1), 1., 1:, 1-
-   * (i), [i], i), i., i:, i-
+   * Filter out page numbers, footer markers, and isolated margin numbers dumped from PDF tables
    */
-  static expandInlineOptions(text) {
-    // 1. Letters B-E with parens, brackets, dots, colons, or dashes
-    let res = text.replace(
-      /([ \t]+)(?=(?:\(?[B-Eb-e]\)|\[[B-Eb-e]\]|[B-Eb-e][\.\:\)-]|(?:Option|Choice)\s*\(?[B-Eb-e]\)?)\s*)/g,
-      '\n'
-    );
+  static cleanSolitaryNumbersAndFooters(rawLines) {
+    const isFooter = (l) =>
+      /^--\s*\d+\s*(?:of|\/)\s*\d+\s*--$/i.test(l) ||
+      /^Page\s+\d+(?:\s*(?:of|\/)\s*\d+)?$/i.test(l) ||
+      /^(?:Technical\s+Quiz|Department\s+of|Eloquence\s*2026?|Semester\s+\d+)\s*$/i.test(l);
+    const isSolitaryNum = (l) => /^\d+[\.\)]?$/.test(l.trim());
+    const isOpt = (l) =>
+      /^[A-D][\.\:\)\-]\s+/i.test(l) ||
+      /^\([A-Da-d1-4]\)/i.test(l) ||
+      /^\[[A-Da-d1-4]\]/i.test(l);
 
-    // 2. Numeric inline options: (2), [2], 2), 2., 2:, 2-
-    res = res.replace(
-      /([ \t]+)(?=(?:\(?[2-4]\)|\[[2-4]\]|[2-4][\.\:\)-])\s+)/g,
-      '\n'
-    );
+    const cleanLines = [];
+    for (let i = 0; i < rawLines.length; i++) {
+      const l = rawLines[i].trim();
+      if (!l) continue;
+      if (isFooter(l)) continue;
 
-    // 3. Roman numerals (ii), (iii), (iv) or ii), iii), iv) or ii., iii., iv.
-    res = res.replace(
-      /([ \t]+)(?=(?:\(?(?:iv|iii|ii)\)|\[(?:iv|iii|ii)\]|(?:iv|iii|ii)[\.\:\)-])\s+)/gi,
-      '\n'
-    );
+      if (isSolitaryNum(l)) {
+        const prev = i > 0 ? rawLines[i - 1].trim() : '';
+        const next = i + 1 < rawLines.length ? rawLines[i + 1].trim() : '';
 
-    return res;
+        // Cluster of margin numbers (1., 2., 3., etc.)
+        if (isSolitaryNum(prev) || isSolitaryNum(next)) {
+          continue;
+        }
+        // Sandwiched between options (e.g. C) False ... 1 ... D) True)
+        if (isOpt(prev) || isOpt(next)) {
+          continue;
+        }
+        // Pure page numbers or solitary numbers at end of text
+        if (!next || /^\d+$/.test(l)) {
+          continue;
+        }
+      }
+      cleanLines.push(l);
+    }
+    return cleanLines;
+  }
+
+  /**
+   * Expand inline options onto new lines safely
+   * Does NOT touch Answer lines and does NOT split on English words like "a function"
+   */
+  static expandInlineOptions(rawInput) {
+    const rawLines = Array.isArray(rawInput)
+      ? rawInput
+      : String(rawInput || '').split('\n');
+
+    const isAnsLine = (l) =>
+      /^\s*(?:Correct\s*(?:Answer|Option)|Right\s*Answer|Answer|Ans|Key|Solution)\s*[:=-]+/i.test(l);
+    // Matches:
+    // (A), [A], (a), [a], (1)-(4), [1]-[4], (i)-(iv)
+    // A), A., A:, A - (Uppercase A-D only)
+    // Option A, Choice A
+    const inlineRegex = /(?<=\S)[ \t]+(?=(?:\([A-Da-d1-4]\)|\[[A-Da-d1-4]\]|[A-D][\.:\)\-]\s+|(?:Option|Choice)\s*\(?[A-Da-d1-4]\)?[\s.:\)\-]*|\(?(?:iv|iii|ii|i)\)?[\s.:\)\-]+))/;
+
+    const expanded = [];
+    for (const l of rawLines) {
+      if (isAnsLine(l)) {
+        expanded.push(l);
+      } else {
+        const splitLines = l.replace(new RegExp(inlineRegex.source, 'g'), '\n').split('\n');
+        for (const sub of splitLines) {
+          const s = sub.trim();
+          if (s) expanded.push(s);
+        }
+      }
+    }
+    return expanded;
+  }
+
+  /**
+   * Primary Sequential State-Machine Parser
+   * Accurately parses unnumbered MCQs, numbered MCQs, and unlabeled option blocks
+   */
+  static parseMCQsSequential(cleanLines, answerKeyMap = {}, meta = {}) {
+    const optHeaderRegex = /^\s*(?:(?:\(([A-Da-d])\)[\s.:\)\-]*)|(?:\[([A-Da-d])\][\s.:\)\-]*)|(?:(?:Option|Choice)\s*\(?([A-Da-d])\)?[\s.:\)\-]*)|(?:([A-D])[\.:\)\-]\s+)|(?:\(([1-4])\)[\s.:\)\-]*)|(?:\[([1-4])\][\s.:\)\-]*)|(?:([1-4])[\.:\)\-]\s+)|(?:\(?((?:iv|iii|ii|i))\)?[\s.:\)\-]+))\s*(.*)/i;
+    const qMarkerRegex = /^\s*(?:(?:Q(?:uestion|ue)?|Prob(?:lem)?)\s*[:#.-]?\s*(\d+)[\s.:)-]*|(\d+)[\.:)-]\s+)(.*)/i;
+    const ansRegex = /^\s*(?:Correct\s*(?:Answer|Option)|Right\s*Answer|Answer\s*Key|Answer|Ans|Key|Correct)\s*[:=-]+\s*(.*)/i;
+    const expRegex = /^\s*(?:Explanation|Exp|Reason|Solution|Note)\s*[:=-]+\s*(.*)/i;
+
+    const questions = [];
+    let currentPrompt = [];
+    let currentOptions = {};
+    let currentAnswer = null;
+    let currentExp = '';
+    let currentQNum = null;
+    let currentOptKey = null;
+    let state = 'PROMPT';
+
+    const pushQuestion = () => {
+      // Case 1: Standard options with labels (A, B)
+      if (currentPrompt.length > 0 && currentOptions.A && currentOptions.B) {
+        let promptText = currentPrompt.join(' ').trim();
+        promptText = promptText.replace(/^(?:PYTHON\s+MCQ\s+QUESTIONS?|TECHNICAL\s+QUIZ|MULTIPLE\s+CHOICE\s+QUESTIONS?|QUESTIONS?\s*BANK)\s*/i, '').trim();
+
+        let finalAns = currentAnswer;
+        if (!finalAns && currentQNum && answerKeyMap[currentQNum]) {
+          finalAns = answerKeyMap[currentQNum];
+        }
+        if (!finalAns && answerKeyMap[questions.length + 1]) {
+          finalAns = answerKeyMap[questions.length + 1];
+        }
+        if (!finalAns) {
+          finalAns = 'A';
+        }
+
+        questions.push({
+          question_text: promptText,
+          option_a: currentOptions.A,
+          option_b: currentOptions.B,
+          option_c: currentOptions.C || 'None of the above',
+          option_d: currentOptions.D || 'All of the above',
+          correct_answer: finalAns,
+          marks: meta.marks,
+          negative_marks: meta.negative_marks,
+          category: meta.category,
+          difficulty: 'Medium',
+          explanation: currentExp,
+          event_name: meta.event_name,
+          round_number: meta.round_number
+        });
+      } else if (currentPrompt.length >= 5 && (currentAnswer || currentQNum)) {
+        // Case 2: Unlabeled options (e.g. DOCX table rows without A/B/C/D prefixes)
+        const d = currentPrompt.pop();
+        const c = currentPrompt.pop();
+        const b = currentPrompt.pop();
+        const a = currentPrompt.pop();
+        let promptText = currentPrompt.join(' ').trim();
+        promptText = promptText.replace(/^(?:PYTHON\s+MCQ\s+QUESTIONS?|TECHNICAL\s+QUIZ|MULTIPLE\s+CHOICE\s+QUESTIONS?|QUESTIONS?\s*BANK)\s*/i, '').trim();
+
+        let finalAns = currentAnswer;
+        if (!finalAns && currentQNum && answerKeyMap[currentQNum]) {
+          finalAns = answerKeyMap[currentQNum];
+        }
+        if (!finalAns && answerKeyMap[questions.length + 1]) {
+          finalAns = answerKeyMap[questions.length + 1];
+        }
+        if (!finalAns) finalAns = 'A';
+
+        questions.push({
+          question_text: promptText,
+          option_a: a,
+          option_b: b,
+          option_c: c,
+          option_d: d,
+          correct_answer: finalAns,
+          marks: meta.marks,
+          negative_marks: meta.negative_marks,
+          category: meta.category,
+          difficulty: 'Medium',
+          explanation: currentExp,
+          event_name: meta.event_name,
+          round_number: meta.round_number
+        });
+      }
+    };
+
+    for (let i = 0; i < cleanLines.length; i++) {
+      const line = cleanLines[i];
+
+      // 1. Answer line
+      const ansMatch = line.match(ansRegex);
+      if (ansMatch) {
+        const rawAns = ansMatch[1].trim();
+        const letterMatch = rawAns.match(/(?:Option\s*)?\(?([A-Da-d1-4]|iv|iii|ii|i)\)?/i);
+        if (letterMatch) {
+          currentAnswer = this.normalizeAnswerKey(letterMatch[1]);
+        } else {
+          currentAnswer = this.matchAnswerTextToOption(rawAns, currentOptions) || this.normalizeAnswerKey(rawAns);
+        }
+        state = 'ANSWER';
+        currentOptKey = null;
+        continue;
+      }
+
+      // 2. Explanation line
+      const expMatch = line.match(expRegex);
+      if (expMatch) {
+        currentExp = expMatch[1].trim();
+        state = 'EXPLANATION';
+        currentOptKey = null;
+        continue;
+      }
+
+      // 3. Question marker line (e.g. 1. , Q1. )
+      const qMatch = line.match(qMarkerRegex);
+      if (qMatch && !optHeaderRegex.test(line)) {
+        if ((currentPrompt.length > 0 && currentOptions.A && currentOptions.B) || (currentPrompt.length >= 5 && currentAnswer)) {
+          pushQuestion();
+          currentOptions = {};
+          currentAnswer = null;
+          currentExp = '';
+          currentOptKey = null;
+        }
+        currentQNum = parseInt(qMatch[1] || qMatch[2], 10);
+        const rest = (qMatch[3] || '').trim();
+        currentPrompt = rest ? [rest] : [];
+        state = 'PROMPT';
+        continue;
+      }
+
+      // 4. Option line (A), B), C), D), (1), etc.)
+      const optMatch = line.match(optHeaderRegex);
+      if (optMatch) {
+        const rawKey = optMatch[1] || optMatch[2] || optMatch[3] || optMatch[4] || optMatch[5] || optMatch[6] || optMatch[7] || optMatch[8];
+        const optKey = this.normalizeAnswerKey(rawKey);
+        let optVal = (optMatch[9] || '').trim();
+
+        // Detect asterisk marking correct answer: e.g. *B) ... or B) ...*
+        if (optVal.startsWith('*') || optVal.endsWith('*') || /^\([xX]\)/.test(optVal)) {
+          currentAnswer = optKey;
+          optVal = optVal.replace(/^\*+|\*+$/g, '').replace(/^\([xX]\)\s*/, '').trim();
+        }
+
+        // If this is option A and current question already has options A and B -> start of next question!
+        if (optKey === 'A' && currentOptions.A && currentOptions.B) {
+          pushQuestion();
+          currentOptions = {};
+          currentAnswer = null;
+          currentExp = '';
+          currentPrompt = [];
+        }
+
+        currentOptions[optKey] = optVal;
+        currentOptKey = optKey;
+        state = 'OPTIONS';
+        continue;
+      }
+
+      // 5. General text line
+      if (state === 'ANSWER' || state === 'EXPLANATION') {
+        pushQuestion();
+        currentOptions = {};
+        currentAnswer = null;
+        currentExp = '';
+        currentOptKey = null;
+        currentPrompt = [line];
+        state = 'PROMPT';
+      } else if (state === 'OPTIONS') {
+        const nextLine = i + 1 < cleanLines.length ? cleanLines[i + 1] : '';
+        const nextOptMatch = nextLine.match(optHeaderRegex);
+        const isNextOptA = nextOptMatch && this.normalizeAnswerKey(nextOptMatch[1]||nextOptMatch[2]||nextOptMatch[3]||nextOptMatch[4]||'') === 'A';
+
+        if (isNextOptA) {
+          pushQuestion();
+          currentOptions = {};
+          currentAnswer = null;
+          currentExp = '';
+          currentOptKey = null;
+          currentPrompt = [line];
+          state = 'PROMPT';
+        } else if (currentOptKey) {
+          currentOptions[currentOptKey] = (currentOptions[currentOptKey] + ' ' + line).trim();
+        }
+      } else {
+        currentPrompt.push(line);
+      }
+    }
+
+    pushQuestion();
+    return questions;
+  }
+
+  /**
+   * Helper to match answer text to option text when answer line doesn't give a letter
+   */
+  static matchAnswerTextToOption(ansText, options) {
+    if (!ansText || !options) return null;
+    const cleanAns = ansText.toLowerCase().replace(/[^a-z0-9]/g, '');
+    if (!cleanAns) return null;
+    for (const key of ['A', 'B', 'C', 'D']) {
+      const optVal = (options[key] || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+      if (optVal && (optVal === cleanAns || optVal.includes(cleanAns) || cleanAns.includes(optVal))) {
+        return key;
+      }
+    }
+    return null;
   }
 
   /**
