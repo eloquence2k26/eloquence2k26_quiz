@@ -383,6 +383,44 @@ class AdminController {
       return error(res, err.message, 500);
     }
   }
+
+  /**
+   * Force Sync & Re-fetch All PostgreSQL DB Tables from Supabase
+   */
+  static async syncDatabase(req, res) {
+    try {
+      await db.init();
+
+      const tableStats = {};
+      const allTables = [
+        'users', 'profiles', 'participants', 'admins', 'events', 'rounds',
+        'quizzes', 'questions', 'quiz_questions', 'quiz_assignments',
+        'exam_attempts', 'question_orders', 'attempt_answers', 'results',
+        'round_selections', 'security_violations', 'exam_sessions',
+        'announcements', 'audit_logs'
+      ];
+
+      allTables.forEach((tableName) => {
+        tableStats[tableName] = (db.get(tableName) || []).length;
+      });
+
+      const totalRecords = Object.values(tableStats).reduce((sum, count) => sum + count, 0);
+
+      AuditService.log(req.user ? req.user.id : null, 'SYNC_DATABASE_TABLES', 'DATABASE', null, {
+        total_records: totalRecords,
+        table_stats: tableStats
+      });
+
+      return success(res, {
+        total_records: totalRecords,
+        tables_synced: allTables.length,
+        table_stats: tableStats,
+        timestamp: new Date().toISOString()
+      }, `All ${allTables.length} Supabase database tables successfully synchronized (${totalRecords} live records).`);
+    } catch (err) {
+      return error(res, err.message, 500);
+    }
+  }
 }
 
 module.exports = AdminController;

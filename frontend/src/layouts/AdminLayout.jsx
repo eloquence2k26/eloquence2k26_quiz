@@ -23,16 +23,36 @@ import {
   ChevronDown,
   ChevronRight,
   FolderKanban,
-  ExternalLink
+  ExternalLink,
+  Database,
+  RefreshCw
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
+import { adminService } from '../services/adminService';
+import { useToast } from '../context/ToastContext';
 import ThemeToggle from '../components/common/ThemeToggle';
 
 export default function AdminLayout() {
   const { user, logout } = useAuth();
+  const toast = useToast();
   const location = useLocation();
   const navigate = useNavigate();
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [isSyncing, setIsSyncing] = useState(false);
+
+  const handleGlobalSync = async () => {
+    setIsSyncing(true);
+    try {
+      const res = await adminService.syncDatabase();
+      if (res.success) {
+        toast.success(res.message || 'Database tables successfully synchronized with Supabase!');
+      }
+    } catch (err) {
+      toast.error('Sync failed: ' + (err.response?.data?.message || err.message));
+    } finally {
+      setIsSyncing(false);
+    }
+  };
 
   // Event Manager Sub-items definition
   const eventManagerItems = [
@@ -349,6 +369,17 @@ export default function AdminLayout() {
           </div>
 
           <div className="flex items-center gap-3">
+            <button
+              type="button"
+              onClick={handleGlobalSync}
+              disabled={isSyncing}
+              title="Force Sync & Fetch All Database Tables from Supabase PostgreSQL"
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-blue-50 dark:bg-blue-950/60 border border-blue-200 dark:border-blue-800 text-blue-700 dark:text-blue-300 text-xs font-bold hover:bg-blue-100 transition-colors disabled:opacity-50"
+            >
+              <RefreshCw className={`w-3.5 h-3.5 ${isSyncing ? 'animate-spin text-blue-600' : 'text-blue-500'}`} />
+              <span className="hidden sm:inline">{isSyncing ? 'Syncing...' : 'Sync DB'}</span>
+            </button>
+
             <Link
               to="/admin/restarts"
               className="hidden sm:flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-amber-50 dark:bg-amber-950/60 border border-amber-200 dark:border-amber-800 text-amber-700 dark:text-amber-300 text-xs font-bold hover:bg-amber-100 transition-colors"

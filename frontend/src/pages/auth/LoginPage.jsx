@@ -172,20 +172,7 @@ export default function LoginPage() {
           Quick Demo Credentials
         </p>
         <div className="flex gap-2">
-          <button
-            type="button"
-            onClick={() => handleQuickFill('ADMIN')}
-            className="flex-1 py-1.5 px-2 rounded-xl text-[11px] font-semibold bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300 hover:border-brand-500"
-          >
-            Admin (admin@eloquence.com)
-          </button>
-          <button
-            type="button"
-            onClick={() => handleQuickFill('PARTICIPANT')}
-            className="flex-1 py-1.5 px-2 rounded-xl text-[11px] font-semibold bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300 hover:border-brand-500"
-          >
-            Participant (Alex Chen)
-          </button>
+          
         </div>
       </div>
     </div>

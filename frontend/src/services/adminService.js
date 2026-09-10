@@ -243,5 +243,11 @@ export const adminService = {
   restartExamAttempt: async (attemptId) => {
     const res = await api.post(`/exam/attempts/${attemptId}/admin-restart`);
     return res.data;
+  },
+
+  // Live Database Sync with Supabase PostgreSQL
+  syncDatabase: async () => {
+    const res = await api.post('/admin/sync-db');
+    return res.data;
   }
 };
