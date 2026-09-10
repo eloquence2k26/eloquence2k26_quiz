@@ -172,7 +172,28 @@ export default function LoginPage() {
           Quick Demo Credentials
         </p>
         <div className="flex gap-2">
-          
+          <button
+            type="button"
+            onClick={() => {
+              setLoginType('ADMIN');
+              setIdentifier('admin@eloquence.com');
+              setPassword('admin123');
+            }}
+            className="flex-1 py-1.5 px-3 rounded-xl bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-[11px] font-bold text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700/60 transition-colors shadow-sm"
+          >
+            Admin Demo
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              setLoginType('PARTICIPANT');
+              setIdentifier('alex.chen@university.edu');
+              setPassword('password123');
+            }}
+            className="flex-1 py-1.5 px-3 rounded-xl bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-[11px] font-bold text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700/60 transition-colors shadow-sm"
+          >
+            Participant Demo
+          </button>
         </div>
       </div>
     </div>
