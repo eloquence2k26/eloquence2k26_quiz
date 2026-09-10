@@ -215,22 +215,32 @@ class QuestionController {
 
       const inserted = [];
       questions.forEach((q) => {
-        if (q.question_text && q.option_a && q.option_b && q.option_c && q.option_d && q.correct_answer) {
+        const qText = q.question_text ? String(q.question_text).trim() : '';
+        const optA = q.option_a ? String(q.option_a).trim() : '';
+        const optB = q.option_b ? String(q.option_b).trim() : '';
+        const optC = q.option_c ? String(q.option_c).trim() : 'None of the above';
+        const optD = q.option_d ? String(q.option_d).trim() : 'All of the above';
+        let corrAns = q.correct_answer ? String(q.correct_answer).toUpperCase().trim() : 'A';
+        if (!['A', 'B', 'C', 'D'].includes(corrAns)) {
+          corrAns = 'A';
+        }
+
+        if (qText && optA && optB) {
           const item = db.insert('questions', {
-            question_text: q.question_text.trim(),
-            option_a: q.option_a.trim(),
-            option_b: q.option_b.trim(),
-            option_c: q.option_c.trim(),
-            option_d: q.option_d.trim(),
-            correct_answer: q.correct_answer.toUpperCase().trim(),
-            marks: Number(q.marks) || 1.0,
-            negative_marks: Number(q.negative_marks) || 0.0,
-            explanation: q.explanation ? q.explanation.trim() : '',
-            category: q.category ? q.category.trim() : 'General',
+            question_text: qText,
+            option_a: optA,
+            option_b: optB,
+            option_c: optC,
+            option_d: optD,
+            correct_answer: corrAns,
+            marks: Number(q.marks) || 2.0,
+            negative_marks: Number(q.negative_marks) || 0.5,
+            explanation: q.explanation ? String(q.explanation).trim() : '',
+            category: q.category ? String(q.category).trim() : 'General',
             difficulty: ['Easy', 'Medium', 'Hard'].includes(q.difficulty) ? q.difficulty : 'Medium',
-            event_name: q.event_name ? q.event_name.trim() : 'Eloquence 2026',
+            event_name: q.event_name ? String(q.event_name).trim() : 'Eloquence 2026',
             round_number: Number(q.round_number) || 1,
-            created_by: req.user.id
+            created_by: req.user ? req.user.id : 'system'
           });
           inserted.push(item);
         }

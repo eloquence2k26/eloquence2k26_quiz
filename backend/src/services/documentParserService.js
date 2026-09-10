@@ -1,6 +1,7 @@
 const path = require('path');
 const AdmZip = require('adm-zip');
 const XLSX = require('xlsx');
+const zlib = require('zlib');
 
 class DocumentParserService {
   /**
@@ -30,8 +31,16 @@ class DocumentParserService {
           if (pdfModule.PDFParse) {
             // pdf-parse v2 class structure
             const parser = new pdfModule.PDFParse({ data: buffer });
-            const result = await parser.getText();
-            pdfText = result?.text || '';
+            const result = await parser.getText({
+              pageJoiner: '\n\n',
+              lineEnforce: true,
+              cellSeparator: '   '
+            });
+            if (result && result.text && result.text.trim()) {
+              pdfText = result.text;
+            } else if (result && Array.isArray(result.pages) && result.pages.length > 0) {
+              pdfText = result.pages.map((p) => p.text || '').join('\n\n');
+            }
             if (parser.destroy) await parser.destroy();
           } else if (typeof pdfModule === 'function') {
             // pdf-parse v1 function structure
@@ -39,12 +48,22 @@ class DocumentParserService {
             pdfText = result?.text || '';
           }
         } catch (pdfErr) {
-          console.error('PDF text extraction error:', pdfErr.message);
-          // Fallback string extraction for raw readable text
-          pdfText = buffer.toString('utf8').replace(/[^\x20-\x7E\n\r\t]/g, ' ');
+          console.error('PDF library parse error, falling back to raw stream text extraction:', pdfErr.message);
+          pdfText = this.extractRawPdfText(buffer);
         }
 
         questions = this.parseMCQsFromText(pdfText, defaultMeta);
+
+        // If pdf-parse text yielded 0 questions, try raw stream extraction fallback
+        if (questions.length === 0) {
+          const rawText = this.extractRawPdfText(buffer);
+          if (rawText && rawText.trim() && rawText !== pdfText) {
+            const rawQuestions = this.parseMCQsFromText(rawText, defaultMeta);
+            if (rawQuestions.length > 0) {
+              questions = rawQuestions;
+            }
+          }
+        }
         break;
       }
 
@@ -87,7 +106,74 @@ class DocumentParserService {
   }
 
   /**
+   * Fallback raw text extractor for PDFs when standard parser fails
+   */
+  static extractRawPdfText(buffer) {
+    try {
+      const content = buffer.toString('binary');
+      const textPieces = [];
+
+      // 1. Try to decompress FlateDecode streams
+      const streamRegex = /stream[\r\n]+([\s\S]*?)[\r\n]+endstream/g;
+      let sMatch;
+      while ((sMatch = streamRegex.exec(content)) !== null) {
+        try {
+          const rawStream = Buffer.from(sMatch[1], 'binary');
+          let decompressed;
+          try {
+            decompressed = zlib.inflateSync(rawStream);
+          } catch (e) {
+            try {
+              decompressed = zlib.inflateRawSync(rawStream);
+            } catch (e2) {}
+          }
+
+          if (decompressed) {
+            const decStr = decompressed.toString('utf8');
+            // Extract Tj and TJ text operators
+            const opRegex = /\((.*?)\)\s*Tj|\[(.*?)\]\s*TJ/g;
+            let op;
+            while ((op = opRegex.exec(decStr)) !== null) {
+              if (op[1]) {
+                textPieces.push(op[1]);
+              } else if (op[2]) {
+                const parts = op[2].match(/\((.*?)\)/g);
+                if (parts) {
+                  textPieces.push(parts.map((p) => p.slice(1, -1)).join(''));
+                }
+              }
+            }
+          }
+        } catch (streamErr) {}
+      }
+
+      if (textPieces.length > 0) {
+        return textPieces.join(' ');
+      }
+
+      // 2. Direct string regex extraction from uncompressed chunks
+      const lines = content.split(/[\r\n]+/);
+      for (const line of lines) {
+        const tjMatch = line.match(/\((.*)\)\s*Tj/);
+        if (tjMatch) {
+          textPieces.push(tjMatch[1].replace(/\\([()])/g, '$1').trim());
+        }
+      }
+
+      if (textPieces.length > 0) {
+        return textPieces.join('\n');
+      }
+
+      // 3. Fallback readable ASCII bytes
+      return buffer.toString('utf8').replace(/[^\x20-\x7E\n\r\t]/g, ' ');
+    } catch (err) {
+      return buffer.toString('utf8').replace(/[^\x20-\x7E\n\r\t]/g, ' ');
+    }
+  }
+
+  /**
    * Extract text from PPTX slides using adm-zip XML parsing
+   * Groups text runs <a:r><a:t> by paragraph <a:p>
    */
   static extractTextFromPPTX(buffer) {
     try {
@@ -101,34 +187,24 @@ class DocumentParserService {
 
       slideEntries.forEach((slideEntry) => {
         const xml = slideEntry.getData().toString('utf8');
-        // Extract all <a:t> text nodes in the slide
-        const matches = xml.match(/<a:t[^>]*>([^<]+)<\/a:t>/g);
-        if (matches && matches.length > 0) {
-          const slideTexts = matches.map((m) => m.replace(/<[^>]+>/g, '').trim()).filter(Boolean);
-          textChunks.push(slideTexts.join('\n'));
+        // Match each paragraph <a:p>
+        const paraMatches = xml.match(/<a:p[\s>][\s\S]*?<\/a:p>/g);
+        if (paraMatches && paraMatches.length > 0) {
+          paraMatches.forEach((paraXml) => {
+            const tMatches = paraXml.match(/<a:t[^>]*>([\s\S]*?)<\/a:t>/g);
+            if (tMatches && tMatches.length > 0) {
+              const paraText = tMatches
+                .map((m) => m.replace(/<[^>]+>/g, '').trim())
+                .filter(Boolean)
+                .join(' ');
+              if (paraText) textChunks.push(paraText);
+            }
+          });
         }
       });
 
-      return textChunks.join('\n\n');
-    } catch (err) {
-      return buffer.toString('utf8').replace(/[^\x20-\x7E\n\r\t]/g, ' ');
-    }
-  }
-
-  /**
-   * Extract text from DOCX document using adm-zip XML parsing
-   */
-  static extractTextFromDOCX(buffer) {
-    try {
-      const zip = new AdmZip(buffer);
-      const docEntry = zip.getEntry('word/document.xml');
-      if (docEntry) {
-        const xml = docEntry.getData().toString('utf8');
-        const formatted = xml
-          .replace(/<\/w:p>/g, '\n')
-          .replace(/<w:tab\/>/g, '\t')
-          .replace(/<[^>]+>/g, '');
-        return formatted;
+      if (textChunks.length > 0) {
+        return textChunks.join('\n');
       }
     } catch (err) {}
 
@@ -136,7 +212,55 @@ class DocumentParserService {
   }
 
   /**
-   * Parse XLSX, XLS, and CSV spreadsheets
+   * Extract text from DOCX / DOC document
+   * Preserves tables, rows, cells, line breaks, and decodes XML entities
+   */
+  static extractTextFromDOCX(buffer) {
+    try {
+      const zip = new AdmZip(buffer);
+      const docEntry = zip.getEntry('word/document.xml');
+      if (docEntry) {
+        let xml = docEntry.getData().toString('utf8');
+
+        // Replace table cell ends with tabs and row ends with newlines
+        xml = xml
+          .replace(/<\/w:tc>/g, '\t')
+          .replace(/<\/w:tr>/g, '\n')
+          .replace(/<w:br[^>]*\/>/g, '\n')
+          .replace(/<w:cr[^>]*\/>/g, '\n')
+          .replace(/<w:tab\/>/g, '\t')
+          .replace(/<\/w:p>/g, '\n')
+          .replace(/<[^>]+>/g, '');
+
+        // Decode XML entities
+        xml = xml
+          .replace(/&amp;/g, '&')
+          .replace(/&lt;/g, '<')
+          .replace(/&gt;/g, '>')
+          .replace(/&quot;/g, '"')
+          .replace(/&apos;/g, "'")
+          .replace(/&#(\d+);/g, (_, dec) => String.fromCharCode(dec))
+          .replace(/&#x([0-9a-fA-F]+);/g, (_, hex) => String.fromCharCode(parseInt(hex, 16)));
+
+        return xml;
+      }
+    } catch (err) {}
+
+    // Fallback for binary .doc or damaged docx: extract readable text runs
+    try {
+      const bufStr = buffer.toString('binary');
+      // Extract ASCII chunks of length >= 4
+      const asciiRuns = bufStr.match(/[\x20-\x7E\t\r\n]{4,}/g);
+      if (asciiRuns && asciiRuns.length > 0) {
+        return asciiRuns.join(' ');
+      }
+    } catch (e) {}
+
+    return buffer.toString('utf8').replace(/[^\x20-\x7E\n\r\t]/g, ' ');
+  }
+
+  /**
+   * Parse XLSX, XLS, and CSV spreadsheets with extensive column candidate mapping
    */
   static parseSpreadsheet(buffer, defaultMeta) {
     const workbook = XLSX.read(buffer, { type: 'buffer' });
@@ -151,7 +275,9 @@ class DocumentParserService {
     const findCol = (row, candidates) => {
       const keys = Object.keys(row);
       for (const candidate of candidates) {
-        const foundKey = keys.find((k) => k.toLowerCase().replace(/[^a-z0-9]/g, '') === candidate.toLowerCase().replace(/[^a-z0-9]/g, ''));
+        const foundKey = keys.find(
+          (k) => k.toLowerCase().replace(/[^a-z0-9]/g, '') === candidate.toLowerCase().replace(/[^a-z0-9]/g, '')
+        );
         if (foundKey && String(row[foundKey]).trim()) {
           return String(row[foundKey]).trim();
         }
@@ -162,12 +288,36 @@ class DocumentParserService {
     const parsedQuestions = [];
 
     rawRows.forEach((row) => {
-      const questionText = findCol(row, ['question', 'question_text', 'questiontext', 'q', 'title', 'problem']);
-      const optionA = findCol(row, ['option_a', 'optiona', 'a', 'opt_a', 'choice_a', 'choice1']);
-      const optionB = findCol(row, ['option_b', 'optionb', 'b', 'opt_b', 'choice_b', 'choice2']);
-      const optionC = findCol(row, ['option_c', 'optionc', 'c', 'opt_c', 'choice_c', 'choice3']);
-      const optionD = findCol(row, ['option_d', 'optiond', 'd', 'opt_d', 'choice_d', 'choice4']);
-      const answer = findCol(row, ['correct_answer', 'correctanswer', 'answer', 'ans', 'key', 'correct']);
+      const questionText = findCol(row, [
+        'question',
+        'question_text',
+        'questiontext',
+        'q',
+        'title',
+        'problem',
+        'questiondescription',
+        'questionstatement',
+        'problemstatement',
+        'questions',
+        'text',
+        'prompt'
+      ]);
+      const optionA = findCol(row, ['option_a', 'optiona', 'a', 'opta', 'choice_a', 'choicea', 'choice1', 'opt1', 'option1', 'ans1']);
+      const optionB = findCol(row, ['option_b', 'optionb', 'b', 'optb', 'choice_b', 'choiceb', 'choice2', 'opt2', 'option2', 'ans2']);
+      const optionC = findCol(row, ['option_c', 'optionc', 'c', 'optc', 'choice_c', 'choicec', 'choice3', 'opt3', 'option3', 'ans3']);
+      const optionD = findCol(row, ['option_d', 'optiond', 'd', 'optd', 'choice_d', 'choiced', 'choice4', 'opt4', 'option4', 'ans4']);
+      const answer = findCol(row, [
+        'correct_answer',
+        'correctanswer',
+        'answer',
+        'ans',
+        'key',
+        'correct',
+        'correctoption',
+        'answerkey',
+        'rightanswer',
+        'solution'
+      ]);
 
       if (questionText && optionA && optionB) {
         const cleanAnswer = this.normalizeAnswerKey(answer);
@@ -179,11 +329,11 @@ class DocumentParserService {
           option_c: optionC || 'None of the above',
           option_d: optionD || 'All of the above',
           correct_answer: cleanAnswer || 'A',
-          marks: parseFloat(findCol(row, ['marks', 'mark', 'score'])) || defaultMeta.marks,
-          negative_marks: parseFloat(findCol(row, ['negative_marks', 'negative', 'neg'])) || defaultMeta.negative_marks,
-          category: findCol(row, ['category', 'topic', 'subject']) || defaultMeta.category,
+          marks: parseFloat(findCol(row, ['marks', 'mark', 'score', 'points'])) || defaultMeta.marks,
+          negative_marks: parseFloat(findCol(row, ['negative_marks', 'negative', 'neg', 'minus'])) || defaultMeta.negative_marks,
+          category: findCol(row, ['category', 'topic', 'subject', 'domain']) || defaultMeta.category,
           difficulty: this.normalizeDifficulty(findCol(row, ['difficulty', 'level'])),
-          explanation: findCol(row, ['explanation', 'exp', 'reason', 'solution']),
+          explanation: findCol(row, ['explanation', 'exp', 'reason', 'solution', 'notes']),
           event_name: findCol(row, ['event', 'event_name']) || defaultMeta.event_name,
           round_number: parseInt(findCol(row, ['round', 'round_number'])) || defaultMeta.round_number
         });
@@ -194,6 +344,7 @@ class DocumentParserService {
       return parsedQuestions;
     }
 
+    // Fallback: If spreadsheet had no headers or unusual column keys, convert to text and parse as MCQs
     const textDump = rawRows.map((r) => Object.values(r).join(' ')).join('\n');
     return this.parseMCQsFromText(textDump, defaultMeta);
   }
@@ -210,8 +361,8 @@ class DocumentParserService {
           question_text: q.question_text || q.question || '',
           option_a: q.option_a || q.a || '',
           option_b: q.option_b || q.b || '',
-          option_c: q.option_c || q.c || '',
-          option_d: q.option_d || q.d || '',
+          option_c: q.option_c || q.c || 'None of the above',
+          option_d: q.option_d || q.d || 'All of the above',
           correct_answer: this.normalizeAnswerKey(q.correct_answer || q.answer || 'A'),
           marks: parseFloat(q.marks) || defaultMeta.marks,
           negative_marks: parseFloat(q.negative_marks) || defaultMeta.negative_marks,
@@ -228,168 +379,438 @@ class DocumentParserService {
   }
 
   /**
-   * Intelligent Heuristic MCQ Parser for Unstructured Plain Text, PDF text, PPT text, and Word text
+   * High-Performance Multi-Strategy MCQ Parser
+   * Robustly extracts MCQs from unstructured text, PDF text, PPT text, and Word text
    */
-  static parseMCQsFromText(text, defaultMeta) {
+  static parseMCQsFromText(text, defaultMeta = {}) {
     if (!text || typeof text !== 'string') return [];
 
-    // Pre-processing: normalize linebreaks and Unicode characters
-    let cleanedText = text
+    const meta = {
+      event_name: defaultMeta.event_name || 'Eloquence 2026',
+      round_number: Number(defaultMeta.round_number) || 1,
+      category: defaultMeta.category || 'General',
+      marks: Number(defaultMeta.marks) || 2.0,
+      negative_marks: Number(defaultMeta.negative_marks) || 0.5
+    };
+
+    // Step 1: Normalize line endings, quotes, spaces, dashes
+    let cleanText = text
       .replace(/\r\n/g, '\n')
       .replace(/\r/g, '\n')
       .replace(/[\u2018\u2019]/g, "'")
       .replace(/[\u201C\u201D]/g, '"')
-      .replace(/\u00A0/g, ' ');
+      .replace(/\u00A0/g, ' ')
+      .replace(/[\u2013\u2014]/g, '-')
+      .replace(/\t/g, '    ');
 
-    const questions = [];
+    // Step 2: Remove PDF page numbers and headers
+    cleanText = cleanText
+      .replace(/(?:^|\n)\s*--\s*\d+\s*(?:of|\/)\s*\d+\s*--\s*(?:\n|$)/gi, '\n')
+      .replace(/(?:^|\n)\s*Page\s+\d+\s*(?:of|\/)\s*\d+\s*(?:\n|$)/gi, '\n')
+      .replace(/(?:^|\n)\s*Page\s+\d+\s*(?:\n|$)/gi, '\n');
 
-    // Expand inline options to separate lines so line-by-line parsing works seamlessly
-    // e.g. "A) ... B) ... C) ... D) ..." -> splits each option onto its own line
-    cleanedText = cleanedText.replace(/([ \t]+)(?=(?:[A-D]\s*[\.\)\:\-]|(?:\([A-D]\)|\[[A-D]\]))\s+)/gi, '\n');
+    // Step 3: Normalize lone question numbers followed by newline
+    cleanText = cleanText
+      .replace(/(?:^|\n)\s*(\d+[\.\)\:\-]|\bQ\d+[\.\)\:\-]?|\d+)\s*\n(?=[A-Za-z])/gi, '\n$1. ')
+      .replace(/\.\.\s+/g, '. ');
 
-    const lines = cleanedText
-      .split('\n')
-      .map((l) => l.trim())
-      .filter(Boolean);
+    // Step 4: Extract dedicated Answer Key section at the bottom (if present)
+    const { cleanedText: textWithoutKey, answerKeyMap } = this.extractAnswerKeySection(cleanText);
+    cleanText = textWithoutKey;
 
-    let currentQ = null;
+    // Step 5: Expand inline options across the text so line parsing sees them
+    cleanText = this.expandInlineOptions(cleanText);
 
-    const finalizeCurrentQuestion = () => {
-      if (currentQ && currentQ.question_text) {
-        if (currentQ.option_a && currentQ.option_b) {
-          if (!currentQ.option_c) currentQ.option_c = 'None of the above';
-          if (!currentQ.option_d) currentQ.option_d = 'All of the above';
-          if (!currentQ.correct_answer) currentQ.correct_answer = 'A';
+    // Step 6: Primary Parser - Segmentation by Question Number / Prefix
+    let questions = this.parseByQuestionSegmentation(cleanText, answerKeyMap, meta);
 
-          questions.push({
-            question_text: currentQ.question_text.trim(),
-            option_a: currentQ.option_a.trim(),
-            option_b: currentQ.option_b.trim(),
-            option_c: currentQ.option_c.trim(),
-            option_d: currentQ.option_d.trim(),
-            correct_answer: currentQ.correct_answer,
-            marks: defaultMeta.marks,
-            negative_marks: defaultMeta.negative_marks,
-            category: defaultMeta.category,
-            difficulty: 'Medium',
-            explanation: currentQ.explanation ? currentQ.explanation.trim() : '',
-            event_name: defaultMeta.event_name,
-            round_number: defaultMeta.round_number
-          });
+    // Step 7: Secondary Parser - Option Group Scanning (if primary found 0 questions)
+    if (questions.length === 0) {
+      questions = this.parseByOptionGroups(cleanText, answerKeyMap, meta);
+    }
+
+    // Step 8: Tertiary Parser - Paragraph / Block splitting (fallback)
+    if (questions.length === 0) {
+      questions = this.parseByParagraphBlocks(cleanText, meta);
+    }
+
+    return questions;
+  }
+
+  /**
+   * Expand inline options onto new lines
+   * Only expands when options have explicit delimiters:
+   * (A), [A], A), A., A:, A-, Option A:
+   * (1), [1], 1), 1., 1:, 1-
+   * (i), [i], i), i., i:, i-
+   */
+  static expandInlineOptions(text) {
+    // 1. Letters B-E with parens, brackets, dots, colons, or dashes
+    let res = text.replace(
+      /([ \t]+)(?=(?:\(?[B-Eb-e]\)|\[[B-Eb-e]\]|[B-Eb-e][\.\:\)-]|(?:Option|Choice)\s*\(?[B-Eb-e]\)?)\s*)/g,
+      '\n'
+    );
+
+    // 2. Numeric inline options: (2), [2], 2), 2., 2:, 2-
+    res = res.replace(
+      /([ \t]+)(?=(?:\(?[2-4]\)|\[[2-4]\]|[2-4][\.\:\)-])\s+)/g,
+      '\n'
+    );
+
+    // 3. Roman numerals (ii), (iii), (iv) or ii), iii), iv) or ii., iii., iv.
+    res = res.replace(
+      /([ \t]+)(?=(?:\(?(?:iv|iii|ii)\)|\[(?:iv|iii|ii)\]|(?:iv|iii|ii)[\.\:\)-])\s+)/gi,
+      '\n'
+    );
+
+    return res;
+  }
+
+  /**
+   * Safely extract Answer Key section at the end of the document
+   * MUST be at the end and contain at least 2 question-answer pairs
+   */
+  static extractAnswerKeySection(text) {
+    const answerKeyMap = {};
+    let cleanedText = text;
+
+    const headingRegex = /(?:^|\n)\s*(?:ANSWER\s*KEYS?|ANSWER\s*SHEET|SOLUTION\s*KEYS?|ANSWERS\s*(?:SECTION|LIST|FOR\s*ALL)?)\s*[:\n]([\s\S]*)$/i;
+    const match = text.match(headingRegex);
+
+    if (match) {
+      const sectionText = match[1];
+      const pairRegex = /(?:Q(?:uestion)?\s*[:#.-]?)?(\d+)\s*[\s.:)-]+\s*\(?([A-Da-d1-4]|iv|iii|ii|i)\)?/gi;
+      let p;
+      let count = 0;
+      while ((p = pairRegex.exec(sectionText)) !== null) {
+        const qNum = parseInt(p[1], 10);
+        const ans = this.normalizeAnswerKey(p[2]);
+        if (qNum && ans) {
+          answerKeyMap[qNum] = ans;
+          count++;
         }
       }
-      currentQ = null;
-    };
 
-    // Valid and tested Regex matchers
-    const qStartRegex = /^(?:(?:Q|Question)\s*(?:\d+|[A-Z])?[\s.:)-]+|\d+[\s.:)-]+|\([0-9]+\)\s*)(.+)/i;
-    const optARegex = /^(?:(?:\(?A\)?|[\[\(]A[\]\)]|\bA)[\s.:)-]+|\[A\]\s*)(.+)/i;
-    const optBRegex = /^(?:(?:\(?B\)?|[\[\(]B[\]\)]|\bB)[\s.:)-]+|\[B\]\s*)(.+)/i;
-    const optCRegex = /^(?:(?:\(?C\)?|[\[\(]C[\]\)]|\bC)[\s.:)-]+|\[C\]\s*)(.+)/i;
-    const optDRegex = /^(?:(?:\(?D\)?|[\[\(]D[\]\)]|\bD)[\s.:)-]+|\[D\]\s*)(.+)/i;
-    const ansRegex = /^(?:(?:Correct\s*Answer|Answer|Ans|Key|Correct\s*Option|Option)[\s.:)-]*(?:Option\s*)?\(?([A-D])\)?)/i;
-    const expRegex = /^(?:(?:Explanation|Exp|Reason|Note|Solution)[\s.:)-]+(.+))/i;
-
-    for (let i = 0; i < lines.length; i++) {
-      const line = lines[i];
-
-      // Check if line is an answer key
-      const ansMatch = line.match(ansRegex);
-      if (ansMatch && currentQ) {
-        currentQ.correct_answer = ansMatch[1].toUpperCase();
-        continue;
+      if (count >= 2) {
+        cleanedText = text.slice(0, match.index);
       }
+    }
 
-      // Check if line is an explanation
-      const expMatch = line.match(expRegex);
-      if (expMatch && currentQ) {
-        currentQ.explanation = expMatch[1];
-        continue;
-      }
+    return { cleanedText, answerKeyMap };
+  }
 
-      // Check for Option A
-      const matchA = line.match(optARegex);
-      if (matchA && currentQ && !currentQ.option_a) {
-        currentQ.option_a = matchA[1] || '';
-        continue;
-      }
+  /**
+   * Primary Strategy: Question Segmentation
+   * Splits document into chunks by finding question start markers
+   */
+  static parseByQuestionSegmentation(text, answerKeyMap, meta) {
+    const qMarkerRegex = /(?:^|\n)\s*(?:(?:Q(?:uestion|ue)?|Prob(?:lem)?)\s*[:#.-]?\s*(\d+)[\s.:)-]*|(\d+)[\.:)-]\s+)/gi;
 
-      // Check for Option B
-      const matchB = line.match(optBRegex);
-      if (matchB && currentQ && currentQ.option_a && !currentQ.option_b) {
-        currentQ.option_b = matchB[1] || '';
-        continue;
-      }
+    const markers = [];
+    let m;
+    while ((m = qMarkerRegex.exec(text)) !== null) {
+      const qNumStr = m[1] || m[2];
+      markers.push({
+        index: m.index,
+        length: m[0].length,
+        qNum: qNumStr ? parseInt(qNumStr, 10) : null,
+        raw: m[0].trim()
+      });
+    }
 
-      // Check for Option C
-      const matchC = line.match(optCRegex);
-      if (matchC && currentQ && currentQ.option_b && !currentQ.option_c) {
-        currentQ.option_c = matchC[1] || '';
-        continue;
-      }
+    if (markers.length === 0) {
+      return [];
+    }
 
-      // Check for Option D
-      const matchD = line.match(optDRegex);
-      if (matchD && currentQ && currentQ.option_c && !currentQ.option_d) {
-        currentQ.option_d = matchD[1] || '';
-        continue;
-      }
+    // Detect if markers contain consecutive 1, 2, 3, 4 inside a question (numeric options)
+    const optionMarkerIndices = new Set();
+    const hasOptionLabels = (txt) =>
+      /(?:^|\n)\s*(?:\(?([A-Da-d])\)[\s.:)-]*|\[([A-Da-d])\]|Option\s+[A-Da-d]|Choice\s+[A-Da-d])/i.test(txt);
 
-      // Check for New Question start
-      const qMatch = line.match(qStartRegex);
-      if (qMatch) {
-        finalizeCurrentQuestion();
-        currentQ = {
-          question_text: qMatch[1],
-          option_a: '',
-          option_b: '',
-          option_c: '',
-          option_d: '',
-          correct_answer: 'A',
-          explanation: ''
-        };
-        continue;
-      }
-
-      // If already in question context and no options hit yet, append to question prompt
-      if (currentQ && !currentQ.option_a) {
-        currentQ.question_text += ` ${line}`;
-      } else if (currentQ && currentQ.option_d) {
-        if (currentQ.explanation) {
-          currentQ.explanation += ` ${line}`;
+    for (let i = 0; i < markers.length - 3; i++) {
+      if (
+        markers[i].qNum === 1 &&
+        markers[i + 1].qNum === 2 &&
+        markers[i + 2].qNum === 3 &&
+        markers[i + 3].qNum === 4 &&
+        i > 0
+      ) {
+        const nextEnd = i + 1 < markers.length ? markers[i + 1].index : text.length;
+        const chunkOfOne = text.slice(markers[i].index, nextEnd);
+        if (!hasOptionLabels(chunkOfOne)) {
+          // Marker 1 has no A/B/C/D options: these 1, 2, 3, 4 are options for the preceding question
+          optionMarkerIndices.add(i);
+          optionMarkerIndices.add(i + 1);
+          optionMarkerIndices.add(i + 2);
+          optionMarkerIndices.add(i + 3);
         }
       }
     }
 
-    finalizeCurrentQuestion();
+    const filteredMarkers = markers.filter((_, idx) => !optionMarkerIndices.has(idx));
 
-    // Strategy 2: If standard regex didn't extract any questions, try paragraph-block splitting
-    if (questions.length === 0) {
-      const blocks = cleanedText.split(/\n\s*\n/);
-      blocks.forEach((b) => {
-        const bLines = b.split('\n').map((l) => l.trim()).filter(Boolean);
-        if (bLines.length >= 3) {
-          const qText = bLines[0];
-          const opts = bLines.slice(1);
-          if (opts.length >= 2) {
-            questions.push({
-              question_text: qText.replace(/^[0-9]+[\.\)]\s*/, ''),
-              option_a: opts[0].replace(/^[a-dA-D][\.\)]\s*/, ''),
-              option_b: opts[1].replace(/^[a-dA-D][\.\)]\s*/, ''),
-              option_c: opts[2] ? opts[2].replace(/^[a-dA-D][\.\)]\s*/, '') : 'None of the above',
-              option_d: opts[3] ? opts[3].replace(/^[a-dA-D][\.\)]\s*/, '') : 'All of the above',
-              correct_answer: 'A',
-              marks: defaultMeta.marks,
-              negative_marks: defaultMeta.negative_marks,
-              category: defaultMeta.category,
-              difficulty: 'Medium',
-              explanation: '',
-              event_name: defaultMeta.event_name,
-              round_number: defaultMeta.round_number
-            });
-          }
+    const questions = [];
+
+    for (let i = 0; i < filteredMarkers.length; i++) {
+      const start = filteredMarkers[i].index + filteredMarkers[i].length;
+      const end = i + 1 < filteredMarkers.length ? filteredMarkers[i + 1].index : text.length;
+      const chunkText = text.slice(start, end).trim();
+
+      const parsed = this.parseQuestionChunk(chunkText, filteredMarkers[i].qNum, answerKeyMap, meta);
+      if (parsed) {
+        questions.push(parsed);
+      }
+    }
+
+    return questions;
+  }
+
+  /**
+   * Parse a single segmented question chunk into question, options A-D, answer, and explanation
+   */
+  static parseQuestionChunk(chunkText, qNum, answerKeyMap, meta) {
+    if (!chunkText || chunkText.length < 5) return null;
+
+    let text = chunkText;
+    let detectedAnswer = null;
+    let explanation = '';
+
+    // 1. Extract Answer lines inside the chunk
+    const ansRegex = /(?:^|\n)\s*(?:(?:Correct\s*(?:Answer|Option)|Right\s*Answer|Answer|Ans|Key|Correct)\s*[:=-]+\s*(?:Option\s*)?\(?([A-Da-d1-4]|iv|iii|ii|i)\)?)/i;
+    const ansMatch = text.match(ansRegex);
+    if (ansMatch) {
+      detectedAnswer = this.normalizeAnswerKey(ansMatch[1]);
+      text = text.replace(ansRegex, '\n');
+    }
+
+    // 2. Extract Explanation lines inside the chunk
+    const expRegex = /(?:^|\n)\s*(?:(?:Explanation|Exp|Reason|Solution|Note)\s*[:=-]+\s*([\s\S]+?))(?=\n\s*(?:[A-Z]\)|Answer|\d+[\.\)]|$))/i;
+    const expMatch = text.match(expRegex);
+    if (expMatch) {
+      explanation = expMatch[1].trim();
+      text = text.replace(expRegex, '\n');
+    }
+
+    // 3. Process lines in the chunk
+    const lines = text
+      .split('\n')
+      .map((l) => l.trim())
+      .filter(Boolean);
+
+    if (lines.length < 2) return null;
+
+    // Regex for matching Option headers at the start of a line
+    const optRegex = /^\s*(?:(?:\(?([A-Da-d])\)[\s.:)-]*)|(?:([A-Da-d])[\.:)-]\s*)|(?:\[([A-Da-d])\][\s.:)-]*)|(?:(?:Option|Choice)\s*\(?([A-Da-d])\)?[\s.:)-]*)|(?:\(([1-4])\)[\s.:)-]*)|(?:([1-4])[\.:)-]\s*)|(?:\[([1-4])\][\s.:)-]*)|(?:\(?((?:iv|iii|ii|i))\)?[\s.:)-]+))\s*(.*)/i;
+
+    const questionLines = [];
+    const options = { A: '', B: '', C: '', D: '' };
+    let currentOptKey = null;
+
+    for (let i = 0; i < lines.length; i++) {
+      const line = lines[i];
+
+      // Double check if line is an answer line
+      const lineAnsMatch = line.match(/^(?:Correct\s*Answer|Answer|Ans|Key|Correct)\s*[:=-]+\s*\(?([A-Da-d1-4]|iv|iii|ii|i)\)?/i);
+      if (lineAnsMatch) {
+        detectedAnswer = this.normalizeAnswerKey(lineAnsMatch[1]);
+        continue;
+      }
+
+      const match = line.match(optRegex);
+      if (match) {
+        const rawKey = match[1] || match[2] || match[3] || match[4] || match[5] || match[6] || match[7] || match[8];
+        const optKey = this.normalizeAnswerKey(rawKey);
+        let optVal = match[9] ? match[9].trim() : '';
+
+        // Check if option text has asterisk or [x] marking correct answer
+        if (optVal.startsWith('*') || optVal.endsWith('*') || /^\([xX]\)/.test(optVal)) {
+          detectedAnswer = optKey;
+          optVal = optVal.replace(/^\*+|\*+$/g, '').replace(/^\([xX]\)\s*/, '').trim();
         }
+
+        options[optKey] = optVal;
+        currentOptKey = optKey;
+      } else if (currentOptKey) {
+        // Line continuation of current option
+        options[currentOptKey] = (options[currentOptKey] + ' ' + line).trim();
+      } else {
+        // Line continuation of question text
+        questionLines.push(line);
+      }
+    }
+
+    const questionText = questionLines.join(' ').trim();
+    if (!questionText) return null;
+
+    // Validate options: must have at least A and B
+    let optA = options.A;
+    let optB = options.B;
+    let optC = options.C;
+    let optD = options.D;
+
+    if (!optA || !optB) {
+      return null;
+    }
+
+    if (!optC) optC = 'None of the above';
+    if (!optD) optD = 'All of the above';
+
+    // Determine final correct answer
+    let finalAnswer = detectedAnswer;
+    if (!finalAnswer && qNum && answerKeyMap[qNum]) {
+      finalAnswer = answerKeyMap[qNum];
+    }
+    if (!finalAnswer) {
+      finalAnswer = 'A';
+    }
+
+    return {
+      question_text: questionText,
+      option_a: optA,
+      option_b: optB,
+      option_c: optC,
+      option_d: optD,
+      correct_answer: finalAnswer,
+      marks: meta.marks,
+      negative_marks: meta.negative_marks,
+      category: meta.category,
+      difficulty: 'Medium',
+      explanation: explanation,
+      event_name: meta.event_name,
+      round_number: meta.round_number
+    };
+  }
+
+  /**
+   * Secondary Strategy: Scan for Option Groups [A, B, C, D]
+   */
+  static parseByOptionGroups(text, answerKeyMap, meta) {
+    const lines = text.split('\n').map((l) => l.trim()).filter(Boolean);
+    const questions = [];
+
+    let currentQText = [];
+    let currentOptions = {};
+    let currentAnswer = null;
+    let currentKey = null;
+
+    const optRegex = /^\s*(?:(?:\(?([A-Da-d])\)[\s.:)-]*)|(?:([A-Da-d])[\.:)-]\s*)|(?:Option\s*\(?([A-Da-d])\)?[\s.:)-]*)|(?:\(([1-4])\)[\s.:)-]*))\s*(.*)/i;
+    const ansRegex = /^(?:Answer|Ans|Key|Correct)\s*[:=-]+\s*\(?([A-Da-d1-4]|iv|iii|ii|i)\)?/i;
+
+    for (let i = 0; i < lines.length; i++) {
+      const line = lines[i];
+
+      const ansMatch = line.match(ansRegex);
+      if (ansMatch) {
+        currentAnswer = this.normalizeAnswerKey(ansMatch[1]);
+        continue;
+      }
+
+      const optMatch = line.match(optRegex);
+      if (optMatch) {
+        const rawKey = optMatch[1] || optMatch[2] || optMatch[3] || optMatch[4];
+        const key = this.normalizeAnswerKey(rawKey);
+        let val = optMatch[5] || '';
+        if (val.startsWith('*') || val.endsWith('*')) {
+          currentAnswer = key;
+          val = val.replace(/^\*+|\*+$/g, '').trim();
+        }
+
+        if (key === 'A' && currentOptions.A && currentOptions.B && currentQText.length > 0) {
+          questions.push({
+            question_text: currentQText.join(' ').replace(/^(?:Q\d+|\d+)[\.\)\:\-]\s*/i, '').trim(),
+            option_a: currentOptions.A,
+            option_b: currentOptions.B,
+            option_c: currentOptions.C || 'None of the above',
+            option_d: currentOptions.D || 'All of the above',
+            correct_answer: currentAnswer || 'A',
+            marks: meta.marks,
+            negative_marks: meta.negative_marks,
+            category: meta.category,
+            difficulty: 'Medium',
+            explanation: '',
+            event_name: meta.event_name,
+            round_number: meta.round_number
+          });
+          currentQText = [];
+          currentOptions = {};
+          currentAnswer = null;
+        }
+
+        currentOptions[key] = val;
+        currentKey = key;
+      } else if (currentKey) {
+        if (!/^(?:Q(?:uestion)?\s*[:#.-]?\s*\d+|\d+[\.\)\:\-])/i.test(line)) {
+          currentOptions[currentKey] = (currentOptions[currentKey] + ' ' + line).trim();
+        } else {
+          currentKey = null;
+          currentQText.push(line);
+        }
+      } else {
+        currentQText.push(line);
+      }
+    }
+
+    if (currentOptions.A && currentOptions.B && currentQText.length > 0) {
+      questions.push({
+        question_text: currentQText.join(' ').replace(/^(?:Q\d+|\d+)[\.\)\:\-]\s*/i, '').trim(),
+        option_a: currentOptions.A,
+        option_b: currentOptions.B,
+        option_c: currentOptions.C || 'None of the above',
+        option_d: currentOptions.D || 'All of the above',
+        correct_answer: currentAnswer || 'A',
+        marks: meta.marks,
+        negative_marks: meta.negative_marks,
+        category: meta.category,
+        difficulty: 'Medium',
+        explanation: '',
+        event_name: meta.event_name,
+        round_number: meta.round_number
       });
+    }
+
+    return questions;
+  }
+
+  /**
+   * Tertiary Fallback: Paragraph Blocks
+   */
+  static parseByParagraphBlocks(text, meta) {
+    const blocks = text.split(/\n\s*\n+/);
+    const questions = [];
+
+    for (const block of blocks) {
+      const lines = block.split('\n').map((l) => l.trim()).filter(Boolean);
+      if (lines.length >= 3) {
+        const qText = lines[0].replace(/^(?:Q(?:uestion)?\s*[:#.-]?\s*)?\d*[\.\)\:\-]\s*/i, '');
+        const remaining = lines.slice(1);
+
+        let a = '', b = '', c = '', d = '';
+        remaining.forEach((r, idx) => {
+          const clean = r.replace(/^(?:(?:\(?([A-Da-d1-4])\)?[\s.:)-]+)|\[[A-Da-d]\])\s*/i, '');
+          if (idx === 0) a = clean;
+          else if (idx === 1) b = clean;
+          else if (idx === 2) c = clean;
+          else if (idx === 3) d = clean;
+        });
+
+        if (qText && a && b) {
+          questions.push({
+            question_text: qText,
+            option_a: a,
+            option_b: b,
+            option_c: c || 'None of the above',
+            option_d: d || 'All of the above',
+            correct_answer: 'A',
+            marks: meta.marks,
+            negative_marks: meta.negative_marks,
+            category: meta.category,
+            difficulty: 'Medium',
+            explanation: '',
+            event_name: meta.event_name,
+            round_number: meta.round_number
+          });
+        }
+      }
     }
 
     return questions;
@@ -397,11 +818,15 @@ class DocumentParserService {
 
   static normalizeAnswerKey(ans) {
     if (!ans) return 'A';
-    const str = String(ans).toUpperCase().trim();
-    if (str.includes('A') || str === '1') return 'A';
-    if (str.includes('B') || str === '2') return 'B';
-    if (str.includes('C') || str === '3') return 'C';
-    if (str.includes('D') || str === '4') return 'D';
+    const s = String(ans).toLowerCase().trim();
+    if (s === 'a' || s === '1' || s === 'i' || s.startsWith('opt a') || s.startsWith('option a')) return 'A';
+    if (s === 'b' || s === '2' || s === 'ii' || s.startsWith('opt b') || s.startsWith('option b')) return 'B';
+    if (s === 'c' || s === '3' || s === 'iii' || s.startsWith('opt c') || s.startsWith('option c')) return 'C';
+    if (s === 'd' || s === '4' || s === 'iv' || s.startsWith('opt d') || s.startsWith('option d')) return 'D';
+    if (s.includes('a')) return 'A';
+    if (s.includes('b')) return 'B';
+    if (s.includes('c')) return 'C';
+    if (s.includes('d')) return 'D';
     return 'A';
   }
 
@@ -412,6 +837,7 @@ class DocumentParserService {
     if (d.includes('hard') || d.includes('adv')) return 'Hard';
     return 'Medium';
   }
+
 
   /**
    * Main entrypoint to parse any supported document into participant registration records
