@@ -424,7 +424,7 @@ export default function MultiFormatImportModal({
               </span>
             </div>
 
-            <div className="max-h-64 overflow-y-auto rounded-2xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 divide-y divide-slate-100 dark:divide-slate-800">
+            <div className="max-h-[48vh] overflow-y-auto rounded-2xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 divide-y divide-slate-100 dark:divide-slate-800 shadow-inner">
               {previewQuestions.map((q, idx) => (
                 <div key={idx} className="p-3 hover:bg-slate-50/70 dark:hover:bg-slate-800/50 transition-colors">
                   <div className="flex items-start justify-between gap-3">
