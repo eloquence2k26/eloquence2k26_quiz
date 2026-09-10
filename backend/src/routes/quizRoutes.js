@@ -5,6 +5,7 @@ const authenticate = require('../middleware/authMiddleware');
 const authorize = require('../middleware/roleMiddleware');
 
 router.get('/', authenticate, QuizController.getAllQuizzes);
+router.get('/available', authenticate, QuizController.getAllQuizzes);
 router.get('/:id', authenticate, QuizController.getQuizById);
 
 router.post('/', authenticate, authorize('ADMIN'), QuizController.createQuiz);

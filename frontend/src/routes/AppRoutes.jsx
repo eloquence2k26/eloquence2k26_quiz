@@ -90,6 +90,12 @@ export default function AppRoutes() {
         </Route>
       </Route>
 
+      {/* Route Aliases */}
+      <Route path="/dashboard" element={<Navigate to="/participant/dashboard" replace />} />
+      <Route path="/quizzes" element={<Navigate to="/participant/quizzes" replace />} />
+      <Route path="/results" element={<Navigate to="/participant/results" replace />} />
+      <Route path="/round-status" element={<Navigate to="/participant/round-status" replace />} />
+
       {/* Root redirection */}
       <Route path="/" element={<Navigate to="/login" replace />} />
       <Route path="*" element={<Navigate to="/login" replace />} />

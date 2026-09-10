@@ -456,7 +456,17 @@ class RoundController {
   static async getParticipantRoundStatus(req, res) {
     try {
       const participant = db.find('participants', (p) => p.id === req.user.id);
-      if (!participant) return error(res, 'Participant not found', 404);
+      if (!participant) {
+        if (req.user.role === 'ADMIN') {
+          return success(res, {
+            round_1_selected: true,
+            round_1_result: null,
+            round_2_quiz: null,
+            admin_view: true
+          });
+        }
+        return error(res, 'Participant not found', 404);
+      }
 
       const round1Quiz = db.find('quizzes', (q) => q.round_number === 1);
       const round2Quiz = db.find('quizzes', (q) => q.round_number === 2);
