@@ -81,8 +81,7 @@ export default function QuizCard({ quiz, participant }) {
 
   const isBeforeStart = secondsUntilStart > 0;
   const isAfterEnd = Boolean(entryStatus?.isAfterEnd) || (quiz.end_date && quiz.end_time && secondsUntilEnd === 0 && !isBeforeStart);
-  const isLive = !isBeforeStart && !isAfterEnd && (quiz.status === 'Live' || entryStatus?.isEntryOpen);
-  const isEntryClosed = Boolean(entryStatus?.isEntryClosed) && !isInProgress && !isCompleted && !isTerminated && !isBeforeStart;
+  const isLive = !isBeforeStart && !isAfterEnd;
 
   const handleAction = () => {
     if (isCompleted || isTerminated) {
@@ -94,13 +93,12 @@ export default function QuizCard({ quiz, participant }) {
       return;
     }
 
-    if (isEntryClosed) {
+    if (isInProgress) {
+      navigate(`/exam/arena/${quiz.id}`);
       return;
     }
 
-    if (isLive || quiz.status === 'Live' || quiz.status === 'Published') {
-      navigate(`/exam/instructions/${quiz.id}`);
-    }
+    navigate(`/exam/instructions/${quiz.id}`);
   };
 
   return (
@@ -140,11 +138,6 @@ export default function QuizCard({ quiz, participant }) {
                 <Clock className="w-3 h-3 text-amber-600 dark:text-amber-400" />
                 <span>SCHEDULED</span>
               </span>
-            )}
-            {isEntryClosed && !isCompleted && !isTerminated && (
-              <Badge variant="danger" size="sm">
-                Entry Closed
-              </Badge>
             )}
           </div>
         </div>
@@ -264,35 +257,14 @@ export default function QuizCard({ quiz, participant }) {
             <Timer className="w-4 h-4 text-amber-500 animate-spin-slow" />
             <span>Waiting for Exam (Starts in {formatCountdown(secondsUntilStart)})</span>
           </button>
-        ) : isEntryClosed ? (
-          <div className="space-y-1 text-center">
-            <button
-              disabled
-              className="w-full py-2.5 px-4 rounded-xl text-xs font-bold text-rose-600 dark:text-rose-400 bg-rose-50 dark:bg-rose-950/40 border border-rose-200 dark:border-rose-900 cursor-not-allowed flex items-center justify-center gap-2"
-            >
-              <Lock className="w-4 h-4 text-rose-500" />
-              <span>Entry Closed (Window Ended)</span>
-            </button>
-            <p className="text-[10px] text-slate-400">
-              Entry period passed. Contact coordinator for late access.
-            </p>
-          </div>
-        ) : isLive || quiz.status === 'Live' || quiz.status === 'Published' ? (
+        ) : (
           <button
             onClick={handleAction}
-            className="w-full py-2.5 px-4 rounded-xl text-xs font-bold text-white bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 shadow-lg shadow-emerald-500/25 transition-all flex items-center justify-center gap-2"
+            className="w-full py-2.5 px-4 rounded-xl text-xs font-bold text-white bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 shadow-lg shadow-emerald-500/25 transition-all flex items-center justify-center gap-2 cursor-pointer"
           >
             <Zap className="w-4 h-4" />
             <span>Start Exam Now</span>
             <ArrowRight className="w-4 h-4" />
-          </button>
-        ) : (
-          <button
-            disabled
-            className="w-full py-2.5 px-4 rounded-xl text-xs font-bold text-slate-400 bg-slate-100 dark:bg-slate-800 cursor-not-allowed flex items-center justify-center gap-2"
-          >
-            <Clock className="w-4 h-4" />
-            <span>Scheduled Exam</span>
           </button>
         )}
       </div>

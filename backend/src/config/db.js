@@ -30,8 +30,7 @@ const TABLE_COLUMNS = {
   questions: [
     'id', 'question_text', 'option_a', 'option_b', 'option_c', 'option_d',
     'correct_answer', 'marks', 'negative_marks', 'explanation', 'category',
-    'difficulty', 'event_name', 'round_number', 'rounds', 'image_url',
-    'created_by', 'created_at', 'updated_at'
+    'difficulty', 'created_by', 'created_at', 'updated_at'
   ],
   quiz_questions: ['id', 'quiz_id', 'question_id', 'display_order', 'created_at'],
   quiz_assignments: ['id', 'quiz_id', 'participant_id', 'assigned_by', 'assigned_at', 'status'],
@@ -205,12 +204,30 @@ class DBStore {
                 );
                 if (u && UUID_REGEX.test(String(u.id).trim())) {
                   val = u.id;
+                } else {
+                  val = null;
                 }
               }
             } else if (key === 'quiz_id') {
               const q = (this.data.quizzes || []).find((quiz) => quiz.id === val || quiz.title === val);
               if (q && UUID_REGEX.test(String(q.id).trim())) {
                 val = q.id;
+              } else {
+                val = null;
+              }
+            } else if (key === 'question_id') {
+              const quest = (this.data.questions || []).find((q) => q.id === val || q.question_text === val);
+              if (quest && UUID_REGEX.test(String(quest.id).trim())) {
+                val = quest.id;
+              } else {
+                val = null;
+              }
+            } else if (key === 'created_by' || key === 'assigned_by' || key === 'admin_id') {
+              const u = (this.data.users || []).find((user) => user.id === val || user.email === val);
+              if (u && UUID_REGEX.test(String(u.id).trim())) {
+                val = u.id;
+              } else {
+                val = null;
               }
             } else if (key === 'id') {
               val = uuidv4();
@@ -382,6 +399,180 @@ class DBStore {
         }
       }
 
+      // Auto-populate default symposium question bank if questions table is empty in Supabase
+      if (!this.data.questions || this.data.questions.length === 0) {
+        const defaultQuestions = [
+          {
+            id: 'e0000000-0000-0000-0000-000000000001',
+            question_text: 'What is the worst-case time complexity of QuickSort when using the standard Lomuto partition scheme with deterministic first-element pivot?',
+            option_a: 'O(n log n)',
+            option_b: 'O(n^2)',
+            option_c: 'O(n)',
+            option_d: 'O(log n)',
+            correct_answer: 'B',
+            marks: 2.0,
+            negative_marks: 0.5,
+            explanation: 'When the input is already sorted or reverse sorted, standard Lomuto partitioning produces unbalanced partitions of sizes 0 and n-1, leading to O(n^2) worst-case time.',
+            category: 'Data Structures & Algorithms',
+            difficulty: 'Easy',
+            event_name: 'Eloquence 2026',
+            round_number: 1
+          },
+          {
+            id: 'e0000000-0000-0000-0000-000000000002',
+            question_text: 'Which HTTP status code represents "429"?',
+            option_a: 'Service Unavailable',
+            option_b: 'Unauthorized Access',
+            option_c: 'Too Many Requests',
+            option_d: 'Precondition Failed',
+            correct_answer: 'C',
+            marks: 2.0,
+            negative_marks: 0.5,
+            explanation: 'HTTP 429 Too Many Requests indicates the user has sent too many requests in a given amount of time (rate limiting).',
+            category: 'Web Architecture',
+            difficulty: 'Easy',
+            event_name: 'Eloquence 2026',
+            round_number: 1
+          },
+          {
+            id: 'e0000000-0000-0000-0000-000000000003',
+            question_text: 'In JavaScript, what will `console.log([] + {})` output in standard ECMA specifications?',
+            option_a: '"[object Object]"',
+            option_b: '"undefined"',
+            option_c: 'NaN',
+            option_d: 'TypeError',
+            correct_answer: 'A',
+            marks: 2.0,
+            negative_marks: 0.5,
+            explanation: 'The empty array converts to empty string `""` and the object converts to `"[object Object]"`, resulting in concatenation to `"[object Object]"`.',
+            category: 'Programming Languages',
+            difficulty: 'Medium',
+            event_name: 'Eloquence 2026',
+            round_number: 1
+          },
+          {
+            id: 'e0000000-0000-0000-0000-000000000004',
+            question_text: 'Which of the following database isolation levels prevents phantom reads in standard ANSI SQL?',
+            option_a: 'Read Committed',
+            option_b: 'Repeatable Read',
+            option_c: 'Serializable',
+            option_d: 'Read Uncommitted',
+            correct_answer: 'C',
+            marks: 2.0,
+            negative_marks: 0.5,
+            explanation: 'Serializable is the highest isolation level and strictly prevents dirty reads, non-repeatable reads, and phantom reads.',
+            category: 'Database Management',
+            difficulty: 'Medium',
+            event_name: 'Eloquence 2026',
+            round_number: 1
+          },
+          {
+            id: 'e0000000-0000-0000-0000-000000000005',
+            question_text: 'What is the primary objective of the TLS 1.3 0-RTT Handshake resumption?',
+            option_a: 'To encrypt data with symmetric RSA keys',
+            option_b: 'To allow client data to be sent on the first flight without round-trip delay',
+            option_c: 'To bypass certificate verification',
+            option_d: 'To compress packet payloads',
+            correct_answer: 'B',
+            marks: 3.0,
+            negative_marks: 1.0,
+            explanation: '0-RTT resumption allows clients to send application data immediately in the ClientHello when reconnecting to a known server.',
+            category: 'Networking & Security',
+            difficulty: 'Hard',
+            event_name: 'Eloquence 2026',
+            round_number: 1
+          },
+          {
+            id: 'e0000000-0000-0000-0000-000000000006',
+            question_text: 'Which memory management concept handles the issue of external fragmentation in OS memory allocators?',
+            option_a: 'Paging',
+            option_b: 'Contiguous Partitioning',
+            option_c: 'Static Relocation',
+            option_d: 'Swapping only',
+            correct_answer: 'A',
+            marks: 2.0,
+            negative_marks: 0.5,
+            explanation: 'Paging divides virtual and physical memory into fixed-sized blocks (pages and frames), completely eliminating external fragmentation.',
+            category: 'Operating Systems',
+            difficulty: 'Medium',
+            event_name: 'Eloquence 2026',
+            round_number: 1
+          },
+          {
+            id: 'e0000000-0000-0000-0000-000000000007',
+            question_text: 'In React 18, what is the key advantage of the `useDeferredValue` hook?',
+            option_a: 'It converts synchronous state to Redux store',
+            option_b: 'It defers updating a part of the UI that is computationally heavy until critical updates render',
+            option_c: 'It enforces immediate DOM mutations',
+            option_d: 'It caches network requests automatically',
+            correct_answer: 'B',
+            marks: 2.0,
+            negative_marks: 0.5,
+            explanation: 'useDeferredValue lets you defer updating a non-urgent part of the UI to keep input and animations smooth.',
+            category: 'Frontend Frameworks',
+            difficulty: 'Medium',
+            event_name: 'Eloquence 2026',
+            round_number: 1
+          },
+          {
+            id: 'e0000000-0000-0000-0000-000000000008',
+            question_text: 'Which algorithm is commonly used for finding Strongly Connected Components (SCC) in a directed graph?',
+            option_a: 'Dijkstra Algorithm',
+            option_b: 'Tarjan or Kosaraju Algorithm',
+            option_c: 'Kruskal Algorithm',
+            option_d: 'Floyd-Warshall Algorithm',
+            correct_answer: 'B',
+            marks: 3.0,
+            negative_marks: 1.0,
+            explanation: 'Tarjan and Kosaraju algorithms both compute strongly connected components in linear O(V + E) time.',
+            category: 'Algorithms',
+            difficulty: 'Hard',
+            event_name: 'Eloquence 2026',
+            round_number: 1
+          }
+        ];
+
+        this.data.questions = defaultQuestions;
+        (async () => {
+          try {
+            const cleanQuestions = defaultQuestions.map((q) => this.sanitize('questions', q));
+            await supabase.from('questions').upsert(cleanQuestions);
+            logger.info('[DB] Seeded initial questions into Supabase database');
+          } catch (qErr) {
+            logger.warn(`[DB] Notice seeding questions: ${qErr.message}`);
+          }
+        })();
+      }
+
+      // Auto-link questions to default Round 1 quiz if quiz_questions is empty
+      if (
+        (!this.data.quiz_questions || this.data.quiz_questions.length === 0) &&
+        this.data.quizzes &&
+        this.data.quizzes.length > 0 &&
+        this.data.questions &&
+        this.data.questions.length > 0
+      ) {
+        const defaultQuiz = this.data.quizzes[0];
+        const defaultLinks = this.data.questions.map((q, idx) => ({
+          id: uuidv4(),
+          quiz_id: defaultQuiz.id,
+          question_id: q.id,
+          display_order: idx + 1,
+          created_at: new Date().toISOString()
+        }));
+
+        this.data.quiz_questions = defaultLinks;
+        (async () => {
+          try {
+            const cleanLinks = defaultLinks.map((l) => this.sanitize('quiz_questions', l));
+            await supabase.from('quiz_questions').upsert(cleanLinks);
+            logger.info('[DB] Linked questions to default quiz in Supabase');
+          } catch (lErr) {
+            logger.warn(`[DB] Notice linking quiz questions: ${lErr.message}`);
+          }
+        })();
+      }
+
       // Start automatic live background synchronization timer (every 60s)
       if (!this._bgSyncTimer) {
         this._bgSyncTimer = setInterval(() => {
@@ -474,7 +665,18 @@ class DBStore {
     const cleanItem = this.sanitize(tbl, item);
     (async () => {
       try {
-        const { error } = await supabase.from(tbl).upsert([cleanItem]);
+        let upsertOptions = {};
+        if (tbl === 'quiz_questions') {
+          upsertOptions = { onConflict: 'quiz_id,question_id' };
+        } else if (tbl === 'quiz_assignments') {
+          upsertOptions = { onConflict: 'quiz_id,participant_id' };
+        } else if (tbl === 'round_selections') {
+          upsertOptions = { onConflict: 'event_id,round_number,participant_id' };
+        } else if (tbl === 'question_orders' || tbl === 'attempt_answers') {
+          upsertOptions = { onConflict: 'attempt_id,question_id' };
+        }
+
+        const { error } = await supabase.from(tbl).upsert([cleanItem], upsertOptions);
         if (error) {
           logger.error(`[DB Live] Supabase upsert error on "${tbl}": ${error.message}`);
         } else {
@@ -541,24 +743,16 @@ class DBStore {
     // Delete directly from Supabase DB table
     if (itemsToDelete.length > 0) {
       const idsToDelete = itemsToDelete.map((item) => item.id).filter(Boolean);
-      if (idsToDelete.length > 0) {
-        (async () => {
-          try {
-            const { error } = await supabase
-              .from(tbl)
-              .delete()
-              .in('id', idsToDelete);
-
-            if (error) {
-              logger.error(`[DB Live] Supabase delete error on "${tbl}": ${error.message}`);
-            } else {
-              logger.info(`[DB Live] Deleted ${idsToDelete.length} records from Supabase table "${tbl}"`);
-            }
-          } catch (err) {
-            logger.error(`[DB Live] Supabase delete exception on "${tbl}": ${err.message}`);
+      (async () => {
+        try {
+          if (idsToDelete.length > 0) {
+            await supabase.from(tbl).delete().in('id', idsToDelete);
+            logger.info(`[DB Live] Deleted ${idsToDelete.length} record(s) from Supabase table "${tbl}"`);
           }
-        })();
-      }
+        } catch (err) {
+          logger.error(`[DB Live] Supabase delete exception on "${tbl}": ${err.message}`);
+        }
+      })();
     }
 
     return wasRemoved;

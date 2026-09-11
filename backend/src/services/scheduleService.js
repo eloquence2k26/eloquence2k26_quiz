@@ -13,17 +13,17 @@ class ScheduleService {
       const now = new Date();
 
       quizzes.forEach((quiz) => {
-        // 1. Auto-publish quizzes in 'Scheduled' status when start time is reached
+        // 1. Auto-publish / activate quizzes in 'Scheduled' status when start time is reached
         if (quiz.status === 'Scheduled') {
           if (quiz.start_date && quiz.start_time) {
             const startDateTime = new Date(`${quiz.start_date}T${quiz.start_time}`);
             if (!isNaN(startDateTime.getTime()) && now >= startDateTime) {
-              db.update('quizzes', (q) => q.id === quiz.id, { status: 'Published' });
+              db.update('quizzes', (q) => q.id === quiz.id, { status: 'Live' });
               AuditService.log('SYSTEM', 'AUTO_PUBLISH_QUIZ', 'QUIZ', quiz.id, {
                 title: quiz.title,
                 scheduled_start: `${quiz.start_date} ${quiz.start_time}`
               });
-              logger.info(`[ScheduleService] Auto-published scheduled exam: "${quiz.title}" (${quiz.id})`);
+              logger.info(`[ScheduleService] Auto-started scheduled exam: "${quiz.title}" (${quiz.id})`);
             }
           }
         }
@@ -61,26 +61,23 @@ class ScheduleService {
         isEntryClosed: false,
         isBeforeStart: false,
         isAfterEnd: false,
-        isLateAllowed: Boolean(quiz?.allow_late_entry)
+        isLateAllowed: true,
+        secondsUntilStart: 0,
+        secondsUntilEnd: 0,
+        remainingEntrySeconds: 0
       };
     }
 
-    const entryWindowMinutes = Number(quiz.entry_window_minutes) || 5;
     const startDateTime = new Date(`${quiz.start_date}T${quiz.start_time}`);
     const endDateTime = quiz.end_date && quiz.end_time ? new Date(`${quiz.end_date}T${quiz.end_time}`) : null;
-    const entryCloseTime = new Date(startDateTime.getTime() + entryWindowMinutes * 60 * 1000);
     const now = new Date();
 
-    const isBeforeStart = now < startDateTime;
-    const isAfterEnd = endDateTime ? now > endDateTime : false;
-    const isLateAllowed = Boolean(quiz.allow_late_entry || quiz.late_entry_allowed);
-    const isEntryOpen = !isBeforeStart && !isAfterEnd && (now <= entryCloseTime || isLateAllowed);
-    const isEntryClosed = !isBeforeStart && (now > entryCloseTime && !isLateAllowed);
+    const isBeforeStart = !isNaN(startDateTime.getTime()) && now < startDateTime;
+    const isAfterEnd = endDateTime && !isNaN(endDateTime.getTime()) ? now > endDateTime : false;
+    const isEntryOpen = !isBeforeStart && !isAfterEnd;
+    const isEntryClosed = isAfterEnd;
 
     const secondsUntilStart = isBeforeStart ? Math.max(0, Math.floor((startDateTime.getTime() - now.getTime()) / 1000)) : 0;
-    const remainingEntrySeconds = isEntryOpen && !isLateAllowed
-      ? Math.max(0, Math.floor((entryCloseTime.getTime() - now.getTime()) / 1000))
-      : 0;
     const secondsUntilEnd = endDateTime && !isAfterEnd
       ? Math.max(0, Math.floor((endDateTime.getTime() - now.getTime()) / 1000))
       : 0;
@@ -89,16 +86,14 @@ class ScheduleService {
       hasSchedule: true,
       startDateTime,
       endDateTime,
-      entryCloseTime,
-      entryWindowMinutes,
       isBeforeStart,
       isAfterEnd,
       isEntryOpen,
       isEntryClosed,
-      isLateAllowed,
+      isLateAllowed: true,
       secondsUntilStart,
       secondsUntilEnd,
-      remainingEntrySeconds
+      remainingEntrySeconds: secondsUntilEnd
     };
   }
 

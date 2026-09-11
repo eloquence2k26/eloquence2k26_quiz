@@ -127,6 +127,29 @@ class QuestionController {
         created_by: req.user.id
       });
 
+      // Link to matching quiz in quiz_questions
+      const numRound = Number(round_number) || 1;
+      const targetEventName = (event_name || '').trim().toLowerCase();
+      const matchingQuiz = req.body.quiz_id
+        ? db.find('quizzes', (qz) => qz.id === req.body.quiz_id)
+        : db.find('quizzes', (qz) => {
+            const matchesRound = Number(qz.round_number) === numRound;
+            const matchesEvent = !qz.event_name || qz.event_name.toLowerCase() === targetEventName || qz.title.toLowerCase() === targetEventName;
+            return matchesRound && matchesEvent;
+          }) || db.find('quizzes', (qz) => Number(qz.round_number) === numRound);
+
+      if (matchingQuiz) {
+        const existingLink = db.find('quiz_questions', (qq) => qq.quiz_id === matchingQuiz.id && qq.question_id === newQ.id);
+        if (!existingLink) {
+          const count = db.filter('quiz_questions', (qq) => qq.quiz_id === matchingQuiz.id).length;
+          db.insert('quiz_questions', {
+            quiz_id: matchingQuiz.id,
+            question_id: newQ.id,
+            display_order: count + 1
+          });
+        }
+      }
+
       AuditService.log(req.user.id, 'CREATE_QUESTION', 'QUESTION', newQ.id, { category: newQ.category });
 
       return success(res, newQ, 'Question created successfully', 201);
@@ -240,13 +263,36 @@ class QuestionController {
             difficulty: ['Easy', 'Medium', 'Hard'].includes(q.difficulty) ? q.difficulty : 'Medium',
             event_name: q.event_name ? String(q.event_name).trim() : 'Eloquence 2026',
             round_number: Number(q.round_number) || 1,
-            created_by: req.user ? req.user.id : 'system'
+            created_by: req.user ? req.user.id : 'a0000000-0000-0000-0000-000000000001'
           });
           inserted.push(item);
+
+          // Link to matching quiz in quiz_questions
+          const numRound = Number(q.round_number) || 1;
+          const targetEvent = (q.event_name || '').trim().toLowerCase();
+          const matchingQuiz = req.body.quiz_id
+            ? db.find('quizzes', (qz) => qz.id === req.body.quiz_id)
+            : db.find('quizzes', (qz) => {
+                const matchesRound = Number(qz.round_number) === numRound;
+                const matchesEvent = !qz.event_name || qz.event_name.toLowerCase() === targetEvent || qz.title.toLowerCase() === targetEvent;
+                return matchesRound && matchesEvent;
+              }) || db.find('quizzes', (qz) => Number(qz.round_number) === numRound);
+
+          if (matchingQuiz) {
+            const existingLink = db.find('quiz_questions', (qq) => qq.quiz_id === matchingQuiz.id && qq.question_id === item.id);
+            if (!existingLink) {
+              const currentCount = db.filter('quiz_questions', (qq) => qq.quiz_id === matchingQuiz.id).length;
+              db.insert('quiz_questions', {
+                quiz_id: matchingQuiz.id,
+                question_id: item.id,
+                display_order: currentCount + 1
+              });
+            }
+          }
         }
       });
 
-      AuditService.log(req.user.id, 'BULK_UPLOAD_QUESTIONS', 'QUESTION', 'BATCH', { count: inserted.length });
+      AuditService.log(req.user ? req.user.id : 'system', 'BULK_UPLOAD_QUESTIONS', 'QUESTION', 'BATCH', { count: inserted.length });
 
       return success(res, { count: inserted.length, items: inserted }, `Successfully imported ${inserted.length} questions`);
     } catch (err) {
@@ -263,7 +309,7 @@ class QuestionController {
         return error(res, 'No file uploaded', 400);
       }
 
-      const { event_name = 'Eloquence 2026', round_number = 1, preview_only = 'false' } = req.body;
+      const { event_name = 'Eloquence 2026', round_number = 1, preview_only = 'false', quiz_id } = req.body;
       const originalFilename = req.file.originalname;
       const fileBuffer = req.file.buffer;
 
@@ -295,6 +341,16 @@ class QuestionController {
 
       // Insert into DB
       const inserted = [];
+      const numRound = Number(round_number) || 1;
+      const targetEvent = (event_name || '').trim().toLowerCase();
+      const matchingQuiz = quiz_id
+        ? db.find('quizzes', (qz) => qz.id === quiz_id)
+        : db.find('quizzes', (qz) => {
+            const matchesRound = Number(qz.round_number) === numRound;
+            const matchesEvent = !qz.event_name || qz.event_name.toLowerCase() === targetEvent || qz.title.toLowerCase() === targetEvent;
+            return matchesRound && matchesEvent;
+          }) || db.find('quizzes', (qz) => Number(qz.round_number) === numRound);
+
       parsedQuestions.forEach((q) => {
         const item = db.insert('questions', {
           question_text: q.question_text,
@@ -309,13 +365,25 @@ class QuestionController {
           category: q.category || 'General',
           difficulty: q.difficulty || 'Medium',
           event_name: q.event_name || event_name,
-          round_number: Number(q.round_number) || Number(round_number) || 1,
-          created_by: req.user.id
+          round_number: Number(q.round_number) || numRound,
+          created_by: req.user ? req.user.id : 'a0000000-0000-0000-0000-000000000001'
         });
         inserted.push(item);
+
+        if (matchingQuiz) {
+          const existingLink = db.find('quiz_questions', (qq) => qq.quiz_id === matchingQuiz.id && qq.question_id === item.id);
+          if (!existingLink) {
+            const currentCount = db.filter('quiz_questions', (qq) => qq.quiz_id === matchingQuiz.id).length;
+            db.insert('quiz_questions', {
+              quiz_id: matchingQuiz.id,
+              question_id: item.id,
+              display_order: currentCount + 1
+            });
+          }
+        }
       });
 
-      AuditService.log(req.user.id, 'IMPORT_FILE_QUESTIONS', 'QUESTION', 'BATCH', {
+      AuditService.log(req.user ? req.user.id : 'system', 'IMPORT_FILE_QUESTIONS', 'QUESTION', 'BATCH', {
         filename: originalFilename,
         count: inserted.length,
         round_number
