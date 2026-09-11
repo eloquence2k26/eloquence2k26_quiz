@@ -510,16 +510,32 @@ class RoundController {
       const round1Quiz = db.find('quizzes', (q) => Number(q.round_number) === 1);
       const round2Quiz = db.find('quizzes', (q) => Number(q.round_number) === 2);
 
-      const r1Attempt = round1Quiz ? db.find('exam_attempts', (a) => a.quiz_id === round1Quiz.id && a.participant_id === req.user.id) : null;
-      const r1Result = round1Quiz ? db.find('results', (r) => r.quiz_id === round1Quiz.id && r.participant_id === req.user.id) : null;
-      const r2Attempt = round2Quiz ? db.find('exam_attempts', (a) => a.quiz_id === round2Quiz.id && a.participant_id === req.user.id) : null;
+      // Resolve participant attempts across all alias IDs
+      const participantIds = new Set([
+        req.user.id,
+        participant.id,
+        participant.participant_id,
+        participant.email ? participant.email.toLowerCase() : null
+      ].filter(Boolean));
+
+      const r1Attempt = round1Quiz
+        ? db.find('exam_attempts', (a) => a.quiz_id === round1Quiz.id && participantIds.has(a.participant_id))
+        : null;
+      const r1Result = round1Quiz
+        ? db.find('results', (r) => r.quiz_id === round1Quiz.id && participantIds.has(r.participant_id))
+        : null;
+      const r2Attempt = round2Quiz
+        ? db.find('exam_attempts', (a) => a.quiz_id === round2Quiz.id && participantIds.has(a.participant_id))
+        : null;
+
+      const isR1Completed = Boolean((r1Attempt && r1Attempt.status === 'COMPLETED') || (r1Result && r1Result.final_score !== undefined));
 
       return success(res, {
         round_1_published: isRound1Published,
-        round_1_attempted: Boolean(r1Attempt || r1Result),
-        round_1_selected: Boolean(participant.round_1_selected),
-        round_2_selected: Boolean(participant.round_2_selected),
-        round_1_result: r1Result
+        round_1_attempted: isR1Completed,
+        round_1_selected: Boolean(participant.round_1_selected && isR1Completed && isRound1Published),
+        round_2_selected: Boolean(participant.round_2_selected && isR1Completed),
+        round_1_result: r1Result && isR1Completed
           ? {
               score: r1Result.final_score,
               rank: r1Result.rank,

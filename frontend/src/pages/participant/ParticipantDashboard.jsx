@@ -50,7 +50,8 @@ export default function ParticipantDashboard() {
         adminService.getParticipantRoundStatus()
       ]);
 
-      if (qRes.success) setQuizzes(qRes.data || []);
+      const qList = qRes.success ? (qRes.data || []) : [];
+      if (qRes.success) setQuizzes(qList);
       if (aRes.success) setAnnouncements(aRes.data || []);
       if (rRes.success) {
         const rData = rRes.data || null;
@@ -58,19 +59,30 @@ export default function ParticipantDashboard() {
 
         // Check for qualification or elimination triggers
         if (rData) {
-          const hasAttemptedR1 = Boolean(rData.round_1_attempted || rData.round_1_result);
+          const hasCompletedR1 = Boolean(rData.round_1_attempted && rData.round_1_result);
           const isPublished = Boolean(rData.round_1_published);
           const isSelected = Boolean(rData.round_1_selected);
 
-          // If selected for round 2: check if we should show celebration
-          if (isSelected) {
+          // Check if candidate has a Round 1 exam awaiting attempt or retest
+          const hasPendingR1 = qList.some(
+            (q) => Number(q.round_number) === 1 && q.attempt_status !== 'COMPLETED'
+          );
+
+          // ONLY trigger celebration if Round 1 is actually completed, published, and not awaiting a retest
+          if (isSelected && isPublished && hasCompletedR1 && !hasPendingR1) {
             const celebrationSeen = sessionStorage.getItem('elq26_r2_celebration_seen');
             if (!celebrationSeen) {
               setShowQualifiedModal(true);
             }
-          } else if (hasAttemptedR1 && isPublished && !isSelected) {
+          } else {
+            setShowQualifiedModal(false);
+          }
+
+          if (hasCompletedR1 && isPublished && !isSelected && !hasPendingR1) {
             // Not selected / Eliminated after publication
             setShowEliminatedModal(true);
+          } else {
+            setShowEliminatedModal(false);
           }
         }
       }
@@ -143,7 +155,15 @@ export default function ParticipantDashboard() {
   const participant = user?.participant || {};
   const activeQuiz = quizzes.find((q) => q.status === 'Live' && q.attempt_status !== 'COMPLETED');
   const completedCount = quizzes.filter((q) => q.attempt_status === 'COMPLETED').length;
-  const isRound1Selected = Boolean(roundStatus?.round_1_selected);
+  const hasPendingR1 = quizzes.some(
+    (q) => Number(q.round_number) === 1 && q.attempt_status !== 'COMPLETED'
+  );
+  const isRound1Selected = Boolean(
+    roundStatus?.round_1_selected &&
+    roundStatus?.round_1_published &&
+    roundStatus?.round_1_attempted &&
+    !hasPendingR1
+  );
 
   return (
     <div className="space-y-8">

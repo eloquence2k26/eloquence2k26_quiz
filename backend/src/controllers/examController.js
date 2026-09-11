@@ -696,8 +696,12 @@ class ExamController {
       // 5. Delete the terminated exam attempt record so participant can take it anew
       db.remove('exam_attempts', (a) => a.id === attemptId || (possibleIds.has(a.participant_id) && a.quiz_id === quizId));
 
-      // 6. Ensure participant and user accounts are active (un-disabled if flagged)
-      db.update('participants', (p) => possibleIds.has(p.id) || possibleIds.has(p.participant_id), { is_disabled: false });
+      // 6. Ensure participant and user accounts are active and reset round selection flags for fresh attempt
+      db.update('participants', (p) => possibleIds.has(p.id) || possibleIds.has(p.participant_id), {
+        is_disabled: false,
+        round_1_selected: false,
+        round_2_selected: false
+      });
       if (participant?.id) {
         db.update('users', (u) => u.id === participant.id || u.id === participantId, { is_active: true });
       }
