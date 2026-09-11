@@ -13,6 +13,8 @@ class QuestionController {
       const rawQuestions = db.get('questions');
       const quizzes = db.get('quizzes') || [];
       const quizQuestions = db.get('quiz_questions') || [];
+      const registeredEvents = db.get('events') || [];
+      const defaultEventTitle = registeredEvents[0]?.title || quizzes[0]?.event_name || quizzes[0]?.title || 'Test run';
 
       // Enrich questions with associated event and rounds
       let questions = rawQuestions.map((q) => {
@@ -24,10 +26,10 @@ class QuestionController {
         const eventNames = Array.from(
           new Set([
             q.event_name,
-            ...relatedQuizzes.map((qz) => qz.event_name || 'Eloquence 2026')
+            ...relatedQuizzes.map((qz) => qz.event_name || defaultEventTitle)
           ].filter(Boolean))
         );
-        if (eventNames.length === 0) eventNames.push('Eloquence 2026');
+        if (eventNames.length === 0) eventNames.push(defaultEventTitle);
 
         const roundNumbers = Array.from(
           new Set([
@@ -40,7 +42,7 @@ class QuestionController {
 
         return {
           ...q,
-          event_name: q.event_name || eventNames[0] || 'Eloquence 2026',
+          event_name: q.event_name || eventNames[0] || defaultEventTitle,
           events: eventNames,
           round_numbers: roundNumbers,
           round_number: q.round_number || roundNumbers[0] || 1

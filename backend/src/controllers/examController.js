@@ -90,7 +90,21 @@ class ExamController {
         (a) => a.quiz_id === quizId && possibleUserIds.has(a.participant_id)
       );
 
-      const activeAttempt = existingAttempts.find((a) => a.status === 'IN_PROGRESS');
+      // Check for terminated/disqualified attempts
+      const terminatedAttempt = existingAttempts.find(
+        (a) => a.status === 'TERMINATED' || a.status === 'DISQUALIFIED' || Boolean(a.termination_reason)
+      );
+      if (terminatedAttempt && req.user.role === 'PARTICIPANT') {
+        return error(
+          res,
+          'Your examination was terminated due to proctoring security violations. Access is locked unless granted a restart by the symposium administrator.',
+          403
+        );
+      }
+
+      const activeAttempt = existingAttempts.find(
+        (a) => a.status === 'IN_PROGRESS' && !a.termination_reason && !a.submitted_at
+      );
 
       if (activeAttempt) {
         // Check if server timer expired

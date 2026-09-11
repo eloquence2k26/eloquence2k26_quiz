@@ -73,57 +73,47 @@ export default function QuestionsPage() {
         setQuestions(questRes.data || []);
       }
 
-      // Merge distinct events from events, rounds, and questions
+      // Strictly use the actual events registered in Event Management
       const eventMap = new Map();
-      loadedEvents.forEach((ev) => {
-        const title = typeof ev === 'string' ? ev : ev.title;
-        if (title) {
-          eventMap.set(title.toLowerCase(), {
-            id: ev.id || `ev-${title.toLowerCase().replace(/\s+/g, '-')}`,
-            title: title,
-            code: ev.code || 'ELQ26',
-            description: ev.description || `${title} tournament track`
-          });
-        }
-      });
-
-      loadedRounds.forEach((r) => {
-        const title = r.event_name;
-        if (title && !eventMap.has(title.toLowerCase())) {
-          eventMap.set(title.toLowerCase(), {
-            id: r.event_id || `ev-${title.toLowerCase().replace(/\s+/g, '-')}`,
-            title: title,
-            code: r.event_code || 'ELQ26',
-            description: `${title} symposium tournament track`
-          });
-        }
-      });
-
-      (questRes.data || []).forEach((q) => {
-        const evts = Array.isArray(q.events) && q.events.length > 0 ? q.events : [q.event_name];
-        evts.filter(Boolean).forEach((title) => {
-          if (!eventMap.has(title.toLowerCase())) {
+      if (loadedEvents.length > 0) {
+        loadedEvents.forEach((ev) => {
+          const title = typeof ev === 'string' ? ev : ev.title;
+          if (title) {
             eventMap.set(title.toLowerCase(), {
-              id: `ev-${title.toLowerCase().replace(/\s+/g, '-')}`,
+              id: ev.id || `ev-${title.toLowerCase().replace(/\s+/g, '-')}`,
               title: title,
-              code: 'ELQ26',
-              description: `${title} tournament track`
+              code: ev.code || 'ELQ26',
+              description: ev.description || `${title} tournament track`
             });
           }
         });
-      });
-
-      // Default fallback event if none exist
-      if (eventMap.size === 0) {
-        eventMap.set('technical quiz', {
+      } else {
+        eventMap.set('test run', {
           id: 'c0000000-0000-0000-0000-000000000001',
-          title: 'Technical Quiz',
+          title: 'Test run',
           code: 'ELQ26',
-          description: 'Official National Symposium Technical MCQ Championship'
+          description: 'Official symposium tournament track'
         });
       }
 
-      setEvents(Array.from(eventMap.values()));
+      const finalEvents = Array.from(eventMap.values());
+      setEvents(finalEvents);
+
+      // Align questions to existing event
+      const primaryEventTitle = finalEvents[0]?.title || 'Test run';
+      const alignedQuestions = (questRes.data || []).map((q) => {
+        const qEvts = Array.isArray(q.events) && q.events.length > 0 ? q.events : (q.event_name ? [q.event_name] : []);
+        const matchesAny = qEvts.some((e) => finalEvents.some((fe) => fe.title.toLowerCase() === e.toLowerCase()));
+        if (!matchesAny) {
+          return {
+            ...q,
+            event_name: primaryEventTitle,
+            events: [primaryEventTitle]
+          };
+        }
+        return q;
+      });
+      setQuestions(alignedQuestions);
     } catch (err) {
       toast.error('Failed to load question repository');
     } finally {
