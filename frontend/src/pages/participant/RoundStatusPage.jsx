@@ -1,13 +1,30 @@
 import React, { useState, useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { Sparkles, Award, Clock, Calendar, HelpCircle, Lock, ArrowRight, ShieldCheck, CheckCircle2, XCircle } from 'lucide-react';
+import {
+  Sparkles,
+  Award,
+  Clock,
+  Calendar,
+  HelpCircle,
+  Lock,
+  ArrowRight,
+  ShieldCheck,
+  CheckCircle2,
+  XCircle,
+  LogOut,
+  TrendingUp
+} from 'lucide-react';
 import { adminService } from '../../services/adminService';
+import { useAuth } from '../../context/AuthContext';
+import { useToast } from '../../context/ToastContext';
 import { getSocket } from '../../services/socket';
 import { formatDate } from '../../utils/formatters';
 import Loading from '../../components/common/Loading';
 
 export default function RoundStatusPage() {
   const navigate = useNavigate();
+  const { logout } = useAuth();
+  const toast = useToast();
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
 
@@ -46,6 +63,17 @@ export default function RoundStatusPage() {
     };
   }, []);
 
+  const handleEliminationLogout = async () => {
+    try {
+      await adminService.acknowledgeElimination();
+    } catch (e) {
+      console.warn('Elimination acknowledgment caught:', e.message);
+    }
+    logout();
+    toast.info('Your participation session has concluded. Thank you for participating in Eloquence \'26.');
+    navigate('/login');
+  };
+
   if (loading) return <Loading text="Checking qualification records..." />;
 
   const isSelected = Boolean(data?.round_1_selected);
@@ -59,7 +87,7 @@ export default function RoundStatusPage() {
           Symposium Round Qualification
         </h1>
         <p className="text-xs text-slate-500 dark:text-slate-400">
-          Official progression tracking from Round 1 to Round 2
+          Official progression tracking from Round 1 to Round 2 (Grand Finals)
         </p>
       </div>
 
@@ -71,14 +99,41 @@ export default function RoundStatusPage() {
               <Sparkles className="w-8 h-8 text-amber-300" />
             </div>
             <h2 className="text-2xl sm:text-3xl font-black uppercase tracking-tight">
-              🎉 Congratulations!
+              🎉 Congratulations! Qualified for Round 2
             </h2>
             <p className="text-xs sm:text-sm text-emerald-100 max-w-xl mx-auto">
-              You have demonstrated exceptional technical mastery in Round 1 and have been officially selected for <strong>Round 2</strong>.
+              You have demonstrated outstanding performance in Round 1 and have been officially shortlisted for <strong>Round 2</strong>.
             </p>
           </div>
 
           <div className="p-6 sm:p-10 space-y-6">
+            {/* Participant Round 1 Performance Scorecard */}
+            {r1Result && (
+              <div className="p-5 rounded-2xl bg-emerald-50/60 dark:bg-emerald-950/20 border border-emerald-200/60 dark:border-emerald-900/40 space-y-3">
+                <h3 className="text-xs font-bold text-emerald-900 dark:text-emerald-300 uppercase tracking-wider">
+                  Your Round 1 Evaluation Metrics
+                </h3>
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-xs">
+                  <div className="p-3 bg-white dark:bg-slate-900 rounded-xl border border-emerald-100 dark:border-slate-800">
+                    <span className="text-slate-400 block text-[10px] uppercase font-semibold">Marks</span>
+                    <span className="text-lg font-black text-emerald-600 dark:text-emerald-400">{r1Result.score} pts</span>
+                  </div>
+                  <div className="p-3 bg-white dark:bg-slate-900 rounded-xl border border-emerald-100 dark:border-slate-800">
+                    <span className="text-slate-400 block text-[10px] uppercase font-semibold">Percentage</span>
+                    <span className="text-lg font-black text-brand-600 dark:text-brand-400">{r1Result.percentage}%</span>
+                  </div>
+                  <div className="p-3 bg-white dark:bg-slate-900 rounded-xl border border-emerald-100 dark:border-slate-800">
+                    <span className="text-slate-400 block text-[10px] uppercase font-semibold">Official Rank</span>
+                    <span className="text-lg font-black text-amber-500">#{r1Result.rank || 1}</span>
+                  </div>
+                  <div className="p-3 bg-white dark:bg-slate-900 rounded-xl border border-emerald-100 dark:border-slate-800">
+                    <span className="text-slate-400 block text-[10px] uppercase font-semibold">Time Taken</span>
+                    <span className="text-lg font-black text-slate-800 dark:text-slate-200">{r1Result.time_taken_formatted || '00:00'}</span>
+                  </div>
+                </div>
+              </div>
+            )}
+
             <h3 className="text-xs font-bold text-slate-900 dark:text-white uppercase tracking-wider">
               Round 2 Examination Schedule
             </h3>
@@ -147,38 +202,47 @@ export default function RoundStatusPage() {
 
           <div className="space-y-2 max-w-md mx-auto">
             <h2 className="text-xl sm:text-2xl font-black text-slate-900 dark:text-white">
-              Thank You for Participating
+              Thank You for Participating!
             </h2>
             <p className="text-xs text-slate-600 dark:text-slate-400 leading-relaxed">
-              We appreciate your active participation in Eloquence '26. You have not been selected for the next round based on the Round 1 cutoff ranks.
+              We appreciate your active participation in Eloquence '26. Based on the official evaluation criteria (Marks, Percentage, and Time Taken), you have not been shortlisted for Round 2.
             </p>
           </div>
 
           {r1Result && (
-            <div className="max-w-md mx-auto grid grid-cols-2 gap-3 p-4 rounded-2xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700 text-xs">
+            <div className="max-w-md mx-auto grid grid-cols-2 sm:grid-cols-4 gap-2 p-4 rounded-2xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700 text-xs text-left">
               <div>
-                <span className="text-slate-400 block font-semibold">Your Round 1 Score</span>
-                <span className="text-lg font-black text-slate-900 dark:text-white">{r1Result.score} pts</span>
+                <span className="text-slate-400 block text-[10px] uppercase font-semibold">Score</span>
+                <span className="text-base font-black text-slate-900 dark:text-white">{r1Result.score} pts</span>
               </div>
               <div>
-                <span className="text-slate-400 block font-semibold">Final Rank</span>
-                <span className="text-lg font-black text-brand-600 dark:text-brand-400">#{r1Result.rank || 'N/A'}</span>
+                <span className="text-slate-400 block text-[10px] uppercase font-semibold">Percentage</span>
+                <span className="text-base font-black text-brand-600">{r1Result.percentage}%</span>
+              </div>
+              <div>
+                <span className="text-slate-400 block text-[10px] uppercase font-semibold">Final Rank</span>
+                <span className="text-base font-black text-amber-600">#{r1Result.rank || 'N/A'}</span>
+              </div>
+              <div>
+                <span className="text-slate-400 block text-[10px] uppercase font-semibold">Time Taken</span>
+                <span className="text-base font-black text-slate-700 dark:text-slate-300">{r1Result.time_taken_formatted || '00:00'}</span>
               </div>
             </div>
           )}
 
-          <p className="text-xs text-slate-400">
-            You cannot access Round 2 examinations. Certificates will be processed by the organizing committee.
+          <p className="text-xs text-slate-400 max-w-sm mx-auto">
+            Your participation session is concluded. Click below to acknowledge and log out.
           </p>
 
-          <div className="pt-2">
-            <Link
-              to="/participant/results"
-              className="inline-flex items-center gap-2 px-6 py-2.5 rounded-xl text-xs font-bold text-slate-700 dark:text-slate-200 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200"
+          <div className="pt-2 flex justify-center">
+            <button
+              type="button"
+              onClick={handleEliminationLogout}
+              className="inline-flex items-center gap-2 px-8 py-3 rounded-2xl text-xs font-bold text-white bg-slate-900 hover:bg-black dark:bg-slate-700 dark:hover:bg-slate-600 shadow-md transition-all"
             >
-              <span>View Leaderboard</span>
-              <ArrowRight className="w-4 h-4" />
-            </Link>
+              <LogOut className="w-4 h-4" />
+              <span>OK (Log Out & Close Session)</span>
+            </button>
           </div>
         </div>
       )}

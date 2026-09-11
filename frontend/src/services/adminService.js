@@ -163,6 +163,11 @@ export const adminService = {
     return res.data;
   },
 
+  autoSelectCriteria: async (criteria = {}) => {
+    const res = await api.post('/rounds/auto-select-top-n', criteria);
+    return res.data;
+  },
+
   autoSelectTopN: async (topN, quizId) => {
     const res = await api.post('/rounds/auto-select-top-n', { top_n: topN, quiz_id: quizId });
     return res.data;
@@ -187,6 +192,11 @@ export const adminService = {
 
   getParticipantRoundStatus: async () => {
     const res = await api.get('/rounds/participant-status');
+    return res.data;
+  },
+
+  acknowledgeElimination: async () => {
+    const res = await api.post('/rounds/acknowledge-elimination');
     return res.data;
   },
 

@@ -142,11 +142,18 @@ export default function ParticipantDashboard() {
   const handleDismissQualified = () => {
     sessionStorage.setItem('elq26_r2_celebration_seen', 'true');
     setShowQualifiedModal(false);
+    navigate('/participant/round-status');
   };
 
-  const handleEliminationLogout = () => {
+  const handleEliminationLogout = async () => {
+    try {
+      await adminService.acknowledgeElimination();
+    } catch (e) {
+      console.warn('Elimination acknowledgment caught:', e.message);
+    }
     setShowEliminatedModal(false);
     logout();
+    toast.info('Your participation session in Eloquence \'26 has ended. Best wishes!');
     navigate('/login');
   };
 
@@ -356,36 +363,48 @@ export default function ParticipantDashboard() {
           </div>
 
           {roundStatus?.round_1_result && (
-            <div className="grid grid-cols-2 gap-3 p-4 rounded-2xl bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-800 text-xs">
-              <div>
-                <span className="text-slate-400 block font-semibold">Round 1 Score</span>
-                <span className="text-lg font-black text-emerald-700 dark:text-emerald-300">
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 p-4 rounded-2xl bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-800 text-xs">
+              <div className="p-2">
+                <span className="text-slate-400 block font-semibold text-[10px] uppercase">Score</span>
+                <span className="text-base font-black text-emerald-700 dark:text-emerald-300">
                   {roundStatus.round_1_result.score} pts
                 </span>
               </div>
-              <div>
-                <span className="text-slate-400 block font-semibold">Official Rank</span>
-                <span className="text-lg font-black text-brand-600 dark:text-brand-400">
+              <div className="p-2">
+                <span className="text-slate-400 block font-semibold text-[10px] uppercase">Percentage</span>
+                <span className="text-base font-black text-brand-600 dark:text-brand-400">
+                  {roundStatus.round_1_result.percentage}%
+                </span>
+              </div>
+              <div className="p-2">
+                <span className="text-slate-400 block font-semibold text-[10px] uppercase">Official Rank</span>
+                <span className="text-base font-black text-amber-600 dark:text-amber-400">
                   #{roundStatus.round_1_result.rank || 1}
+                </span>
+              </div>
+              <div className="p-2">
+                <span className="text-slate-400 block font-semibold text-[10px] uppercase">Time Taken</span>
+                <span className="text-base font-black text-slate-800 dark:text-slate-200">
+                  {roundStatus.round_1_result.time_taken_formatted || '00:00'}
                 </span>
               </div>
             </div>
           )}
 
           <div className="p-3.5 rounded-2xl bg-slate-50 dark:bg-slate-800 text-left text-xs space-y-1 text-slate-600 dark:text-slate-400">
-            <p className="font-bold text-slate-800 dark:text-slate-200">Next Steps:</p>
+            <p className="font-bold text-slate-800 dark:text-slate-200">Round 2 Guidelines:</p>
             <p>• Your Round 2 examination will be accessible during the scheduled window.</p>
-            <p>• Maintain a stable internet connection and ensure full-screen proctor compliance.</p>
+            <p>• Ensure compliance with symposium full-screen proctor rules.</p>
           </div>
 
           <div className="pt-2 flex items-center gap-3">
-            <Link
-              to="/participant/round-status"
+            <button
+              type="button"
               onClick={handleDismissQualified}
               className="flex-1 py-3 rounded-2xl text-xs font-bold text-white bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 shadow-md shadow-emerald-500/20 text-center"
             >
-              Proceed to Round 2 Schedule
-            </Link>
+              OK • View Round 2 Schedule
+            </button>
           </div>
         </div>
       </Modal>
@@ -408,15 +427,28 @@ export default function ParticipantDashboard() {
             </h3>
             <p className="text-xs text-slate-600 dark:text-slate-400 leading-relaxed">
               We sincerely appreciate your enthusiastic participation in <strong>Eloquence '26</strong>.
-              Based on the official Round 1 cutoff rankings, you have not been shortlisted for the next round.
+              Based on the official Round 1 evaluation (Marks, Percentage, and Time Taken), you have not been shortlisted for Round 2.
             </p>
           </div>
 
           {roundStatus?.round_1_result && (
-            <div className="p-3 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs">
-              <span className="text-slate-400">Your Final Round 1 Score:</span>{' '}
-              <strong className="text-slate-900 dark:text-white">{roundStatus.round_1_result.score} pts</strong>
-              {' '}(Rank #{roundStatus.round_1_result.rank || 'N/A'})
+            <div className="grid grid-cols-2 gap-2 p-3 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs">
+              <div>
+                <span className="text-slate-400 block text-[10px] uppercase">Final Score</span>
+                <strong className="text-slate-900 dark:text-white">{roundStatus.round_1_result.score} pts</strong>
+              </div>
+              <div>
+                <span className="text-slate-400 block text-[10px] uppercase">Percentage</span>
+                <strong className="text-brand-600">{roundStatus.round_1_result.percentage}%</strong>
+              </div>
+              <div>
+                <span className="text-slate-400 block text-[10px] uppercase">Final Rank</span>
+                <strong className="text-amber-600">#{roundStatus.round_1_result.rank || 'N/A'}</strong>
+              </div>
+              <div>
+                <span className="text-slate-400 block text-[10px] uppercase">Time Taken</span>
+                <strong className="text-slate-700 dark:text-slate-300">{roundStatus.round_1_result.time_taken_formatted || '00:00'}</strong>
+              </div>
             </div>
           )}
 
@@ -431,7 +463,7 @@ export default function ParticipantDashboard() {
               className="w-full py-3 rounded-2xl text-xs font-bold text-white bg-slate-900 hover:bg-black dark:bg-slate-700 dark:hover:bg-slate-600 shadow-md transition-all flex items-center justify-center gap-2"
             >
               <LogOut className="w-4 h-4" />
-              <span>OK (Log Out)</span>
+              <span>OK (Log Out & Close Session)</span>
             </button>
           </div>
         </div>

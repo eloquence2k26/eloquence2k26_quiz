@@ -13,6 +13,7 @@ router.get('/round1-ranking', authenticate, authorize('ADMIN'), RoundController.
 router.post('/auto-select-top-n', authenticate, authorize('ADMIN'), RoundController.autoSelectTopN);
 router.post('/toggle-selection', authenticate, authorize('ADMIN'), RoundController.toggleParticipantSelection);
 router.post('/publish-selection', authenticate, authorize('ADMIN'), RoundController.publishRoundSelection);
+router.post('/acknowledge-elimination', authenticate, RoundController.acknowledgeElimination);
 
 module.exports = router;
 

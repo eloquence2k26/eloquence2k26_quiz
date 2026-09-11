@@ -95,16 +95,20 @@ class AuthController {
       // Root admin is always active; for other users verify active status
       if (user.email?.toLowerCase() === 'admin@eloquence.com') {
         user.is_active = true;
-      } else if (user.is_active === false) {
-        return error(res, 'Account has been disabled or suspended. Contact symposium admin.', 403);
       }
 
-      // Check if participant is disabled
+      // Check if participant is eliminated or deactivated
       if (user.role === 'PARTICIPANT') {
-        const participant = db.find('participants', (p) => p.id === user.id);
-        if (participant && participant.is_disabled) {
-          return error(res, 'Your participation has been revoked or disabled.', 403);
+        const participant = db.find('participants', (p) => p.id === user.id || p.participant_id === user.id || (p.email && p.email.toLowerCase() === user.email.toLowerCase()));
+        if (participant) {
+          if (participant.round_1_eliminated || participant.is_disabled || user.is_active === false) {
+            return error(res, 'Access closed: You have not been selected for Round 2. Thank you for your active participation in Eloquence \'26.', 403);
+          }
         }
+      }
+
+      if (user.is_active === false) {
+        return error(res, 'Account has been disabled or participation concluded. Contact symposium admin.', 403);
       }
 
       const isMatch = await bcrypt.compare(password, user.password_hash);

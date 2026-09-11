@@ -2,51 +2,125 @@ const db = require('../config/db');
 
 class RoundSelectionService {
   /**
-   * Auto-selects Top N participants based on Round 1 Quiz Results.
+   * Formats seconds into human-readable MM:SS string
    */
-  static autoSelectTopN(quizId, topN, adminId) {
+  static formatTime(seconds) {
+    if (!seconds || seconds <= 0) return '00:00';
+    const mins = Math.floor(seconds / 60);
+    const secs = seconds % 60;
+    return `${String(mins).padStart(2, '0')}:${String(secs).padStart(2, '0')}`;
+  }
+
+  /**
+   * Auto-selects participants based on Round 1 Quiz Results with support for:
+   * - Marks / Cutoff Score
+   * - Percentage Cutoff
+   * - Time Taken (seconds/tiebreaker)
+   * - Top N Count
+   */
+  static autoSelectCriteria(quizId, { topN, minScore, minPercentage, maxTimeSeconds } = {}, adminId) {
     const quiz = db.find('quizzes', (q) => q.id === quizId);
     if (!quiz) throw new Error('Quiz not found');
 
     const results = db.filter('results', (r) => r.quiz_id === quizId);
+
+    // Primary sort: Score DESC, Percentage DESC, Time Taken ASC (faster = better)
     results.sort((a, b) => {
       if (b.final_score !== a.final_score) {
         return b.final_score - a.final_score;
       }
+      if ((b.percentage || 0) !== (a.percentage || 0)) {
+        return (b.percentage || 0) - (a.percentage || 0);
+      }
       return (a.time_taken_seconds || 0) - (b.time_taken_seconds || 0);
     });
 
-    // Reset selection for all participants in this quiz
+    const parsedMinScore = minScore !== undefined && minScore !== '' && minScore !== null ? Number(minScore) : null;
+    const parsedMinPct = minPercentage !== undefined && minPercentage !== '' && minPercentage !== null ? Number(minPercentage) : null;
+    const parsedMaxTime = maxTimeSeconds !== undefined && maxTimeSeconds !== '' && maxTimeSeconds !== null ? Number(maxTimeSeconds) : null;
+    const parsedTopN = topN !== undefined && topN !== '' && topN !== null ? Number(topN) : null;
+
+    // Reset selection for all participants who took this quiz
     results.forEach((r) => {
-      db.update('participants', (p) => p.id === r.participant_id, {
-        round_1_selected: false
+      db.update('participants', (p) => p.id === r.participant_id || p.participant_id === r.participant_id, {
+        round_1_selected: false,
+        round_1_eliminated: false
       });
     });
 
+    // Determine qualifying candidates matching criteria
+    const qualifyingIndices = [];
+    for (let i = 0; i < results.length; i++) {
+      const res = results[i];
+      let passes = true;
+
+      if (parsedMinScore !== null && res.final_score < parsedMinScore) {
+        passes = false;
+      }
+      if (parsedMinPct !== null && (res.percentage || 0) < parsedMinPct) {
+        passes = false;
+      }
+      if (parsedMaxTime !== null && (res.time_taken_seconds || 0) > parsedMaxTime) {
+        passes = false;
+      }
+
+      if (passes) {
+        qualifyingIndices.push(i);
+      }
+    }
+
+    // Apply Top N limit to qualifying candidates
+    const selectedIndicesSet = new Set(
+      parsedTopN !== null && parsedTopN > 0
+        ? qualifyingIndices.slice(0, parsedTopN)
+        : qualifyingIndices
+    );
+
+    // Find Round 2 Quiz for auto-assignment
+    const round2Quiz = db.find('quizzes', (q) => Number(q.round_number) === 2 && (q.event_id === quiz.event_id || !quiz.event_id)) ||
+                       db.find('quizzes', (q) => Number(q.round_number) === 2);
+
     const selectedList = [];
-    const countToSelect = Math.min(topN, results.length);
 
     for (let i = 0; i < results.length; i++) {
       const res = results[i];
-      const isSelected = i < countToSelect;
+      const isSelected = selectedIndicesSet.has(i);
 
-      db.update('participants', (p) => p.id === res.participant_id, {
-        round_1_selected: isSelected
+      db.update('participants', (p) => p.id === res.participant_id || p.participant_id === res.participant_id, {
+        round_1_selected: isSelected,
+        round_1_eliminated: false
       });
 
-      const participant = db.find('participants', (p) => p.id === res.participant_id);
+      const participant = db.find('participants', (p) => p.id === res.participant_id || p.participant_id === res.participant_id);
+
+      // If selected and Round 2 quiz exists, auto-assign
+      if (isSelected && round2Quiz && participant) {
+        const existingAssignment = db.find(
+          'quiz_assignments',
+          (qa) => qa.quiz_id === round2Quiz.id && (qa.participant_id === participant.id || qa.participant_id === res.participant_id)
+        );
+        if (!existingAssignment) {
+          db.insert('quiz_assignments', {
+            quiz_id: round2Quiz.id,
+            participant_id: participant.id,
+            assigned_by: adminId,
+            status: 'ASSIGNED'
+          });
+        }
+      }
 
       // Save to round_selections
       const existing = db.find(
         'round_selections',
-        (rs) => rs.event_id === quiz.event_id && rs.round_number === quiz.round_number && rs.participant_id === res.participant_id
+        (rs) => rs.event_id === quiz.event_id && rs.round_number === quiz.round_number && (rs.participant_id === res.participant_id || rs.participant_id === participant?.id)
       );
 
       const selectionPayload = {
-        event_id: quiz.event_id,
-        round_number: quiz.round_number,
-        participant_id: res.participant_id,
+        event_id: quiz.event_id || 'c0000000-0000-0000-0000-000000000001',
+        round_number: quiz.round_number || 1,
+        participant_id: participant ? participant.id : res.participant_id,
         score: res.final_score,
+        time_taken_seconds: res.time_taken_seconds || 0,
         rank: res.rank || (i + 1),
         selected: isSelected,
         selected_by: adminId,
@@ -60,11 +134,15 @@ class RoundSelectionService {
       }
 
       selectedList.push({
-        participant_id: res.participant_id,
+        participant_id: participant ? participant.id : res.participant_id,
+        participant_code: participant ? participant.participant_id : 'N/A',
         full_name: participant ? participant.full_name : 'Unknown',
         college: participant ? participant.college : 'N/A',
+        department: participant ? participant.department : 'N/A',
         score: res.final_score,
         percentage: res.percentage,
+        time_taken_seconds: res.time_taken_seconds || 0,
+        time_taken_formatted: this.formatTime(res.time_taken_seconds || 0),
         rank: res.rank || (i + 1),
         selected: isSelected
       });
@@ -74,27 +152,54 @@ class RoundSelectionService {
   }
 
   /**
+   * Backward-compatible autoSelectTopN
+   */
+  static autoSelectTopN(quizId, topN, adminId) {
+    return this.autoSelectCriteria(quizId, { topN }, adminId);
+  }
+
+  /**
    * Manually toggles participant selection status for next round.
    */
   static toggleParticipantSelection(participantId, roundNumber, selected, adminId) {
-    const participant = db.find('participants', (p) => p.id === participantId);
+    const participant = db.find('participants', (p) => p.id === participantId || p.participant_id === participantId);
     if (!participant) throw new Error('Participant not found');
 
     const updateField = roundNumber === 1 ? 'round_1_selected' : 'round_2_selected';
-    db.update('participants', (p) => p.id === participantId, {
-      [updateField]: selected
+    db.update('participants', (p) => p.id === participant.id, {
+      [updateField]: selected,
+      round_1_eliminated: false
     });
 
-    return db.find('participants', (p) => p.id === participantId);
+    // If selected for Round 2, auto-assign to Round 2 quiz
+    if (selected && roundNumber === 1) {
+      const round2Quiz = db.find('quizzes', (q) => Number(q.round_number) === 2);
+      if (round2Quiz) {
+        const existing = db.find(
+          'quiz_assignments',
+          (qa) => qa.quiz_id === round2Quiz.id && qa.participant_id === participant.id
+        );
+        if (!existing) {
+          db.insert('quiz_assignments', {
+            quiz_id: round2Quiz.id,
+            participant_id: participant.id,
+            assigned_by: adminId,
+            status: 'ASSIGNED'
+          });
+        }
+      }
+    }
+
+    return db.find('participants', (p) => p.id === participant.id);
   }
 
   /**
    * Validates if a participant is qualified for Round 2.
    */
   static isEligibleForRound2(participantId) {
-    const participant = db.find('participants', (p) => p.id === participantId);
+    const participant = db.find('participants', (p) => p.id === participantId || p.participant_id === participantId);
     if (!participant) return false;
-    return Boolean(participant.round_1_selected && !participant.is_disabled);
+    return Boolean(participant.round_1_selected && !participant.is_disabled && !participant.round_1_eliminated);
   }
 }
 

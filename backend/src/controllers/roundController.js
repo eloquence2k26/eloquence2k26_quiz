@@ -346,21 +346,39 @@ class RoundController {
       }
 
       const results = db.filter('results', (r) => r.quiz_id === targetQuiz.id);
-      results.sort((a, b) => (a.rank || 999) - (b.rank || 999));
+
+      // Sort order: Final score (DESC) -> Percentage (DESC) -> Time taken in seconds (ASC, faster is better)
+      results.sort((a, b) => {
+        if (b.final_score !== a.final_score) {
+          return b.final_score - a.final_score;
+        }
+        if ((b.percentage || 0) !== (a.percentage || 0)) {
+          return (b.percentage || 0) - (a.percentage || 0);
+        }
+        return (a.time_taken_seconds || 0) - (b.time_taken_seconds || 0);
+      });
 
       const participants = db.get('participants') || [];
-      const rankingList = results.map((r) => {
+      const rankingList = results.map((r, idx) => {
         const p = participants.find((part) => part.id === r.participant_id || part.participant_id === r.participant_id);
+        const timeSec = r.time_taken_seconds || 0;
+        const mins = Math.floor(timeSec / 60);
+        const secs = timeSec % 60;
+        const formattedTime = `${String(mins).padStart(2, '0')}:${String(secs).padStart(2, '0')}`;
+
         return {
-          participant_id: r.participant_id,
+          participant_id: p ? p.id : r.participant_id,
           participant_code: p ? p.participant_id : 'N/A',
           full_name: p ? p.full_name : 'Unknown',
           college: p ? p.college : 'N/A',
           department: p ? p.department : 'N/A',
           score: r.final_score,
           percentage: r.percentage,
-          rank: r.rank,
+          time_taken_seconds: timeSec,
+          time_taken_formatted: formattedTime,
+          rank: r.rank || (idx + 1),
           selected: p ? Boolean(p.round_1_selected) : false,
+          is_eliminated: p ? Boolean(p.round_1_eliminated || p.is_disabled) : false,
           attempt_status: r.status
         };
       });
@@ -383,11 +401,11 @@ class RoundController {
   }
 
   /**
-   * Auto Select Top N Participants
+   * Auto Select Participants based on Count, Marks, Percentage, and Time Taken
    */
   static async autoSelectTopN(req, res) {
     try {
-      const { top_n = 10, quiz_id } = req.body;
+      const { top_n, min_score, min_percentage, max_time_seconds, quiz_id } = req.body;
       let targetQuizId = quiz_id;
 
       if (!targetQuizId) {
@@ -396,14 +414,40 @@ class RoundController {
         targetQuizId = r1Quiz.id;
       }
 
-      const selected = RoundSelectionService.autoSelectTopN(targetQuizId, Number(top_n), req.user.id);
+      const selected = RoundSelectionService.autoSelectCriteria(
+        targetQuizId,
+        {
+          topN: top_n,
+          minScore: min_score,
+          minPercentage: min_percentage,
+          maxTimeSeconds: max_time_seconds
+        },
+        req.user.id
+      );
 
-      AuditService.log(req.user.id, 'AUTO_SELECT_TOP_N', 'ROUND_SELECTION', targetQuizId, {
-        top_n: Number(top_n),
+      AuditService.log(req.user.id, 'AUTO_SELECT_ROUND_QUALIFIERS', 'ROUND_SELECTION', targetQuizId, {
+        top_n,
+        min_score,
+        min_percentage,
+        max_time_seconds,
         selected_count: selected.filter((s) => s.selected).length
       });
 
-      return success(res, selected, `Successfully selected Top ${top_n} participants for Round 2`);
+      // Broadcast update via WebSocket
+      try {
+        const SocketService = require('../services/socketService');
+        SocketService.broadcastToAll('ROUND_STATUS_UPDATED', {
+          quiz_id: targetQuizId,
+          selected_count: selected.filter((s) => s.selected).length
+        });
+        SocketService.broadcastToAll('REFRESH_DASHBOARD', {});
+      } catch (e) {}
+
+      return success(
+        res,
+        selected,
+        `Successfully auto-selected ${selected.filter((s) => s.selected).length} participant(s) for Round 2`
+      );
     } catch (err) {
       return error(res, err.message, 500);
     }
@@ -429,6 +473,11 @@ class RoundController {
         round_number
       });
 
+      try {
+        const SocketService = require('../services/socketService');
+        SocketService.broadcastToAll('ROUND_STATUS_UPDATED', { participant_id, selected });
+      } catch (e) {}
+
       return success(res, updated, 'Participant selection status updated');
     } catch (err) {
       return error(res, err.message, 500);
@@ -441,33 +490,47 @@ class RoundController {
   static async publishRoundSelection(req, res) {
     try {
       const { round_number = 1, quiz_id } = req.body;
-      const round = db.find('rounds', (r) => r.round_number === Number(round_number));
+      const round = db.find('rounds', (r) => Number(r.round_number) === Number(round_number));
       if (round) {
         db.update('rounds', (r) => r.id === round.id, { is_published: true });
       }
 
       // Auto assign selected participants to Round 2 Quiz
       const targetQuiz = quiz_id ? db.find('quizzes', (q) => q.id === quiz_id) : null;
-      const round2Quiz = db.find('quizzes', (q) => q.round_number === 2) ||
-        (targetQuiz ? db.find('quizzes', (q) => q.event_id === targetQuiz.event_id && q.round_number === 2) : null);
+      const round2Quiz = db.find('quizzes', (q) => Number(q.round_number) === 2) ||
+        (targetQuiz ? db.find('quizzes', (q) => q.event_id === targetQuiz.event_id && Number(q.round_number) === 2) : null);
 
-      if (round2Quiz) {
-        const selectedParticipants = db.filter('participants', (p) => p.round_1_selected);
-        selectedParticipants.forEach((p) => {
-          const existing = db.find(
-            'quiz_assignments',
-            (qa) => qa.quiz_id === round2Quiz.id && qa.participant_id === p.id
-          );
-          if (!existing) {
-            db.insert('quiz_assignments', {
-              quiz_id: round2Quiz.id,
-              participant_id: p.id,
-              assigned_by: req.user.id,
-              status: 'ASSIGNED'
-            });
+      const r1Results = targetQuiz ? db.filter('results', (r) => r.quiz_id === targetQuiz.id) : db.get('results');
+      const r1ParticipantIds = new Set(r1Results.map((r) => r.participant_id));
+
+      const allParticipants = db.get('participants') || [];
+
+      allParticipants.forEach((p) => {
+        if (p.round_1_selected) {
+          // Qualified for Round 2
+          p.round_1_eliminated = false;
+          db.update('participants', (part) => part.id === p.id, { round_1_eliminated: false });
+
+          if (round2Quiz) {
+            const existing = db.find(
+              'quiz_assignments',
+              (qa) => qa.quiz_id === round2Quiz.id && qa.participant_id === p.id
+            );
+            if (!existing) {
+              db.insert('quiz_assignments', {
+                quiz_id: round2Quiz.id,
+                participant_id: p.id,
+                assigned_by: req.user.id,
+                status: 'ASSIGNED'
+              });
+            }
           }
-        });
-      }
+        } else if (r1ParticipantIds.has(p.id) || r1ParticipantIds.has(p.participant_id)) {
+          // Attempted Round 1 but was not selected -> marked as eliminated
+          p.round_1_eliminated = true;
+          db.update('participants', (part) => part.id === p.id, { round_1_eliminated: true });
+        }
+      });
 
       // Post Announcement
       db.insert('announcements', {
@@ -479,7 +542,44 @@ class RoundController {
 
       AuditService.log(req.user.id, 'PUBLISH_ROUND_SELECTIONS', 'ROUND', String(round_number));
 
-      return success(res, {}, `Round ${round_number} selections officially published and qualifiers promoted`);
+      // Broadcast WebSocket
+      try {
+        const SocketService = require('../services/socketService');
+        SocketService.broadcastToAll('ROUND_STATUS_UPDATED', { published: true, round_number });
+        SocketService.broadcastToAll('REFRESH_DASHBOARD', {});
+      } catch (e) {}
+
+      return success(res, {}, `Round ${round_number} selections officially published and qualifiers promoted to Round 2`);
+    } catch (err) {
+      return error(res, err.message, 500);
+    }
+  }
+
+  /**
+   * Participant Acknowledge Elimination & Account Deactivation / Cleanup
+   */
+  static async acknowledgeElimination(req, res) {
+    try {
+      const userId = req.user.id;
+      const participant = db.find('participants', (p) => p.id === userId || p.participant_id === userId || (p.email && p.email.toLowerCase() === req.user.email?.toLowerCase()));
+
+      if (participant) {
+        db.update('participants', (p) => p.id === participant.id, {
+          is_disabled: true,
+          round_1_eliminated: true
+        });
+      }
+
+      // Mark user account inactive
+      db.update('users', (u) => u.id === userId || (u.email && u.email.toLowerCase() === req.user.email?.toLowerCase()), {
+        is_active: false
+      });
+
+      AuditService.log(userId, 'ACKNOWLEDGE_ELIMINATION_LOGOUT', 'PARTICIPANT', userId);
+
+      return success(res, {
+        deactivated: true
+      }, 'Participation session successfully concluded. Thank you for participating in Eloquence 26.');
     } catch (err) {
       return error(res, err.message, 500);
     }
@@ -530,16 +630,24 @@ class RoundController {
 
       const isR1Completed = Boolean((r1Attempt && r1Attempt.status === 'COMPLETED') || (r1Result && r1Result.final_score !== undefined));
 
+      const timeSec = r1Result?.time_taken_seconds || 0;
+      const mins = Math.floor(timeSec / 60);
+      const secs = timeSec % 60;
+      const formattedTime = `${String(mins).padStart(2, '0')}:${String(secs).padStart(2, '0')}`;
+
       return success(res, {
         round_1_published: isRound1Published,
         round_1_attempted: isR1Completed,
         round_1_selected: Boolean(participant.round_1_selected && isR1Completed && isRound1Published),
+        round_1_eliminated: Boolean(participant.round_1_eliminated || (isRound1Published && isR1Completed && !participant.round_1_selected)),
         round_2_selected: Boolean(participant.round_2_selected && isR1Completed),
         round_1_result: r1Result && isR1Completed
           ? {
               score: r1Result.final_score,
               rank: r1Result.rank,
               percentage: r1Result.percentage,
+              time_taken_seconds: timeSec,
+              time_taken_formatted: formattedTime,
               status: r1Result.status
             }
           : null,

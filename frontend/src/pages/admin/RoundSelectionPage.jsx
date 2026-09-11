@@ -14,7 +14,11 @@ import {
   Users,
   CheckCircle2,
   RefreshCw,
-  Layers
+  Layers,
+  Clock,
+  Zap,
+  RotateCcw,
+  Sliders
 } from 'lucide-react';
 import { adminService } from '../../services/adminService';
 import { quizService } from '../../services/quizService';
@@ -29,13 +33,19 @@ export default function RoundSelectionPage() {
   const [selectedQuizId, setSelectedQuizId] = useState('');
   const [rankingData, setRankingData] = useState(null);
   const [loading, setLoading] = useState(true);
+
+  // Smart Selection & Cutoff Filters
   const [topNInput, setTopNInput] = useState(10);
   const [cutoffScoreInput, setCutoffScoreInput] = useState('');
   const [cutoffPctInput, setCutoffPctInput] = useState('');
+  const [maxTimeMinutesInput, setMaxTimeMinutesInput] = useState('');
+
+  // Table Search and Status Filter
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState('ALL'); // 'ALL', 'SELECTED', 'UNSELECTED'
 
   const [publishing, setPublishing] = useState(false);
+  const [applying, setApplying] = useState(false);
   const [confirmPublishOpen, setConfirmPublishOpen] = useState(false);
 
   useEffect(() => {
@@ -82,44 +92,36 @@ export default function RoundSelectionPage() {
     setLoading(false);
   };
 
-  const handleAutoSelect = async () => {
-    if (topNInput <= 0) {
-      toast.warning('Please enter a valid Top N number');
-      return;
-    }
+  const handleApplyCriteriaSelection = async () => {
+    setApplying(true);
     try {
-      const res = await adminService.autoSelectTopN(topNInput, rankingData?.quiz?.id || selectedQuizId);
+      const maxTimeSec = maxTimeMinutesInput ? Math.floor(parseFloat(maxTimeMinutesInput) * 60) : undefined;
+      const criteria = {
+        quiz_id: rankingData?.quiz?.id || selectedQuizId,
+        top_n: topNInput ? parseInt(topNInput, 10) : undefined,
+        min_score: cutoffScoreInput !== '' ? parseFloat(cutoffScoreInput) : undefined,
+        min_percentage: cutoffPctInput !== '' ? parseFloat(cutoffPctInput) : undefined,
+        max_time_seconds: maxTimeSec
+      };
+
+      const res = await adminService.autoSelectCriteria(criteria);
       if (res.success) {
-        toast.success(`Top ${topNInput} participants selected for Round 2`);
-        loadRanking(selectedQuizId);
+        const selectedCount = (res.data || []).filter((s) => s.selected).length;
+        toast.success(`Smart Auto-Selection applied: ${selectedCount} participant(s) selected for Round 2!`);
+        await loadRanking(selectedQuizId);
       }
     } catch (err) {
-      toast.error('Failed to execute auto selection');
+      toast.error('Failed to execute auto-selection: ' + (err.response?.data?.message || err.message));
+    } finally {
+      setApplying(false);
     }
   };
 
-  const handleApplyCutoff = async () => {
-    if (!cutoffScoreInput && !cutoffPctInput) {
-      toast.warning('Please enter a cutoff score or cutoff percentage');
-      return;
-    }
-
-    const minScore = parseFloat(cutoffScoreInput) || 0;
-    const minPct = parseFloat(cutoffPctInput) || 0;
-
-    const rankings = rankingData?.rankings || [];
-    let updatedCount = 0;
-
-    for (const r of rankings) {
-      const qualifies = (cutoffScoreInput ? r.score >= minScore : true) && (cutoffPctInput ? r.percentage >= minPct : true);
-      if (r.selected !== qualifies) {
-        await adminService.toggleParticipantSelection(r.participant_id, qualifies, 1);
-        updatedCount++;
-      }
-    }
-
-    toast.success(`Cut-off filter applied! ${updatedCount} selection(s) updated.`);
-    loadRanking(selectedQuizId);
+  const handleResetFilters = () => {
+    setTopNInput(10);
+    setCutoffScoreInput('');
+    setCutoffPctInput('');
+    setMaxTimeMinutesInput('');
   };
 
   const handleManualToggle = async (participantId, currentSelected) => {
@@ -152,6 +154,12 @@ export default function RoundSelectionPage() {
 
   const rankings = rankingData?.rankings || [];
   const selectedCount = rankings.filter((r) => r.selected).length;
+  const unselectedCount = rankings.length - selectedCount;
+
+  const highestScore = rankings.length > 0 ? Math.max(...rankings.map((r) => r.score || 0)) : 0;
+  const fastestTime = rankings.length > 0
+    ? Math.min(...rankings.filter((r) => r.time_taken_seconds > 0).map((r) => r.time_taken_seconds) || [0])
+    : 0;
 
   const filteredRankings = useMemo(() => {
     const term = searchQuery.toLowerCase().trim();
@@ -177,19 +185,20 @@ export default function RoundSelectionPage() {
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
           <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-purple-50 dark:bg-purple-950/60 border border-purple-200 dark:border-purple-900/50 text-[11px] font-bold text-purple-700 dark:text-purple-300 uppercase tracking-wider mb-1.5">
-            <Filter className="w-3.5 h-3.5" />
+            <Sliders className="w-3.5 h-3.5" />
             <span>Round Progression & Qualifier Management</span>
           </div>
           <h1 className="text-xl sm:text-2xl font-black text-slate-900 dark:text-white">
             Round Selection & Promotion Panel
           </h1>
           <p className="text-xs text-slate-500 dark:text-slate-400">
-            Filter participants by Quiz, Round score, percentage cutoffs, or algorithmic Top N to qualify for Round 2.
+            Filter and auto-select participants based on Marks, Percentage, and Time Taken (tiebreaker) to qualify for Round 2.
           </p>
         </div>
 
         <div className="flex items-center gap-2">
           <button
+            type="button"
             onClick={() => loadRanking(selectedQuizId)}
             className="flex items-center gap-1.5 px-3.5 py-2.5 rounded-xl text-xs font-bold text-slate-700 dark:text-slate-200 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 hover:bg-slate-50 dark:hover:bg-slate-800 shadow-sm"
           >
@@ -198,6 +207,7 @@ export default function RoundSelectionPage() {
           </button>
 
           <button
+            type="button"
             onClick={() => setConfirmPublishOpen(true)}
             className="flex items-center gap-2 px-5 py-2.5 rounded-xl text-xs font-bold text-white bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-700 hover:to-indigo-700 shadow-lg shadow-purple-500/25 transition-all"
           >
@@ -207,8 +217,8 @@ export default function RoundSelectionPage() {
         </div>
       </div>
 
-      {/* Target Quiz & Filter Toolbar */}
-      <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl p-6 shadow-sm space-y-4">
+      {/* Target Quiz & Smart Auto-Selection Controls */}
+      <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl p-6 shadow-sm space-y-5">
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 pb-4 border-b border-slate-100 dark:border-slate-800">
           <div className="space-y-1">
             <span className="text-[10px] font-extrabold uppercase tracking-wider text-purple-600 dark:text-purple-400">
@@ -234,73 +244,134 @@ export default function RoundSelectionPage() {
           </div>
         </div>
 
-        {/* Curation Controls Grid */}
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-2">
-          {/* Algorithm 1: Top N Qualifier */}
-          <div className="p-4 rounded-2xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700 space-y-3">
+        {/* Multi-Criteria Auto Selection Filter Bar */}
+        <div className="p-5 rounded-2xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700 space-y-4">
+          <div className="flex items-center justify-between">
             <div className="flex items-center gap-2">
-              <Sparkles className="w-4 h-4 text-purple-600" />
+              <Sparkles className="w-4 h-4 text-purple-600 dark:text-purple-400" />
               <h4 className="text-xs font-bold text-slate-900 dark:text-white uppercase tracking-wider">
-                Auto Select Top N Qualifiers
+                Smart Auto-Selection Criteria (Marks, Percentage, Time & Count)
               </h4>
             </div>
-            <p className="text-[11px] text-slate-500">
-              Selects the top ranked scorers based on score and submission speed.
-            </p>
-            <div className="flex items-center gap-2">
-              <input
-                type="number"
-                min={1}
-                max={rankings.length || 100}
-                value={topNInput}
-                onChange={(e) => setTopNInput(parseInt(e.target.value) || 1)}
-                className="w-20 px-3 py-1.5 rounded-xl border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-900 text-xs font-bold text-center"
-              />
-              <span className="text-xs text-slate-400 font-semibold">Scholars</span>
-              <button
-                type="button"
-                onClick={handleAutoSelect}
-                className="ml-auto px-4 py-1.5 rounded-xl text-xs font-bold text-white bg-purple-600 hover:bg-purple-700 shadow-md shadow-purple-500/20"
-              >
-                Apply Top {topNInput}
-              </button>
+            <button
+              type="button"
+              onClick={handleResetFilters}
+              className="text-[11px] font-bold text-slate-500 hover:text-slate-800 dark:hover:text-slate-200 flex items-center gap-1"
+            >
+              <RotateCcw className="w-3 h-3" />
+              <span>Reset Filters</span>
+            </button>
+          </div>
+
+          <p className="text-[11px] text-slate-500 dark:text-slate-400 leading-relaxed">
+            Automatically shortlists participants strictly ranked by <strong>Score / Marks (Highest First)</strong> &rarr; <strong>Percentage</strong> &rarr; <strong>Time Taken (Fastest Submission)</strong> as the definitive tiebreaker.
+          </p>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 pt-1">
+            {/* 1. Top N Count */}
+            <div>
+              <label className="block text-[10px] font-bold uppercase text-slate-500 dark:text-slate-400 mb-1">
+                Top N Count
+              </label>
+              <div className="relative">
+                <Users className="w-3.5 h-3.5 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
+                <input
+                  type="number"
+                  min={1}
+                  placeholder="e.g. 10"
+                  value={topNInput}
+                  onChange={(e) => setTopNInput(e.target.value)}
+                  className="w-full pl-9 pr-3 py-2 rounded-xl border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-900 text-xs font-bold"
+                />
+              </div>
+            </div>
+
+            {/* 2. Min Marks Cutoff */}
+            <div>
+              <label className="block text-[10px] font-bold uppercase text-slate-500 dark:text-slate-400 mb-1">
+                Min Marks Cutoff (Pts)
+              </label>
+              <div className="relative">
+                <Award className="w-3.5 h-3.5 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
+                <input
+                  type="number"
+                  step="0.5"
+                  placeholder="e.g. 15"
+                  value={cutoffScoreInput}
+                  onChange={(e) => setCutoffScoreInput(e.target.value)}
+                  className="w-full pl-9 pr-3 py-2 rounded-xl border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-900 text-xs font-bold"
+                />
+              </div>
+            </div>
+
+            {/* 3. Min Percentage Cutoff */}
+            <div>
+              <label className="block text-[10px] font-bold uppercase text-slate-500 dark:text-slate-400 mb-1">
+                Min Percentage Cutoff (%)
+              </label>
+              <div className="relative">
+                <TrendingUp className="w-3.5 h-3.5 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
+                <input
+                  type="number"
+                  placeholder="e.g. 60"
+                  value={cutoffPctInput}
+                  onChange={(e) => setCutoffPctInput(e.target.value)}
+                  className="w-full pl-9 pr-3 py-2 rounded-xl border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-900 text-xs font-bold"
+                />
+              </div>
+            </div>
+
+            {/* 4. Max Time Limit Cutoff */}
+            <div>
+              <label className="block text-[10px] font-bold uppercase text-slate-500 dark:text-slate-400 mb-1">
+                Max Time Limit (Minutes)
+              </label>
+              <div className="relative">
+                <Clock className="w-3.5 h-3.5 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
+                <input
+                  type="number"
+                  step="0.5"
+                  placeholder="e.g. 15 (minutes)"
+                  value={maxTimeMinutesInput}
+                  onChange={(e) => setMaxTimeMinutesInput(e.target.value)}
+                  className="w-full pl-9 pr-3 py-2 rounded-xl border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-900 text-xs font-bold"
+                />
+              </div>
             </div>
           </div>
 
-          {/* Algorithm 2: Cutoff Mark & Percentage Filter */}
-          <div className="p-4 rounded-2xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700 space-y-3">
-            <div className="flex items-center gap-2">
-              <Filter className="w-4 h-4 text-indigo-600" />
-              <h4 className="text-xs font-bold text-slate-900 dark:text-white uppercase tracking-wider">
-                Cutoff Score / Percentage Filter
-              </h4>
-            </div>
-            <p className="text-[11px] text-slate-500">
-              Auto-select all candidates who scored above a benchmark.
-            </p>
-            <div className="flex items-center gap-2">
-              <input
-                type="number"
-                placeholder="Min Pts"
-                value={cutoffScoreInput}
-                onChange={(e) => setCutoffScoreInput(e.target.value)}
-                className="w-24 px-2.5 py-1.5 rounded-xl border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-900 text-xs text-center"
-              />
-              <input
-                type="number"
-                placeholder="Min %"
-                value={cutoffPctInput}
-                onChange={(e) => setCutoffPctInput(e.target.value)}
-                className="w-24 px-2.5 py-1.5 rounded-xl border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-900 text-xs text-center"
-              />
-              <button
-                type="button"
-                onClick={handleApplyCutoff}
-                className="ml-auto px-4 py-1.5 rounded-xl text-xs font-bold text-white bg-indigo-600 hover:bg-indigo-700 shadow-md shadow-indigo-500/20"
-              >
-                Apply Cutoff
-              </button>
-            </div>
+          <div className="pt-2 flex justify-end">
+            <button
+              type="button"
+              disabled={applying}
+              onClick={handleApplyCriteriaSelection}
+              className="px-6 py-2.5 rounded-xl text-xs font-bold text-white bg-purple-600 hover:bg-purple-700 shadow-md shadow-purple-500/20 flex items-center gap-2 transition-all disabled:opacity-50"
+            >
+              <Zap className="w-4 h-4" />
+              <span>{applying ? 'Applying Selection...' : 'Apply Filters & Auto-Select for Round 2'}</span>
+            </button>
+          </div>
+        </div>
+
+        {/* Quick Summary KPIs */}
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 pt-1">
+          <div className="p-3.5 rounded-2xl bg-slate-50 dark:bg-slate-800/40 border border-slate-100 dark:border-slate-800 text-center">
+            <span className="text-[10px] font-bold text-slate-400 uppercase block">Total Evaluated</span>
+            <span className="text-lg font-black text-slate-900 dark:text-white">{rankings.length}</span>
+          </div>
+          <div className="p-3.5 rounded-2xl bg-purple-50 dark:bg-purple-950/30 border border-purple-100 dark:border-purple-900/40 text-center">
+            <span className="text-[10px] font-bold text-purple-600 dark:text-purple-400 uppercase block">Round 2 Qualified</span>
+            <span className="text-lg font-black text-purple-700 dark:text-purple-300">{selectedCount}</span>
+          </div>
+          <div className="p-3.5 rounded-2xl bg-amber-50 dark:bg-amber-950/30 border border-amber-100 dark:border-amber-900/40 text-center">
+            <span className="text-[10px] font-bold text-amber-600 dark:text-amber-400 uppercase block">Highest Score</span>
+            <span className="text-lg font-black text-amber-700 dark:text-amber-300">{highestScore} pts</span>
+          </div>
+          <div className="p-3.5 rounded-2xl bg-emerald-50 dark:bg-emerald-950/30 border border-emerald-100 dark:border-emerald-900/40 text-center">
+            <span className="text-[10px] font-bold text-emerald-600 dark:text-emerald-400 uppercase block">Fastest Submission</span>
+            <span className="text-lg font-black text-emerald-700 dark:text-emerald-300">
+              {fastestTime > 0 ? `${Math.floor(fastestTime / 60)}m ${fastestTime % 60}s` : 'N/A'}
+            </span>
           </div>
         </div>
       </div>
@@ -327,7 +398,7 @@ export default function RoundSelectionPage() {
             >
               <option value="ALL">All Candidates ({rankings.length})</option>
               <option value="SELECTED">Selected for Round 2 ({selectedCount})</option>
-              <option value="UNSELECTED">Not Selected ({rankings.length - selectedCount})</option>
+              <option value="UNSELECTED">Not Selected ({unselectedCount})</option>
             </select>
           </div>
         </div>
@@ -339,16 +410,17 @@ export default function RoundSelectionPage() {
                 <th className="py-3 px-4">Rank</th>
                 <th className="py-3 px-4">Participant Code</th>
                 <th className="py-3 px-4">Name & College</th>
-                <th className="py-3 px-4">Score</th>
+                <th className="py-3 px-4">Marks / Score</th>
                 <th className="py-3 px-4">Percentage</th>
+                <th className="py-3 px-4">Time Taken</th>
                 <th className="py-3 px-4">Attempt Status</th>
-                <th className="py-3 px-4 text-right">Qualified for Round 2</th>
+                <th className="py-3 px-4 text-right">Round 2 Qualification</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100 dark:divide-slate-800 font-medium text-slate-700 dark:text-slate-300">
               {filteredRankings.length === 0 ? (
                 <tr>
-                  <td colSpan={7} className="py-8 text-center text-slate-400">
+                  <td colSpan={8} className="py-8 text-center text-slate-400">
                     No candidates found for this selection view.
                   </td>
                 </tr>
@@ -360,8 +432,16 @@ export default function RoundSelectionPage() {
                       r.selected ? 'bg-purple-50/40 dark:bg-purple-950/20' : 'hover:bg-slate-50/50 dark:hover:bg-slate-800/40'
                     }`}
                   >
-                    <td className="py-3.5 px-4 font-black text-sm text-amber-500">
-                      #{r.rank}
+                    <td className="py-3.5 px-4 font-black text-sm">
+                      {r.rank === 1 ? (
+                        <span className="text-amber-500 font-black">🥇 #1</span>
+                      ) : r.rank === 2 ? (
+                        <span className="text-slate-400 font-black">🥈 #2</span>
+                      ) : r.rank === 3 ? (
+                        <span className="text-amber-700 font-black">🥉 #3</span>
+                      ) : (
+                        <span className="text-slate-500 dark:text-slate-400">#{r.rank}</span>
+                      )}
                     </td>
                     <td className="py-3.5 px-4 font-mono font-bold text-brand-600 dark:text-brand-400">
                       {r.participant_code}
@@ -373,8 +453,12 @@ export default function RoundSelectionPage() {
                     <td className="py-3.5 px-4 font-black text-slate-900 dark:text-white">
                       {r.score} pts
                     </td>
-                    <td className="py-3.5 px-4 font-bold text-brand-600">
+                    <td className="py-3.5 px-4 font-bold text-brand-600 dark:text-brand-400">
                       {r.percentage}%
+                    </td>
+                    <td className="py-3.5 px-4 font-mono font-medium text-slate-600 dark:text-slate-400 flex items-center gap-1.5 pt-4">
+                      <Clock className="w-3.5 h-3.5 text-slate-400" />
+                      <span>{r.time_taken_formatted || '00:00'}</span>
                     </td>
                     <td className="py-3.5 px-4">
                       <Badge variant={r.attempt_status === 'COMPLETED' ? 'success' : 'danger'} size="sm">
@@ -426,10 +510,10 @@ export default function RoundSelectionPage() {
 
           <div className="text-left text-xs p-3.5 rounded-2xl bg-slate-50 dark:bg-slate-800 space-y-2">
             <p className="text-slate-700 dark:text-slate-300">
-              • <strong>Selected Scholars</strong>: Will immediately receive congratulations banner and automatic enrollment to Round 2 exam.
+              • <strong>Selected Scholars ({selectedCount})</strong>: Will automatically be assigned to the Round 2 Exam and receive a celebratory qualification popup on their console.
             </p>
             <p className="text-slate-700 dark:text-slate-300">
-              • <strong>Eliminated Scholars</strong>: Will receive participation acknowledgment on their dashboard and will be restricted from Round 2.
+              • <strong>Unselected Scholars ({unselectedCount})</strong>: Will receive a polite participation acknowledgment modal upon login and their participation will conclude.
             </p>
           </div>
 
