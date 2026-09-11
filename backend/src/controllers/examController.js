@@ -30,8 +30,14 @@ class ExamController {
       const quiz = db.find('quizzes', (q) => q.id === quizId);
       if (!quiz) return error(res, 'Quiz not found', 404);
 
+      // Auto-handle scheduled status if time has arrived
+      const entryStatus = ScheduleService.getEntryWindowStatus(quiz);
+      if (quiz.status === 'Scheduled' && !entryStatus.isBeforeStart) {
+        quiz.status = 'Live';
+      }
+
       if (quiz.status !== 'Live' && quiz.status !== 'Published') {
-        return error(res, `Quiz is currently ${quiz.status}. It is not open for attempts.`, 403);
+        return error(res, `Quiz is currently ${quiz.status}. It is not open for attempts.`, 400);
       }
 
       // Resolve participant record across all potential identifier variants
@@ -62,7 +68,7 @@ class ExamController {
       // Check assignment
       const allAssignments = db.get('quiz_assignments') || [];
       const assignment = allAssignments.find(
-        (qa) => qa.quiz_id === quizId && possibleUserIds.has(qa.participant_id)
+        (qa) => qa.quiz_id === quizId && (possibleUserIds.has(qa.participant_id) || (qa.participant_id && possibleUserIds.has(qa.participant_id.toLowerCase())))
       );
       const isEventMatched = participant?.event && (
         quiz.event_name?.trim().toLowerCase() === participant.event.trim().toLowerCase() ||
@@ -70,7 +76,7 @@ class ExamController {
       );
 
       if (!assignment && !isEventMatched && req.user.role === 'PARTICIPANT') {
-        return error(res, 'You are not registered or assigned to this examination.', 403);
+        return error(res, 'You are not registered or assigned to this examination.', 400);
       }
 
       // Check existing attempts
@@ -105,33 +111,24 @@ class ExamController {
         (a) => ['COMPLETED', 'TERMINATED', 'DISQUALIFIED'].includes(a.status)
       );
       if (completedAttempts.length >= (quiz.max_attempts || 1)) {
-        return error(res, 'You have already utilized all allowed attempts for this examination.', 403);
+        return error(res, 'You have already utilized all allowed attempts for this examination.', 400);
       }
 
-      // Enforce 5-minute entry window from scheduled start time (for participants creating a new attempt)
+      // Timing checks for scheduled exam
       if (req.user.role === 'PARTICIPANT' && quiz.start_date && quiz.start_time) {
-        const entryStatus = ScheduleService.getEntryWindowStatus(quiz);
         if (entryStatus.isBeforeStart) {
           return error(
             res,
             `This examination has not started yet. Scheduled to begin at ${quiz.start_time}.`,
-            403
+            400
           );
         }
 
-        if (entryStatus.isEntryClosed) {
-          const formattedCloseTime = entryStatus.entryCloseTime.toLocaleTimeString([], {
-            hour: '2-digit',
-            minute: '2-digit'
-          });
+        if (entryStatus.isAfterEnd) {
           return error(
             res,
-            `Entry window closed. The initial 5-minute entry period ended at ${formattedCloseTime}. Only symposium administrators can grant late admission.`,
-            403,
-            {
-              entry_closed: true,
-              entry_close_time: entryStatus.entryCloseTime
-            }
+            `This examination has concluded. The scheduled window has passed.`,
+            400
           );
         }
       }
@@ -666,25 +663,43 @@ class ExamController {
       const participantId = attempt.participant_id;
       const quizId = attempt.quiz_id;
 
+      // Resolve participant record to handle all alias IDs
+      const participant = db.find(
+        'participants',
+        (p) =>
+          p.id === participantId ||
+          p.participant_id === participantId ||
+          (p.email && p.email.toLowerCase() === (attempt.email || '').toLowerCase())
+      );
+
+      const possibleIds = new Set([
+        participantId,
+        participant ? participant.id : null,
+        participant ? participant.participant_id : null,
+        participant && participant.email ? participant.email.toLowerCase() : null
+      ].filter(Boolean));
+
       // 1. Remove previous attempt answers & question ordering
       db.remove('attempt_answers', (aa) => aa.attempt_id === attemptId);
       db.remove('question_orders', (qo) => qo.attempt_id === attemptId);
 
       // 2. Remove previous result calculation
-      db.remove('results', (r) => r.attempt_id === attemptId || (r.participant_id === participantId && r.quiz_id === quizId));
+      db.remove('results', (r) => r.attempt_id === attemptId || (possibleIds.has(r.participant_id) && r.quiz_id === quizId));
 
       // 3. Remove previous exam session locks
-      db.remove('exam_sessions', (es) => es.participant_id === participantId && es.quiz_id === quizId);
+      db.remove('exam_sessions', (es) => possibleIds.has(es.participant_id) && es.quiz_id === quizId);
 
       // 4. Remove previous security violations for this attempt
-      db.remove('security_violations', (sv) => sv.attempt_id === attemptId);
+      db.remove('security_violations', (sv) => sv.attempt_id === attemptId || possibleIds.has(sv.participant_id));
 
       // 5. Delete the terminated exam attempt record so participant can take it anew
-      db.remove('exam_attempts', (a) => a.id === attemptId);
+      db.remove('exam_attempts', (a) => a.id === attemptId || (possibleIds.has(a.participant_id) && a.quiz_id === quizId));
 
-      // 6. Ensure participant account is active (un-disabled if flagged)
-      db.update('participants', (p) => p.id === participantId, { is_disabled: false });
-      db.update('users', (u) => u.id === participantId, { is_active: true });
+      // 6. Ensure participant and user accounts are active (un-disabled if flagged)
+      db.update('participants', (p) => possibleIds.has(p.id) || possibleIds.has(p.participant_id), { is_disabled: false });
+      if (participant?.id) {
+        db.update('users', (u) => u.id === participant.id || u.id === participantId, { is_active: true });
+      }
 
       AuditService.log(req.user.id, 'ADMIN_RESTART_EXAM_ATTEMPT', 'EXAM_ATTEMPT', attemptId, {
         participant_id: participantId,

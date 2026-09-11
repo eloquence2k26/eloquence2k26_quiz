@@ -3,9 +3,18 @@ const db = require('../config/db');
 
 const validateParticipantStatus = (req, res, next) => {
   if (req.user && req.user.role === 'PARTICIPANT') {
-    const participant = db.find('participants', (p) => p.id === req.user.id);
+    const participant = db.find('participants', (p) =>
+      p.id === req.user.id ||
+      p.participant_id === req.user.id ||
+      (p.email && p.email.toLowerCase() === (req.user.email || '').toLowerCase())
+    );
     if (!participant) {
-      return error(res, 'Participant profile not found.', 404);
+      // If user exists and is active, let them proceed even if profile is in sync
+      const user = db.find('users', (u) => u.id === req.user.id);
+      if (!user || user.is_active === false) {
+        return error(res, 'Participant account is disabled or suspended.', 403);
+      }
+      return next();
     }
     if (participant.is_disabled) {
       return error(res, 'Your participant account has been disabled by event administrators.', 403);

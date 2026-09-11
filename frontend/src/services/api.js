@@ -26,11 +26,11 @@ api.interceptors.request.use(
   (error) => Promise.reject(error)
 );
 
-// Response interceptor: auto logout on 401/403 session expiration
+// Response interceptor: auto logout ONLY on 401 unauthenticated / expired token
 api.interceptors.response.use(
   (response) => response,
   (error) => {
-    if (error.response && (error.response.status === 401 || error.response.status === 403)) {
+    if (error.response && error.response.status === 401) {
       const isLoginRoute = window.location.pathname.includes('/login');
       if (!isLoginRoute) {
         localStorage.removeItem('token');

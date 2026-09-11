@@ -66,6 +66,8 @@ export default function ExamArenaPage() {
   useEffect(() => {
     const initExam = async () => {
       try {
+        sessionStorage.removeItem('termination_reason');
+        sessionStorage.removeItem('termination_result');
         const res = await examService.startExam(quizId);
         if (res.success && res.data) {
           setAttemptData(res.data);
