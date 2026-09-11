@@ -5,6 +5,7 @@ import {
   Clock,
   HelpCircle,
   ShieldCheck,
+  ShieldAlert,
   ArrowRight,
   Award,
   Lock,
@@ -25,9 +26,18 @@ export default function QuizCard({ quiz, participant }) {
   const isEligibleForRound2 = Boolean(participant?.round_1_selected);
   const isLockedForRound2 = isRound2 && !isEligibleForRound2;
 
-  const isCompleted = quiz.attempt_status === 'COMPLETED';
-  const isTerminated = quiz.attempt_status === 'TERMINATED' || quiz.attempt_status === 'DISQUALIFIED';
-  const isInProgress = quiz.attempt_status === 'IN_PROGRESS';
+  const hasResult = Boolean(quiz.result_summary);
+  const isTerminated =
+    quiz.attempt_status === 'TERMINATED' ||
+    quiz.attempt_status === 'DISQUALIFIED' ||
+    Boolean(hasResult && quiz.result_summary?.status === 'TERMINATED');
+
+  const isCompleted =
+    (quiz.attempt_status === 'COMPLETED' || hasResult) && !isTerminated;
+
+  const isInProgress =
+    quiz.attempt_status === 'IN_PROGRESS' && !isCompleted && !isTerminated && !hasResult;
+
 
   // Entry window and schedule metrics
   const entryStatus = quiz.entry_window_status;
@@ -226,7 +236,15 @@ export default function QuizCard({ quiz, participant }) {
             <Lock className="w-4 h-4" />
             <span>Not Selected for Round 2</span>
           </button>
-        ) : isCompleted || isTerminated ? (
+        ) : isTerminated ? (
+          <button
+            onClick={handleAction}
+            className="w-full py-2.5 px-4 rounded-xl text-xs font-bold text-rose-700 dark:text-rose-200 bg-rose-50 hover:bg-rose-100 dark:bg-rose-950/60 dark:hover:bg-rose-900/60 border border-rose-200 dark:border-rose-800 transition-all flex items-center justify-center gap-2 cursor-pointer"
+          >
+            <ShieldAlert className="w-4 h-4 text-rose-500" />
+            <span>Exam Terminated • View Result</span>
+          </button>
+        ) : isCompleted ? (
           <button
             onClick={handleAction}
             className="w-full py-2.5 px-4 rounded-xl text-xs font-bold text-slate-700 dark:text-slate-200 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 border border-slate-200 dark:border-slate-700 transition-all flex items-center justify-center gap-2"

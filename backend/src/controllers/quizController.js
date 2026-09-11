@@ -52,14 +52,45 @@ class QuizController {
         const participantAttempts = allAttempts.filter((a) => possibleUserIds.has(a.participant_id));
         const participantResults = allResults.filter((r) => possibleUserIds.has(r.participant_id));
 
+        const TimerService = require('../services/timerService');
         const enriched = quizzes.map((q) => {
           const attempt = participantAttempts.find((a) => a.quiz_id === q.id);
           const result = participantResults.find((r) => r.quiz_id === q.id);
           const windowStatus = ScheduleService.getEntryWindowStatus(q);
 
+          // Determine accurate attempt status
+          let resolvedAttemptStatus = 'NOT_STARTED';
+          if (attempt) {
+            if (
+              attempt.status === 'TERMINATED' ||
+              attempt.status === 'DISQUALIFIED' ||
+              Boolean(attempt.termination_reason) ||
+              result?.status === 'TERMINATED'
+            ) {
+              resolvedAttemptStatus = 'TERMINATED';
+              if (attempt.status !== 'TERMINATED' && attempt.status !== 'DISQUALIFIED') {
+                attempt.status = 'TERMINATED';
+                db.update('exam_attempts', (a) => a.id === attempt.id, { status: 'TERMINATED' });
+              }
+            } else if (
+              attempt.status === 'COMPLETED' ||
+              Boolean(attempt.submitted_at) ||
+              result?.status === 'COMPLETED' ||
+              (attempt.status === 'IN_PROGRESS' && TimerService.isExpired(attempt.expires_at))
+            ) {
+              resolvedAttemptStatus = 'COMPLETED';
+              if (attempt.status !== 'COMPLETED') {
+                attempt.status = 'COMPLETED';
+                db.update('exam_attempts', (a) => a.id === attempt.id, { status: 'COMPLETED' });
+              }
+            } else {
+              resolvedAttemptStatus = attempt.status || 'IN_PROGRESS';
+            }
+          }
+
           // Determine effective dynamic status
           let effectiveStatus = q.status;
-          if (attempt && attempt.status === 'COMPLETED') {
+          if (resolvedAttemptStatus === 'COMPLETED' || resolvedAttemptStatus === 'TERMINATED') {
             effectiveStatus = 'Completed';
           } else if (windowStatus.isAfterEnd) {
             effectiveStatus = 'Completed';
@@ -73,14 +104,15 @@ class QuizController {
             ...q,
             status: effectiveStatus,
             entry_window_status: windowStatus,
-            attempt_status: attempt ? attempt.status : (effectiveStatus === 'Completed' && !attempt ? 'NOT_ATTENDED' : 'NOT_STARTED'),
+            attempt_status: resolvedAttemptStatus,
             attempt_id: attempt ? attempt.id : null,
             result_summary: result
               ? {
                   score: result.final_score,
                   percentage: result.percentage,
                   rank: result.rank,
-                  is_passed: result.is_passed
+                  is_passed: result.is_passed,
+                  status: result.status
                 }
               : null
           };

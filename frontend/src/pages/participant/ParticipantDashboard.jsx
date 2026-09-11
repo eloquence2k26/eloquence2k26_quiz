@@ -153,10 +153,14 @@ export default function ParticipantDashboard() {
   if (loading) return <Loading text="Loading your examination portal..." />;
 
   const participant = user?.participant || {};
-  const activeQuiz = quizzes.find((q) => q.status === 'Live' && q.attempt_status !== 'COMPLETED');
-  const completedCount = quizzes.filter((q) => q.attempt_status === 'COMPLETED').length;
+  const activeQuiz = quizzes.find(
+    (q) => q.status === 'Live' && !['COMPLETED', 'TERMINATED', 'DISQUALIFIED'].includes(q.attempt_status)
+  );
+  const completedCount = quizzes.filter(
+    (q) => ['COMPLETED', 'TERMINATED', 'DISQUALIFIED'].includes(q.attempt_status)
+  ).length;
   const hasPendingR1 = quizzes.some(
-    (q) => Number(q.round_number) === 1 && q.attempt_status !== 'COMPLETED'
+    (q) => Number(q.round_number) === 1 && !['COMPLETED', 'TERMINATED', 'DISQUALIFIED'].includes(q.attempt_status)
   );
   const isRound1Selected = Boolean(
     roundStatus?.round_1_selected &&
