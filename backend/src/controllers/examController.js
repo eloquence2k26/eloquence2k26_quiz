@@ -35,9 +35,13 @@ class ExamController {
       const entryStatus = ScheduleService.getEntryWindowStatus(quiz);
       if (quiz.status === 'Scheduled' && !entryStatus.isBeforeStart) {
         quiz.status = 'Live';
+        db.update('quizzes', (q) => q.id === quiz.id, { status: 'Live' });
       }
 
       if (quiz.status !== 'Live' && quiz.status !== 'Published') {
+        if (quiz.status === 'Scheduled') {
+          return error(res, `This examination has not started yet. Scheduled to begin at ${quiz.start_time || 'scheduled time'}.`, 400);
+        }
         return error(res, `Quiz is currently ${quiz.status}. It is not open for attempts.`, 400);
       }
 
@@ -115,9 +119,9 @@ class ExamController {
         return error(res, 'You have already utilized all allowed attempts for this examination.', 400);
       }
 
-      // Timing checks for scheduled exam
+      // Timing checks for scheduled exam (only block if status is Scheduled or if window has fully concluded)
       if (req.user.role === 'PARTICIPANT' && quiz.start_date && quiz.start_time) {
-        if (entryStatus.isBeforeStart) {
+        if (quiz.status === 'Scheduled' && entryStatus.isBeforeStart) {
           return error(
             res,
             `This examination has not started yet. Scheduled to begin at ${quiz.start_time}.`,
@@ -125,7 +129,7 @@ class ExamController {
           );
         }
 
-        if (entryStatus.isAfterEnd) {
+        if (quiz.status !== 'Live' && entryStatus.isAfterEnd) {
           return error(
             res,
             `This examination has concluded. The scheduled window has passed.`,

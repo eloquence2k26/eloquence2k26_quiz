@@ -692,6 +692,24 @@ export default function QuizSchedulePage() {
                                 <span className="text-[11px] font-bold text-slate-400 px-2 py-1 rounded-lg bg-slate-100 dark:bg-slate-800">
                                   Concluded
                                 </span>
+                              ) : q.status === 'Scheduled' ? (
+                                <div className="flex items-center gap-1.5">
+                                  <button
+                                    onClick={() => handleStatusChange(q.id, 'Live')}
+                                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold text-emerald-700 dark:text-emerald-300 bg-emerald-50 dark:bg-emerald-950/60 hover:bg-emerald-100 border border-emerald-200 dark:border-emerald-800 transition-all shadow-2xs"
+                                    title="Start exam immediately and grant access to participants"
+                                  >
+                                    <Play className="w-3.5 h-3.5" />
+                                    <span>Start Now (Go Live)</span>
+                                  </button>
+                                  <button
+                                    onClick={() => handleStatusChange(q.id, 'Published')}
+                                    className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl text-xs font-bold text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-950/60 hover:bg-blue-100 border border-blue-200 dark:border-blue-800 transition-all"
+                                  >
+                                    <Send className="w-3.5 h-3.5" />
+                                    <span>Publish</span>
+                                  </button>
+                                </div>
                               ) : (
                                 <button
                                   onClick={() => handleStatusChange(q.id, 'Published')}
@@ -701,6 +719,7 @@ export default function QuizSchedulePage() {
                                   <span>Publish Schedule</span>
                                 </button>
                               )}
+
                             </div>
 
                             {/* Secondary Tooling: Modify Schedule, Configure, Delete */}
