@@ -114,7 +114,25 @@ class AuthController {
 
       // Fast in-memory profile/participant/admin lookups (< 1ms)
       const profile = db.find('profiles', (p) => p.id === user.id) || {};
-      const participantData = user.role === 'PARTICIPANT' ? db.find('participants', (p) => p.id === user.id) : null;
+      let participantData = user.role === 'PARTICIPANT'
+        ? db.find('participants', (p) => p.id === user.id || (p.email && p.email.toLowerCase() === user.email.toLowerCase()))
+        : null;
+
+      if (participantData) {
+        const assignments = db.filter(
+          'quiz_assignments',
+          (qa) =>
+            qa.participant_id === user.id ||
+            qa.participant_id === participantData.id ||
+            qa.participant_id === participantData.participant_id ||
+            qa.participant_id === user.email
+        );
+        participantData = {
+          ...participantData,
+          assigned_quiz_ids: assignments.map((a) => a.quiz_id)
+        };
+      }
+
       const adminData = user.role !== 'PARTICIPANT' ? db.find('admins', (a) => a.id === user.id) : null;
 
       const token = generateToken({

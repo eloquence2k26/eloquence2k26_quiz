@@ -13,30 +13,66 @@ class QuizController {
       ScheduleService.checkAndPublishScheduledQuizzes();
 
       const user = req.user;
-      let quizzes = db.get('quizzes');
+      let quizzes = db.get('quizzes') || [];
 
       if (user.role === 'PARTICIPANT') {
-        const assignments = db.filter('quiz_assignments', (a) => a.participant_id === user.id);
+        const participant = db.find('participants', (p) =>
+          p.id === user.id ||
+          (p.email && p.email.toLowerCase() === (user.email || '').toLowerCase()) ||
+          p.participant_id === user.id
+        );
+
+        const possibleUserIds = new Set([
+          user.id,
+          user.email ? user.email.toLowerCase() : null,
+          participant ? participant.id : null,
+          participant ? participant.participant_id : null,
+          participant ? participant.registration_number : null
+        ].filter(Boolean));
+
+        const allAssignments = db.get('quiz_assignments') || [];
+        const assignments = allAssignments.filter((a) => 
+          possibleUserIds.has(a.participant_id) || 
+          (a.participant_id && possibleUserIds.has(a.participant_id.toLowerCase()))
+        );
         const assignedQuizIds = new Set(assignments.map((a) => a.quiz_id));
 
+        if (participant && Array.isArray(participant.assigned_quiz_ids)) {
+          participant.assigned_quiz_ids.forEach((id) => assignedQuizIds.add(id));
+        }
+
         quizzes = quizzes.filter((q) => {
-          const isAssigned = assignedQuizIds.has(q.id);
-          const isVisibleStatus = ['Published', 'Live', 'Completed', 'Scheduled'].includes(q.status);
-          return isAssigned && isVisibleStatus;
+          return assignedQuizIds.has(q.id);
         });
 
-        // Attach participant's attempt status to each quiz card
-        const participantAttempts = db.filter('exam_attempts', (a) => a.participant_id === user.id);
-        const participantResults = db.filter('results', (r) => r.participant_id === user.id);
+        // Attach participant's attempt status and results
+        const allAttempts = db.get('exam_attempts') || [];
+        const allResults = db.get('results') || [];
+        const participantAttempts = allAttempts.filter((a) => possibleUserIds.has(a.participant_id));
+        const participantResults = allResults.filter((r) => possibleUserIds.has(r.participant_id));
 
         const enriched = quizzes.map((q) => {
           const attempt = participantAttempts.find((a) => a.quiz_id === q.id);
           const result = participantResults.find((r) => r.quiz_id === q.id);
+          const windowStatus = ScheduleService.getEntryWindowStatus(q);
+
+          // Determine effective dynamic status
+          let effectiveStatus = q.status;
+          if (attempt && attempt.status === 'COMPLETED') {
+            effectiveStatus = 'Completed';
+          } else if (windowStatus.isAfterEnd) {
+            effectiveStatus = 'Completed';
+          } else if (windowStatus.isBeforeStart) {
+            effectiveStatus = 'Scheduled';
+          } else if (windowStatus.isEntryOpen || q.status === 'Live') {
+            effectiveStatus = 'Live';
+          }
 
           return {
             ...q,
-            entry_window_status: ScheduleService.getEntryWindowStatus(q),
-            attempt_status: attempt ? attempt.status : 'NOT_STARTED',
+            status: effectiveStatus,
+            entry_window_status: windowStatus,
+            attempt_status: attempt ? attempt.status : (effectiveStatus === 'Completed' && !attempt ? 'NOT_ATTENDED' : 'NOT_STARTED'),
             attempt_id: attempt ? attempt.id : null,
             result_summary: result
               ? {

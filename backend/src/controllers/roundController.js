@@ -323,21 +323,34 @@ class RoundController {
   }
 
   /**
-   * Get Round 1 Leaderboard for Round Selection Panel
+   * Get Round 1 Leaderboard for Round Selection Panel (support filtering by quiz_id or event_id)
    */
   static async getRound1Ranking(req, res) {
     try {
-      const round1Quiz = db.find('quizzes', (q) => q.round_number === 1);
-      if (!round1Quiz) {
-        return error(res, 'Round 1 Quiz not configured yet', 404);
+      const { quiz_id, event_id } = req.query;
+      let targetQuiz = null;
+
+      if (quiz_id) {
+        targetQuiz = db.find('quizzes', (q) => q.id === quiz_id);
+      } else if (event_id) {
+        targetQuiz = db.find('quizzes', (q) => q.event_id === event_id && Number(q.round_number) === 1) ||
+                     db.find('quizzes', (q) => q.event_id === event_id);
       }
 
-      const results = db.filter('results', (r) => r.quiz_id === round1Quiz.id);
+      if (!targetQuiz) {
+        targetQuiz = db.find('quizzes', (q) => q.round_number === 1) || db.get('quizzes')[0];
+      }
+
+      if (!targetQuiz) {
+        return error(res, 'No quiz configured yet', 404);
+      }
+
+      const results = db.filter('results', (r) => r.quiz_id === targetQuiz.id);
       results.sort((a, b) => (a.rank || 999) - (b.rank || 999));
 
-      const participants = db.get('participants');
+      const participants = db.get('participants') || [];
       const rankingList = results.map((r) => {
-        const p = participants.find((part) => part.id === r.participant_id);
+        const p = participants.find((part) => part.id === r.participant_id || part.participant_id === r.participant_id);
         return {
           participant_id: r.participant_id,
           participant_code: p ? p.participant_id : 'N/A',
@@ -354,9 +367,11 @@ class RoundController {
 
       return success(res, {
         quiz: {
-          id: round1Quiz.id,
-          title: round1Quiz.title,
-          max_marks: round1Quiz.max_marks
+          id: targetQuiz.id,
+          title: targetQuiz.title,
+          event_name: targetQuiz.event_name || targetQuiz.title,
+          round_number: targetQuiz.round_number || 1,
+          max_marks: targetQuiz.max_marks
         },
         total_participants: rankingList.length,
         selected_count: rankingList.filter((r) => r.selected).length,
@@ -425,14 +440,17 @@ class RoundController {
    */
   static async publishRoundSelection(req, res) {
     try {
-      const { round_number = 1 } = req.body;
+      const { round_number = 1, quiz_id } = req.body;
       const round = db.find('rounds', (r) => r.round_number === Number(round_number));
       if (round) {
         db.update('rounds', (r) => r.id === round.id, { is_published: true });
       }
 
       // Auto assign selected participants to Round 2 Quiz
-      const round2Quiz = db.find('quizzes', (q) => q.round_number === 2);
+      const targetQuiz = quiz_id ? db.find('quizzes', (q) => q.id === quiz_id) : null;
+      const round2Quiz = db.find('quizzes', (q) => q.round_number === 2) ||
+        (targetQuiz ? db.find('quizzes', (q) => q.event_id === targetQuiz.event_id && q.round_number === 2) : null);
+
       if (round2Quiz) {
         const selectedParticipants = db.filter('participants', (p) => p.round_1_selected);
         selectedParticipants.forEach((p) => {
@@ -461,7 +479,7 @@ class RoundController {
 
       AuditService.log(req.user.id, 'PUBLISH_ROUND_SELECTIONS', 'ROUND', String(round_number));
 
-      return success(res, {}, `Round ${round_number} selections officially published`);
+      return success(res, {}, `Round ${round_number} selections officially published and qualifiers promoted`);
     } catch (err) {
       return error(res, err.message, 500);
     }
@@ -472,11 +490,12 @@ class RoundController {
    */
   static async getParticipantRoundStatus(req, res) {
     try {
-      const participant = db.find('participants', (p) => p.id === req.user.id);
+      const participant = db.find('participants', (p) => p.id === req.user.id || p.participant_id === req.user.id);
       if (!participant) {
         if (req.user.role === 'ADMIN') {
           return success(res, {
             round_1_selected: true,
+            round_1_published: true,
             round_1_result: null,
             round_2_quiz: null,
             admin_view: true
@@ -485,14 +504,21 @@ class RoundController {
         return error(res, 'Participant not found', 404);
       }
 
-      const round1Quiz = db.find('quizzes', (q) => q.round_number === 1);
-      const round2Quiz = db.find('quizzes', (q) => q.round_number === 2);
+      const round1 = db.find('rounds', (r) => Number(r.round_number) === 1);
+      const isRound1Published = round1 ? Boolean(round1.is_published) : false;
 
+      const round1Quiz = db.find('quizzes', (q) => Number(q.round_number) === 1);
+      const round2Quiz = db.find('quizzes', (q) => Number(q.round_number) === 2);
+
+      const r1Attempt = round1Quiz ? db.find('exam_attempts', (a) => a.quiz_id === round1Quiz.id && a.participant_id === req.user.id) : null;
       const r1Result = round1Quiz ? db.find('results', (r) => r.quiz_id === round1Quiz.id && r.participant_id === req.user.id) : null;
       const r2Attempt = round2Quiz ? db.find('exam_attempts', (a) => a.quiz_id === round2Quiz.id && a.participant_id === req.user.id) : null;
 
       return success(res, {
+        round_1_published: isRound1Published,
+        round_1_attempted: Boolean(r1Attempt || r1Result),
         round_1_selected: Boolean(participant.round_1_selected),
+        round_2_selected: Boolean(participant.round_2_selected),
         round_1_result: r1Result
           ? {
               score: r1Result.final_score,

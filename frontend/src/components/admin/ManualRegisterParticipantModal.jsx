@@ -607,21 +607,6 @@ export default function ManualRegisterParticipantModal({
             )}
           </div>
 
-          {/* Auto Quiz Assignment Option */}
-          <div className="flex items-center gap-2 pt-1">
-            <label className="flex items-center gap-2 text-xs font-semibold text-slate-700 dark:text-slate-300 cursor-pointer">
-              <input
-                type="checkbox"
-                name="assign_quiz"
-                checked={formData.assign_quiz}
-                onChange={handleChange}
-                className="rounded text-brand-600 focus:ring-brand-500"
-              />
-              <BookOpen className="w-3.5 h-3.5 text-brand-600 dark:text-brand-400" />
-              <span>Automatically enroll candidate into the matching Event Quiz</span>
-            </label>
-          </div>
-
           {/* Footer Actions */}
           <div className="flex items-center justify-end gap-3 pt-3 border-t border-slate-100 dark:border-slate-800">
             <button

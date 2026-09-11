@@ -99,6 +99,15 @@ export const adminService = {
     return res.data;
   },
 
+  unassignParticipantsFromQuiz: async (quizId, participantIds = [], unassignAll = false) => {
+    const res = await api.post('/participants/unassign', {
+      quiz_id: quizId,
+      participant_ids: participantIds,
+      unassign_all: unassignAll
+    });
+    return res.data;
+  },
+
   importParticipantsFile: async (formData) => {
     const res = await api.post('/participants/import-file', formData, {
       headers: { 'Content-Type': 'multipart/form-data' }
@@ -149,8 +158,8 @@ export const adminService = {
   },
 
   // Round 1 -> Round 2 Selection
-  getRound1Ranking: async () => {
-    const res = await api.get('/rounds/round1-ranking');
+  getRound1Ranking: async (params = {}) => {
+    const res = await api.get('/rounds/round1-ranking', { params });
     return res.data;
   },
 
@@ -168,8 +177,11 @@ export const adminService = {
     return res.data;
   },
 
-  publishRoundSelection: async (roundNumber = 1) => {
-    const res = await api.post('/rounds/publish-selection', { round_number: roundNumber });
+  publishRoundSelection: async (roundNumber = 1, quizId = null) => {
+    const res = await api.post('/rounds/publish-selection', {
+      round_number: roundNumber,
+      quiz_id: quizId
+    });
     return res.data;
   },
 

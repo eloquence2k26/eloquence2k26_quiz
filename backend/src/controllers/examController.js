@@ -34,27 +34,49 @@ class ExamController {
         return error(res, `Quiz is currently ${quiz.status}. It is not open for attempts.`, 403);
       }
 
+      // Resolve participant record across all potential identifier variants
+      const participant = db.find(
+        'participants',
+        (p) =>
+          p.id === participantId ||
+          p.participant_id === participantId ||
+          (p.email && p.email.toLowerCase() === (req.user.email || '').toLowerCase())
+      );
+
+      const possibleUserIds = new Set([
+        participantId,
+        req.user.id,
+        req.user.email ? req.user.email.toLowerCase() : null,
+        participant ? participant.id : null,
+        participant ? participant.participant_id : null,
+        participant ? participant.registration_number : null
+      ].filter(Boolean));
+
       // Check Round 2 qualification if quiz is Round 2
-      if (quiz.round_number === 2) {
-        const participant = db.find('participants', (p) => p.id === participantId);
+      if (Number(quiz.round_number) === 2) {
         if (!participant || !participant.round_1_selected) {
           return error(res, 'Access denied. You have not qualified for Round 2.', 403);
         }
       }
 
       // Check assignment
-      const assignment = db.find(
-        'quiz_assignments',
-        (qa) => qa.quiz_id === quizId && qa.participant_id === participantId
+      const allAssignments = db.get('quiz_assignments') || [];
+      const assignment = allAssignments.find(
+        (qa) => qa.quiz_id === quizId && possibleUserIds.has(qa.participant_id)
       );
-      if (!assignment && req.user.role === 'PARTICIPANT') {
+      const isEventMatched = participant?.event && (
+        quiz.event_name?.trim().toLowerCase() === participant.event.trim().toLowerCase() ||
+        quiz.title?.trim().toLowerCase() === participant.event.trim().toLowerCase()
+      );
+
+      if (!assignment && !isEventMatched && req.user.role === 'PARTICIPANT') {
         return error(res, 'You are not registered or assigned to this examination.', 403);
       }
 
       // Check existing attempts
       const existingAttempts = db.filter(
         'exam_attempts',
-        (a) => a.quiz_id === quizId && a.participant_id === participantId
+        (a) => a.quiz_id === quizId && possibleUserIds.has(a.participant_id)
       );
 
       const activeAttempt = existingAttempts.find((a) => a.status === 'IN_PROGRESS');

@@ -21,5 +21,6 @@ router.put('/:id', ParticipantController.updateParticipant);
 router.patch('/:id/status', ParticipantController.toggleDisableParticipant);
 router.delete('/:id', ParticipantController.deleteParticipant);
 router.post('/assign', ParticipantController.assignToQuiz);
+router.post('/unassign', ParticipantController.unassignFromQuiz);
 
 module.exports = router;

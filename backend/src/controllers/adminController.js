@@ -419,33 +419,64 @@ class AdminController {
   }
 
   /**
-   * Get all Admin & Staff Users
+   * Get all Users (Admins, Staff, Coordinators, Proctors, Volunteers & Participants)
    */
   static async getUsers(req, res) {
     try {
       const users = db.get('users') || [];
       const profiles = db.get('profiles') || [];
       const admins = db.get('admins') || [];
+      const participants = db.get('participants') || [];
 
-      // Filter to staff & admin users (exclude or include with tag)
-      const staffUsers = users
-        .filter((u) => u.role !== 'PARTICIPANT' || u.email.toLowerCase().includes('admin'))
-        .map((u) => {
-          const profile = profiles.find((p) => p.id === u.id) || {};
-          const admin = admins.find((a) => a.id === u.id) || {};
-          return {
-            id: u.id,
-            email: u.email,
-            role: u.role || 'ADMIN',
-            admin_level: admin.admin_level || 'ADMIN',
-            full_name: profile.full_name || admin.full_name || u.email.split('@')[0],
-            mobile: profile.mobile || '',
-            is_active: u.is_active !== false,
-            created_at: u.created_at || new Date().toISOString()
-          };
-        });
+      const userIds = new Set();
+      const allUsers = users.map((u) => {
+        userIds.add(u.id);
+        const profile = profiles.find((p) => p.id === u.id) || {};
+        const admin = admins.find((a) => a.id === u.id) || {};
+        const participant = participants.find((p) => p.id === u.id || (p.email && p.email.toLowerCase() === u.email.toLowerCase())) || {};
 
-      return success(res, staffUsers);
+        return {
+          id: u.id,
+          email: u.email,
+          username: (u.email || '').split('@')[0],
+          role: u.role || (admin.admin_level ? 'ADMIN' : (participant.id ? 'PARTICIPANT' : 'ADMIN')),
+          admin_level: admin.admin_level || (u.role !== 'PARTICIPANT' ? u.role : null),
+          participant_id: participant.participant_id || null,
+          registration_number: participant.registration_number || null,
+          event: participant.event || null,
+          college: participant.college || null,
+          department: participant.department || null,
+          full_name: profile.full_name || admin.full_name || participant.full_name || (u.email || '').split('@')[0],
+          mobile: profile.mobile || participant.mobile || '',
+          is_active: u.is_active !== false && !participant.is_disabled,
+          created_at: u.created_at || participant.created_at || new Date().toISOString()
+        };
+      });
+
+      // Ensure any participants recorded directly in participants table are also included in users view
+      participants.forEach((p) => {
+        if (!userIds.has(p.id)) {
+          userIds.add(p.id);
+          allUsers.push({
+            id: p.id,
+            email: p.email,
+            username: (p.email || p.participant_id || 'user').split('@')[0],
+            role: 'PARTICIPANT',
+            admin_level: null,
+            participant_id: p.participant_id || null,
+            registration_number: p.registration_number || null,
+            event: p.event || null,
+            college: p.college || null,
+            department: p.department || null,
+            full_name: p.full_name || p.email?.split('@')[0] || 'Participant',
+            mobile: p.mobile || '',
+            is_active: !p.is_disabled,
+            created_at: p.created_at || new Date().toISOString()
+          });
+        }
+      });
+
+      return success(res, allUsers);
     } catch (err) {
       return error(res, err.message, 500);
     }

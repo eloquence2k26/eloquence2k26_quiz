@@ -4,6 +4,7 @@ import {
   LayoutDashboard,
   Users,
   UserPlus,
+  UserCheck,
   BookOpen,
   HelpCircle,
   Calendar,
@@ -60,13 +61,17 @@ export default function AdminLayout() {
 
   // User Management Sub-items definition
   const userManagerItems = [
-    { label: 'Users', icon: Users, path: '/admin/users', desc: 'Admin & Staff accounts, logins' },
-    { label: 'Roles', icon: ShieldCheck, path: '/admin/roles', desc: 'Roles & permissions matrix' }
+    { label: 'Users', icon: Users, path: '/admin/users', desc: 'All users, staff & participants' },
+    { label: 'Roles', icon: ShieldCheck, path: '/admin/roles', desc: 'Roles & permissions matrix' },
+    { label: 'User Registration', icon: UserPlus, path: '/admin/user-register', desc: 'Single & Multi-format import' },
+    { label: 'Participants', icon: Users, path: '/admin/participants', desc: 'Registered scholars directory' },
+    { label: 'Assign Participants', icon: UserCheck, path: '/admin/assign-participants', desc: 'Direct quiz & round assignment' }
   ];
 
   // Event Manager Sub-items definition
   const eventManagerItems = [
     { label: 'Event Management', icon: BookOpen, path: '/admin/quizzes', desc: 'Manage events & quizzes' },
+    { label: 'Assign Participants', icon: UserCheck, path: '/admin/assign-participants', desc: 'Enroll scholars to quizzes' },
     { label: 'Questions', icon: HelpCircle, path: '/admin/questions', desc: 'MCQ question bank' },
     { label: 'Quiz Schedule', icon: Calendar, path: '/admin/schedule', desc: 'Timeline & entry windows' },
     { label: 'Rounds', icon: Layers, path: '/admin/rounds', desc: 'Round 1 & Round 2 setup' },
@@ -77,8 +82,9 @@ export default function AdminLayout() {
   // Primary menu items
   const primaryItems = [
     { label: 'Dashboard', icon: LayoutDashboard, path: '/admin/dashboard' },
-    { label: 'Participants', icon: Users, path: '/admin/participants' },
-    { label: 'User Registration', icon: UserPlus, path: '/admin/user-register' }
+    { label: 'Assign Participants', icon: UserCheck, path: '/admin/assign-participants' },
+    { label: 'User Registration', icon: UserPlus, path: '/admin/user-register' },
+    { label: 'Participants', icon: Users, path: '/admin/participants' }
   ];
 
   // Operations & proctoring items

@@ -11,10 +11,40 @@ class ParticipantController {
   static async getAllParticipants(req, res) {
     try {
       const { search, college, round_1_selected, is_disabled } = req.query;
-      let participants = db.get('participants');
+      let participants = db.get('participants') || [];
+      const users = db.get('users') || [];
+      const profiles = db.get('profiles') || [];
+
+      // Also ensure any users registered with PARTICIPANT role appear in participants directory
+      const participantIds = new Set(participants.map((p) => p.id));
+      const missingUsers = users.filter((u) => u.role === 'PARTICIPANT' && !participantIds.has(u.id));
+
+      if (missingUsers.length > 0) {
+        missingUsers.forEach((u, idx) => {
+          const profile = profiles.find((p) => p.id === u.id) || {};
+          const count = participants.length + idx + 1;
+          const pId = `ELQ-2026-${String(count).padStart(3, '0')}`;
+          const regNo = `REG-2026-${String(count).padStart(3, '0')}`;
+          participants.push({
+            id: u.id,
+            participant_id: pId,
+            full_name: profile.full_name || (u.email || '').split('@')[0],
+            email: u.email,
+            mobile: profile.mobile || '',
+            college: 'Engineering College',
+            department: 'Computer Science & Engineering',
+            year: '3rd Year',
+            event: 'Technical Quiz',
+            registration_number: regNo,
+            round_1_selected: false,
+            round_2_selected: false,
+            is_disabled: !u.is_active
+          });
+        });
+      }
 
       if (college) {
-        participants = participants.filter((p) => p.college.toLowerCase().includes(college.toLowerCase()));
+        participants = participants.filter((p) => (p.college || '').toLowerCase().includes(college.toLowerCase()));
       }
       if (round_1_selected !== undefined) {
         const boolVal = round_1_selected === 'true';
@@ -27,20 +57,54 @@ class ParticipantController {
       if (search) {
         const term = search.toLowerCase();
         participants = participants.filter((p) =>
-          p.full_name.toLowerCase().includes(term) ||
-          p.participant_id.toLowerCase().includes(term) ||
-          p.email.toLowerCase().includes(term) ||
-          p.college.toLowerCase().includes(term)
+          (p.full_name || '').toLowerCase().includes(term) ||
+          (p.participant_id || '').toLowerCase().includes(term) ||
+          (p.registration_number || '').toLowerCase().includes(term) ||
+          (p.email || '').toLowerCase().includes(term) ||
+          (p.mobile || '').toLowerCase().includes(term) ||
+          (p.college || '').toLowerCase().includes(term)
         );
       }
 
-      // Enrich with assigned quizzes count
-      const assignments = db.get('quiz_assignments');
+      // Enrich with assigned quizzes count and assigned quiz IDs/titles/event names with Round number
+      const assignments = db.get('quiz_assignments') || [];
+      const quizzes = db.get('quizzes') || [];
       const enriched = participants.map((p) => {
-        const pAssignments = assignments.filter((a) => a.participant_id === p.id);
+        const matchedUser = users.find((u) => u.id === p.id || (p.email && u.email?.toLowerCase() === p.email.toLowerCase()));
+        const userIds = new Set([
+          p.id,
+          p.participant_id,
+          p.email ? p.email.toLowerCase() : null,
+          p.registration_number,
+          matchedUser ? matchedUser.id : null,
+          matchedUser ? matchedUser.email?.toLowerCase() : null
+        ].filter(Boolean));
+
+        const pAssignments = assignments.filter((a) => userIds.has(a.participant_id) || (a.participant_id && userIds.has(a.participant_id.toLowerCase())));
+        
+        const pQuizIds = Array.from(new Set([
+          ...pAssignments.map((a) => a.quiz_id),
+          ...(Array.isArray(p.assigned_quiz_ids) ? p.assigned_quiz_ids : [])
+        ]));
+
+        const pQuizzes = quizzes.filter((q) => pQuizIds.includes(q.id));
+        const assignedQuizTitles = pQuizzes.map((q) => `${q.title || q.event_name} (Round ${q.round_number || 1})`).filter(Boolean);
+        const assignedEventNames = pQuizzes.map((q) => q.event_name || q.title).filter(Boolean);
+        const assignedQuizDetails = pQuizzes.map((q) => ({
+          id: q.id,
+          title: q.title,
+          round_number: q.round_number || 1,
+          event_name: q.event_name || q.title,
+          status: q.status
+        }));
+
         return {
           ...p,
-          assigned_quizzes_count: pAssignments.length
+          assigned_quizzes_count: pQuizIds.length,
+          assigned_quiz_ids: pQuizIds,
+          assigned_quiz_titles: assignedQuizTitles,
+          assigned_event_names: assignedEventNames,
+          assigned_quiz_details: assignedQuizDetails
         };
       });
 
@@ -369,13 +433,15 @@ class ParticipantController {
    */
   static async bulkImportParticipants(req, res) {
     try {
-      const { participants = [] } = req.body;
+      const { participants = [], quiz_id, assign_quiz = true } = req.body;
 
       if (!Array.isArray(participants) || participants.length === 0) {
         return error(res, 'No participant records provided for import', 400);
       }
 
+      const explicitQuiz = quiz_id ? db.find('quizzes', (q) => q.id === quiz_id) : null;
       const round1Quiz = db.find('quizzes', (q) => q.round_number === 1);
+      const targetDefaultQuiz = explicitQuiz || round1Quiz;
       const imported = [];
       const errors = [];
 
@@ -434,6 +500,7 @@ class ParticipantController {
         const eventTarget = (
           item.event ||
           item.event_name ||
+          (explicitQuiz ? explicitQuiz.event_name || explicitQuiz.title : null) ||
           req.body.event ||
           req.body.event_name ||
           'Technical Quiz'
@@ -455,15 +522,15 @@ class ParticipantController {
           is_disabled: false
         });
 
-        // Match event quiz or fallback to round 1 quiz
-        const targetQuiz = db.find(
+        // Match event quiz, explicit quiz, or fallback
+        const targetQuiz = explicitQuiz || db.find(
           'quizzes',
           (q) =>
             (q.event_name && q.event_name.trim().toLowerCase() === eventTarget.toLowerCase()) ||
             (q.title && q.title.trim().toLowerCase() === eventTarget.toLowerCase())
         ) || round1Quiz;
 
-        if (targetQuiz) {
+        if (targetQuiz && assign_quiz) {
           const existingAssign = db.find(
             'quiz_assignments',
             (qa) => qa.quiz_id === targetQuiz.id && qa.participant_id === newParticipant.id
@@ -472,7 +539,7 @@ class ParticipantController {
             db.insert('quiz_assignments', {
               quiz_id: targetQuiz.id,
               participant_id: newParticipant.id,
-              assigned_by: req.user.id,
+              assigned_by: req.user ? req.user.id : null,
               status: 'ASSIGNED'
             });
           }
@@ -486,13 +553,15 @@ class ParticipantController {
           email,
           college: newParticipant.college,
           department: newParticipant.department,
+          assigned_quiz: targetQuiz ? targetQuiz.title : null,
           default_password: autoPassword
         });
       }
 
-      AuditService.log(req.user.id, 'BULK_IMPORT_PARTICIPANTS', 'PARTICIPANT', 'BULK', {
+      AuditService.log(req.user ? req.user.id : null, 'BULK_IMPORT_PARTICIPANTS', 'PARTICIPANT', 'BULK', {
         importedCount: imported.length,
-        failedCount: errors.length
+        failedCount: errors.length,
+        assigned_quiz: targetDefaultQuiz ? targetDefaultQuiz.title : null
       });
 
       return success(res, {
@@ -500,7 +569,7 @@ class ParticipantController {
         failedCount: errors.length,
         imported,
         errors
-      }, `Successfully imported ${imported.length} participants with phone-based auto credentials.`);
+      }, `Successfully imported and processed ${imported.length} scholars.`);
     } catch (err) {
       return error(res, err.message, 500);
     }
@@ -522,23 +591,232 @@ class ParticipantController {
         targetIds = db.get('participants').map((p) => p.id);
       }
 
+      if (!targetIds || targetIds.length === 0) {
+        return error(res, 'No participants selected for assignment', 400);
+      }
+
+      const supabase = db.client;
       let assignedCount = 0;
-      targetIds.forEach((pId) => {
-        const existing = db.find('quiz_assignments', (qa) => qa.quiz_id === quiz_id && qa.participant_id === pId);
-        if (!existing) {
-          db.insert('quiz_assignments', {
-            quiz_id,
-            participant_id: pId,
-            assigned_by: req.user.id,
-            status: 'ASSIGNED'
+
+      for (const pId of targetIds) {
+        // Resolve participant record and user record
+        let p = db.find('participants', (item) => item.id === pId || item.participant_id === pId || item.email === pId);
+        const u = p
+          ? db.find('users', (user) => user.id === p.id || (p.email && user.email?.toLowerCase() === p.email.toLowerCase()))
+          : db.find('users', (user) => user.id === pId);
+
+        const actualUserId = u ? u.id : (p ? p.id : pId);
+
+        // Ensure participant is in participants table and in Supabase database
+        if (!p) {
+          const profile = db.find('profiles', (prof) => prof.id === actualUserId) || {};
+          const count = db.get('participants').length + 1;
+          const participantId = `ELQ-2026-${String(count).padStart(3, '0')}`;
+          const regNo = `REG-2026-${String(count).padStart(3, '0')}`;
+
+          p = db.insert('participants', {
+            id: actualUserId,
+            participant_id: participantId,
+            full_name: profile.full_name || (u?.email || '').split('@')[0],
+            email: u?.email || `elq_${Date.now().toString().slice(-6)}@eloquence.com`,
+            mobile: profile.mobile || '',
+            college: 'Engineering College',
+            department: 'Computer Science & Engineering',
+            year: '3rd Year',
+            event: quiz.event_name || quiz.title || 'Technical Quiz',
+            registration_number: regNo,
+            round_1_selected: false,
+            round_2_selected: false,
+            is_disabled: false
           });
-          assignedCount++;
+
+          if (supabase) {
+            try {
+              await supabase.from('participants').upsert([db.sanitize('participants', p)]);
+            } catch (err) {
+              // ignore
+            }
+          }
         }
+
+        const existing = db.find(
+          'quiz_assignments',
+          (qa) =>
+            qa.quiz_id === quiz_id &&
+            (qa.participant_id === actualUserId ||
+              (p && (qa.participant_id === p.id || qa.participant_id === p.participant_id || qa.participant_id === p.email)))
+        );
+
+        const assignmentRecord = {
+          id: existing ? existing.id : undefined,
+          quiz_id,
+          participant_id: actualUserId,
+          assigned_by: req.user ? req.user.id : null,
+          status: 'ASSIGNED',
+          assigned_at: new Date().toISOString()
+        };
+
+        if (!existing) {
+          db.insert('quiz_assignments', assignmentRecord);
+          assignedCount++;
+        } else {
+          db.update('quiz_assignments', (qa) => qa.id === existing.id, {
+            status: 'ASSIGNED',
+            participant_id: actualUserId
+          });
+        }
+
+        // Direct Supabase upsert to guarantee persistence
+        if (supabase) {
+          try {
+            const cleanAssign = db.sanitize('quiz_assignments', assignmentRecord);
+            await supabase.from('quiz_assignments').upsert([cleanAssign]);
+          } catch (e) {
+            // ignore
+          }
+        }
+
+        // Always update participant's event and assigned_quiz_ids in participants table
+        if (p) {
+          const quizEventName = quiz.event_name || quiz.title;
+          const currentQuizIds = Array.isArray(p.assigned_quiz_ids) ? p.assigned_quiz_ids : [];
+          const updatedQuizIds = Array.from(new Set([...currentQuizIds, quiz_id]));
+
+          db.update('participants', (item) => item.id === p.id, {
+            event: quizEventName || item.event,
+            assigned_quiz_ids: updatedQuizIds
+          });
+
+          if (supabase) {
+            try {
+              await supabase.from('participants').update({
+                event: quizEventName || p.event,
+                updated_at: new Date().toISOString()
+              }).eq('id', p.id);
+            } catch (e) {
+              // ignore
+            }
+          }
+        }
+      }
+
+      AuditService.log(req.user ? req.user.id : null, 'ASSIGN_PARTICIPANTS_TO_QUIZ', 'QUIZ', quiz_id, {
+        count: assignedCount || targetIds.length,
+        quiz_title: quiz.title,
+        event_name: quiz.event_name
       });
 
-      AuditService.log(req.user.id, 'ASSIGN_PARTICIPANTS_TO_QUIZ', 'QUIZ', quiz_id, { count: assignedCount });
+      return success(
+        res,
+        { assignedCount: assignedCount || targetIds.length },
+        `Successfully assigned ${assignedCount || targetIds.length} scholar(s) to "${quiz.title}".`
+      );
+    } catch (err) {
+      return error(res, err.message, 500);
+    }
+  }
 
-      return success(res, { assignedCount }, `Successfully assigned ${assignedCount} participants to quiz.`);
+  /**
+   * Unassign participants from a quiz
+   */
+  static async unassignFromQuiz(req, res) {
+    try {
+      const { quiz_id, participant_ids = [], unassign_all = false } = req.body;
+      if (!quiz_id) return error(res, 'Quiz ID is required', 400);
+
+      const quiz = db.find('quizzes', (q) => q.id === quiz_id);
+      if (!quiz) return error(res, 'Quiz not found', 404);
+
+      const supabase = db.client;
+      let unassignedCount = 0;
+
+      if (unassign_all) {
+        const removed = db.filter('quiz_assignments', (qa) => qa.quiz_id === quiz_id);
+        unassignedCount = removed.length;
+        db.remove('quiz_assignments', (qa) => qa.quiz_id === quiz_id);
+
+        if (supabase) {
+          try {
+            await supabase.from('quiz_assignments').delete().eq('quiz_id', quiz_id);
+          } catch (e) {
+            // ignore
+          }
+        }
+
+        // Also clean up assigned_quiz_ids and event from all participants
+        const allParticipants = db.get('participants') || [];
+        allParticipants.forEach((p) => {
+          const currentQuizIds = Array.isArray(p.assigned_quiz_ids) ? p.assigned_quiz_ids : [];
+          const remainingQuizIds = currentQuizIds.filter((id) => id !== quiz_id);
+          db.update('participants', (item) => item.id === p.id, {
+            assigned_quiz_ids: remainingQuizIds
+          });
+        });
+      } else {
+        const targetIds = participant_ids;
+        let removedCount = 0;
+        for (const pId of targetIds) {
+          const p = db.find('participants', (item) => item.id === pId || item.participant_id === pId || item.email === pId);
+          const u = p
+            ? db.find('users', (user) => user.id === p.id || (p.email && user.email?.toLowerCase() === p.email.toLowerCase()))
+            : db.find('users', (user) => user.id === pId);
+          const actualUserId = u ? u.id : (p ? p.id : pId);
+
+          const idSet = new Set([
+            pId,
+            actualUserId,
+            p ? p.id : null,
+            p ? p.participant_id : null,
+            p ? p.email : null
+          ].filter(Boolean));
+
+          const toRemove = db.filter(
+            'quiz_assignments',
+            (qa) => qa.quiz_id === quiz_id && idSet.has(qa.participant_id)
+          );
+          if (toRemove.length > 0) {
+            removedCount += toRemove.length;
+            db.remove(
+              'quiz_assignments',
+              (qa) => qa.quiz_id === quiz_id && idSet.has(qa.participant_id)
+            );
+          }
+
+          if (supabase) {
+            try {
+              for (const participantRef of idSet) {
+                await supabase
+                  .from('quiz_assignments')
+                  .delete()
+                  .eq('quiz_id', quiz_id)
+                  .eq('participant_id', participantRef);
+              }
+            } catch (e) {
+              // ignore
+            }
+          }
+
+          if (p) {
+            const currentQuizIds = Array.isArray(p.assigned_quiz_ids) ? p.assigned_quiz_ids : [];
+            const remainingQuizIds = currentQuizIds.filter((id) => id !== quiz_id);
+            db.update('participants', (item) => item.id === p.id, {
+              assigned_quiz_ids: remainingQuizIds
+            });
+          }
+        }
+        unassignedCount = removedCount || targetIds.length;
+      }
+
+      AuditService.log(req.user ? req.user.id : null, 'UNASSIGN_PARTICIPANTS_FROM_QUIZ', 'QUIZ', quiz_id, {
+        count: unassignedCount,
+        quiz_title: quiz.title
+      });
+
+      return success(
+        res,
+        { unassignedCount },
+        `Successfully unassigned ${unassignedCount} scholar(s) from "${quiz.title}".`
+      );
     } catch (err) {
       return error(res, err.message, 500);
     }
@@ -553,11 +831,27 @@ class ParticipantController {
         return error(res, 'No file uploaded. Please select a document (PDF, Excel, Word, CSV, JSON, TXT).', 400);
       }
 
-      const { event_name = 'Technical Quiz', college = '', department = '', year = '3rd Year', assign_quiz = true } = req.body;
+      const {
+        quiz_id,
+        event_name = 'Technical Quiz',
+        college = '',
+        department = '',
+        year = '3rd Year',
+        assign_quiz = true
+      } = req.body;
+
+      let targetEventName = event_name;
+      if (quiz_id) {
+        const q = db.find('quizzes', (item) => item.id === quiz_id);
+        if (q) {
+          targetEventName = q.event_name || q.title || event_name;
+        }
+      }
+
       const participantsList = await DocumentParserService.parseParticipantsFromDocument(
         req.file.buffer,
         req.file.originalname,
-        { event_name, college, department, year }
+        { event_name: targetEventName, college, department, year }
       );
 
       if (!participantsList || participantsList.length === 0) {
@@ -565,7 +859,8 @@ class ParticipantController {
       }
 
       req.body.participants = participantsList;
-      req.body.assign_round1 = assign_quiz !== 'false' && assign_quiz !== false;
+      req.body.quiz_id = quiz_id;
+      req.body.assign_quiz = assign_quiz !== 'false' && assign_quiz !== false;
       return await ParticipantController.bulkImportParticipants(req, res);
     } catch (err) {
       return error(res, `Failed to parse document: ${err.message}`, 500);

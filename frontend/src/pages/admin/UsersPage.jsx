@@ -212,6 +212,10 @@ export default function UsersPage() {
       case 'COORDINATOR':
         return 'bg-indigo-100 text-indigo-800 dark:bg-indigo-950/80 dark:text-indigo-300 border-indigo-300 dark:border-indigo-800';
       case 'PROCTOR':
+        return 'bg-purple-100 text-purple-800 dark:bg-purple-950/80 dark:text-purple-300 border-purple-300 dark:border-purple-800';
+      case 'VOLUNTEER':
+        return 'bg-teal-100 text-teal-800 dark:bg-teal-950/80 dark:text-teal-300 border-teal-300 dark:border-teal-800';
+      case 'PARTICIPANT':
         return 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950/80 dark:text-emerald-300 border-emerald-300 dark:border-emerald-800';
       default:
         return 'bg-slate-100 text-slate-800 dark:bg-slate-800 dark:text-slate-300 border-slate-300 dark:border-slate-700';
@@ -225,7 +229,7 @@ export default function UsersPage() {
         <div>
           <div className="flex items-center gap-2">
             <h1 className="text-xl sm:text-2xl font-black text-slate-900 dark:text-white">
-              Staff & User Management
+              User & Access Management
             </h1>
             <button
               type="button"
@@ -238,7 +242,7 @@ export default function UsersPage() {
             </button>
           </div>
           <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
-            Manage administrator accounts, staff roles, login usernames, and security credentials
+            Manage administrator accounts, staff roles, participant credentials, login usernames, and permissions
           </p>
         </div>
 
@@ -251,29 +255,44 @@ export default function UsersPage() {
         </button>
       </div>
 
-      {/* Quick Summary Cards */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3.5">
+      {/* Stats Cards */}
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
         <div className="p-4 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-sm">
-          <span className="text-[11px] font-bold uppercase tracking-wider text-slate-400">Total Staff</span>
-          <p className="text-2xl font-black text-slate-900 dark:text-white mt-1">{users.length}</p>
+          <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Total User Accounts</span>
+          <div className="mt-1 flex items-baseline gap-2">
+            <span className="text-2xl font-black text-slate-900 dark:text-white">{users.length}</span>
+            <span className="text-[10px] text-slate-400">in Database</span>
+          </div>
         </div>
+
         <div className="p-4 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-sm">
-          <span className="text-[11px] font-bold uppercase tracking-wider text-slate-400">Super Admins</span>
-          <p className="text-2xl font-black text-amber-600 dark:text-amber-400 mt-1">
-            {users.filter((u) => u.admin_level === 'SUPER_ADMIN' || u.role === 'SUPER_ADMIN').length || 1}
-          </p>
+          <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Admin & Staff</span>
+          <div className="mt-1 flex items-baseline gap-2">
+            <span className="text-2xl font-black text-brand-600 dark:text-brand-400">
+              {users.filter((u) => u.role !== 'PARTICIPANT').length}
+            </span>
+            <span className="text-[10px] text-slate-400">Staff accounts</span>
+          </div>
         </div>
+
         <div className="p-4 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-sm">
-          <span className="text-[11px] font-bold uppercase tracking-wider text-slate-400">Administrators</span>
-          <p className="text-2xl font-black text-blue-600 dark:text-blue-400 mt-1">
-            {users.filter((u) => u.role === 'ADMIN').length}
-          </p>
+          <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Participants</span>
+          <div className="mt-1 flex items-baseline gap-2">
+            <span className="text-2xl font-black text-emerald-600 dark:text-emerald-400">
+              {users.filter((u) => u.role === 'PARTICIPANT').length}
+            </span>
+            <span className="text-[10px] text-slate-400">Scholars</span>
+          </div>
         </div>
+
         <div className="p-4 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-sm">
-          <span className="text-[11px] font-bold uppercase tracking-wider text-slate-400">Active Accounts</span>
-          <p className="text-2xl font-black text-emerald-600 dark:text-emerald-400 mt-1">
-            {users.filter((u) => u.is_active).length}
-          </p>
+          <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Active Logins</span>
+          <div className="mt-1 flex items-baseline gap-2">
+            <span className="text-2xl font-black text-indigo-600 dark:text-indigo-400">
+              {users.filter((u) => u.is_active).length}
+            </span>
+            <span className="text-[10px] text-slate-400">Enabled</span>
+          </div>
         </div>
       </div>
 
@@ -285,7 +304,7 @@ export default function UsersPage() {
             type="text"
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
-            placeholder="Search staff by email, full name, role..."
+            placeholder="Search users by email, username, full name, ID, role..."
             className="w-full pl-9 pr-3 py-2 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-800/80 text-xs font-semibold text-slate-900 dark:text-white placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-brand-500/20"
           />
         </div>
@@ -295,12 +314,13 @@ export default function UsersPage() {
           onChange={(e) => setFilterRole(e.target.value)}
           className="px-3 py-2 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-800/80 text-xs font-bold text-slate-800 dark:text-slate-100 cursor-pointer"
         >
-          <option value="ALL">All Roles</option>
+          <option value="ALL">All Roles ({users.length})</option>
           <option value="SUPER_ADMIN">Super Admin</option>
           <option value="ADMIN">Admin</option>
           <option value="COORDINATOR">Coordinator</option>
           <option value="PROCTOR">Proctor</option>
           <option value="VOLUNTEER">Volunteer</option>
+          <option value="PARTICIPANT">Participants ({users.filter((u) => u.role === 'PARTICIPANT').length})</option>
         </select>
       </div>
 
@@ -321,7 +341,7 @@ export default function UsersPage() {
               {filteredUsers.length === 0 ? (
                 <tr>
                   <td colSpan={5} className="py-12 text-center text-slate-400">
-                    No staff user accounts found matching your query.
+                    No user accounts found matching your query.
                   </td>
                 </tr>
               ) : (
@@ -329,12 +349,27 @@ export default function UsersPage() {
                   <tr key={u.id} className="hover:bg-slate-50/80 dark:hover:bg-slate-800/50 transition-colors">
                     <td className="py-3 px-4">
                       <div className="flex items-center gap-2">
-                        <div className="w-8 h-8 rounded-xl bg-brand-50 dark:bg-brand-950/60 text-brand-600 dark:text-brand-400 flex items-center justify-center font-bold text-xs">
+                        <div className={`w-8 h-8 rounded-xl flex items-center justify-center font-bold text-xs ${
+                          u.role === 'PARTICIPANT'
+                            ? 'bg-emerald-50 dark:bg-emerald-950/60 text-emerald-600 dark:text-emerald-400'
+                            : 'bg-brand-50 dark:bg-brand-950/60 text-brand-600 dark:text-brand-400'
+                        }`}>
                           {u.full_name?.charAt(0)?.toUpperCase() || 'U'}
                         </div>
                         <div>
-                          <p className="font-bold text-slate-900 dark:text-white">{u.email}</p>
-                          <p className="text-[10px] text-slate-400 font-mono">ID: {u.id.slice(0, 8)}...</p>
+                          <p className="font-bold text-slate-900 dark:text-white flex items-center gap-1.5">
+                            <span>{u.email}</span>
+                            {u.role === 'PARTICIPANT' && (
+                              <span className="inline-flex items-center gap-0.5 text-[10px] font-mono text-emerald-700 dark:text-emerald-300 font-bold bg-emerald-50 dark:bg-emerald-950/80 px-1.5 py-0.5 rounded border border-emerald-200 dark:border-emerald-800">
+                                <KeyRound className="w-2.5 h-2.5 text-emerald-500" />
+                                {u.participant_id || 'SCHOLAR'}
+                              </span>
+                            )}
+                          </p>
+                          <p className="text-[10px] text-slate-400 font-mono">
+                            User: {u.username || u.email?.split('@')[0]} • ID: {u.id?.slice(0, 8)}...
+                            {u.registration_number ? ` • Reg: ${u.registration_number}` : ''}
+                          </p>
                         </div>
                       </div>
                     </td>

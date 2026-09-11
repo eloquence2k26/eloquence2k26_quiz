@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
+import { Link } from 'react-router-dom';
 import {
   Calendar,
   Clock,
@@ -21,7 +22,8 @@ import {
   Lock,
   Unlock,
   BookOpen,
-  Award
+  Award,
+  Users
 } from 'lucide-react';
 import { quizService } from '../../services/quizService';
 import { adminService } from '../../services/adminService';
@@ -632,16 +634,28 @@ export default function QuizSchedulePage() {
                             )}
 
                             {/* Metadata parameters chips */}
-                            <div className="flex flex-wrap items-center gap-2 pt-1 text-[11px] text-slate-500 dark:text-slate-400">
-                              <span><strong>{q.total_questions || 0}</strong> Questions</span>
-                              <span>•</span>
-                              <span><strong>{q.max_marks || 0}</strong> Marks</span>
-                              <span>•</span>
-                              <span>Pass: <strong>{q.pass_percentage || 40}%</strong></span>
-                              <span>•</span>
-                              <span className={q.negative_marking ? 'text-rose-600 font-bold' : 'text-slate-400'}>
-                                {q.negative_marking ? `Neg: -${q.negative_mark_value || 0.5}` : 'No Neg.'}
-                              </span>
+                            <div className="flex flex-wrap items-center justify-between gap-2 pt-1 text-[11px] text-slate-500 dark:text-slate-400">
+                              <div className="flex flex-wrap items-center gap-2">
+                                <span><strong>{q.total_questions || 0}</strong> Questions</span>
+                                <span>•</span>
+                                <span><strong>{q.max_marks || 0}</strong> Marks</span>
+                                <span>•</span>
+                                <span>Pass: <strong>{q.pass_percentage || 40}%</strong></span>
+                                <span>•</span>
+                                <span className={q.negative_marking ? 'text-rose-600 font-bold' : 'text-slate-400'}>
+                                  {q.negative_marking ? `Neg: -${q.negative_mark_value || 0.5}` : 'No Neg.'}
+                                </span>
+                              </div>
+
+                              {/* Assigned Participants Link */}
+                              <Link
+                                to={`/admin/participants?event=${encodeURIComponent(q.event_name || q.title)}`}
+                                className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-bold bg-brand-50 dark:bg-brand-950/70 text-brand-700 dark:text-brand-300 hover:bg-brand-100 dark:hover:bg-brand-900/60 border border-brand-200/60 dark:border-brand-800/40 transition-all shadow-2xs"
+                                title="View assigned participants for this quiz"
+                              >
+                                <Users className="w-3.5 h-3.5 text-brand-600 dark:text-brand-400" />
+                                <span>{q.assigned_participants_count || 0} Assigned Scholars</span>
+                              </Link>
                             </div>
                           </div>
 

@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import {
   Sparkles,
   BookOpen,
@@ -10,7 +10,11 @@ import {
   ShieldAlert,
   ArrowRight,
   Layers,
-  UserCheck
+  UserCheck,
+  XCircle,
+  LogOut,
+  Calendar,
+  Zap
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { quizService } from '../../services/quizService';
@@ -19,13 +23,20 @@ import QuizCard from '../../components/participant/QuizCard';
 import StatsCard from '../../components/common/StatsCard';
 import Badge from '../../components/common/Badge';
 import Loading from '../../components/common/Loading';
+import Modal from '../../components/common/Modal';
 
 export default function ParticipantDashboard() {
-  const { user } = useAuth();
+  const { user, logout } = useAuth();
+  const navigate = useNavigate();
+
   const [quizzes, setQuizzes] = useState([]);
   const [announcements, setAnnouncements] = useState([]);
   const [roundStatus, setRoundStatus] = useState(null);
   const [loading, setLoading] = useState(true);
+
+  // Modals
+  const [showQualifiedModal, setShowQualifiedModal] = useState(false);
+  const [showEliminatedModal, setShowEliminatedModal] = useState(false);
 
   useEffect(() => {
     const fetchData = async () => {
@@ -38,7 +49,28 @@ export default function ParticipantDashboard() {
 
         if (qRes.success) setQuizzes(qRes.data || []);
         if (aRes.success) setAnnouncements(aRes.data || []);
-        if (rRes.success) setRoundStatus(rRes.data || null);
+        if (rRes.success) {
+          const rData = rRes.data || null;
+          setRoundStatus(rData);
+
+          // Check for qualification or elimination triggers
+          if (rData) {
+            const hasAttemptedR1 = Boolean(rData.round_1_attempted || rData.round_1_result);
+            const isPublished = Boolean(rData.round_1_published);
+            const isSelected = Boolean(rData.round_1_selected);
+
+            // If selected for round 2: check if we should show celebration
+            if (isSelected) {
+              const celebrationSeen = sessionStorage.getItem('elq26_r2_celebration_seen');
+              if (!celebrationSeen) {
+                setShowQualifiedModal(true);
+              }
+            } else if (hasAttemptedR1 && isPublished && !isSelected) {
+              // Not selected / Eliminated after publication
+              setShowEliminatedModal(true);
+            }
+          }
+        }
       } catch (err) {
         console.error('Error fetching participant dashboard data:', err.message);
       } finally {
@@ -48,6 +80,17 @@ export default function ParticipantDashboard() {
 
     fetchData();
   }, []);
+
+  const handleDismissQualified = () => {
+    sessionStorage.setItem('elq26_r2_celebration_seen', 'true');
+    setShowQualifiedModal(false);
+  };
+
+  const handleEliminationLogout = () => {
+    setShowEliminatedModal(false);
+    logout();
+    navigate('/login');
+  };
 
   if (loading) return <Loading text="Loading your examination portal..." />;
 
@@ -78,6 +121,11 @@ export default function ParticipantDashboard() {
             <span className="px-3 py-1 rounded-lg bg-black/20 font-medium">
               Reg: {participant.registration_number || 'REG-CS-8901'}
             </span>
+            {participant.event && (
+              <span className="px-3 py-1 rounded-lg bg-amber-400/20 text-amber-200 font-bold">
+                Event: {participant.event}
+              </span>
+            )}
           </div>
         </div>
 
@@ -87,10 +135,10 @@ export default function ParticipantDashboard() {
 
       {/* Round 1 / Round 2 Qualification Status Alert */}
       {isRound1Selected ? (
-        <div className="p-6 rounded-3xl bg-gradient-to-r from-emerald-500 to-teal-600 text-white shadow-lg flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+        <div className="p-6 rounded-3xl bg-gradient-to-r from-emerald-500 via-teal-600 to-indigo-600 text-white shadow-lg flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
           <div className="space-y-1">
             <div className="flex items-center gap-2">
-              <Sparkles className="w-5 h-5 text-amber-300" />
+              <Sparkles className="w-5 h-5 text-amber-300 animate-bounce" />
               <h3 className="text-base font-black uppercase tracking-wide">
                 🎉 Congratulations! You have Qualified for Round 2
               </h3>
@@ -113,7 +161,7 @@ export default function ParticipantDashboard() {
               Round 1 Score: <span className="text-brand-600 dark:text-brand-400 font-extrabold">{roundStatus.round_1_result.score} pts</span> (Rank #{roundStatus.round_1_result.rank || 1})
             </h3>
             <p className="text-xs text-slate-500 dark:text-slate-400">
-              Round 2 qualification results are pending administrative review or published on the leaderboard.
+              Round 2 qualification results are published on the official leaderboard.
             </p>
           </div>
           <Link
@@ -132,7 +180,7 @@ export default function ParticipantDashboard() {
           value={quizzes.length}
           icon={BookOpen}
           color="blue"
-          subtitle="Round 1 & Round 2 exams"
+          subtitle="Enrolled examinations"
         />
         <StatsCard
           title="Completed Exams"
@@ -143,22 +191,22 @@ export default function ParticipantDashboard() {
         />
         <StatsCard
           title="Round Qualification"
-          value={isRound1Selected ? 'Round 2 Selected' : 'Round 1 Active'}
+          value={isRound1Selected ? 'Round 2 Qualified' : 'Round 1 Active'}
           icon={Layers}
           color={isRound1Selected ? 'purple' : 'amber'}
-          subtitle={isRound1Selected ? 'Selected for Round 2' : 'Round 1 Active'}
+          subtitle={isRound1Selected ? 'Selected for Round 2' : 'Round 1 In-Progress'}
         />
       </div>
 
-      {/* Available & Active Quizzes Section */}
+      {/* Available & Assigned Quizzes Section */}
       <div className="space-y-4">
         <div className="flex items-center justify-between">
           <div>
             <h2 className="text-lg font-black text-slate-900 dark:text-white">
-              Your Examinations
+              Your Assigned Examinations
             </h2>
             <p className="text-xs text-slate-500 dark:text-slate-400">
-              Launch scheduled tests and access live exam arenas
+              Only tests assigned to your scholar profile appear here.
             </p>
           </div>
           <Link
@@ -171,8 +219,14 @@ export default function ParticipantDashboard() {
         </div>
 
         {quizzes.length === 0 ? (
-          <div className="p-8 text-center bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl text-xs text-slate-400">
-            No examinations currently assigned to your profile.
+          <div className="p-10 text-center bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl space-y-2">
+            <BookOpen className="w-8 h-8 text-slate-400 mx-auto" />
+            <h4 className="text-sm font-bold text-slate-800 dark:text-slate-200">
+              No Examinations Assigned Yet
+            </h4>
+            <p className="text-xs text-slate-500 dark:text-slate-400 max-w-sm mx-auto">
+              You are not currently enrolled in any scheduled or live quiz. Please contact your symposium coordinator if you believe this is an error.
+            </p>
           </div>
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
@@ -209,6 +263,109 @@ export default function ParticipantDashboard() {
           ))}
         </div>
       </div>
+
+      {/* QUALIFIED FOR ROUND 2 POPUP MODAL */}
+      <Modal
+        isOpen={showQualifiedModal}
+        onClose={handleDismissQualified}
+        title="Round 2 Qualification Notification"
+        maxWidth="max-w-lg"
+      >
+        <div className="text-center space-y-4 py-2">
+          <div className="w-16 h-16 rounded-3xl bg-gradient-to-tr from-emerald-500 to-teal-500 text-white flex items-center justify-center mx-auto shadow-xl shadow-emerald-500/20">
+            <Sparkles className="w-8 h-8 animate-spin-slow" />
+          </div>
+
+          <div className="space-y-1.5">
+            <h3 className="text-xl font-black text-slate-900 dark:text-white uppercase tracking-tight">
+              🎉 Congratulations, {user?.full_name}!
+            </h3>
+            <p className="text-xs text-slate-600 dark:text-slate-300 leading-relaxed">
+              You have officially qualified for <strong>Round 2 (Grand Finals)</strong> of Eloquence '26.
+            </p>
+          </div>
+
+          {roundStatus?.round_1_result && (
+            <div className="grid grid-cols-2 gap-3 p-4 rounded-2xl bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-800 text-xs">
+              <div>
+                <span className="text-slate-400 block font-semibold">Round 1 Score</span>
+                <span className="text-lg font-black text-emerald-700 dark:text-emerald-300">
+                  {roundStatus.round_1_result.score} pts
+                </span>
+              </div>
+              <div>
+                <span className="text-slate-400 block font-semibold">Official Rank</span>
+                <span className="text-lg font-black text-brand-600 dark:text-brand-400">
+                  #{roundStatus.round_1_result.rank || 1}
+                </span>
+              </div>
+            </div>
+          )}
+
+          <div className="p-3.5 rounded-2xl bg-slate-50 dark:bg-slate-800 text-left text-xs space-y-1 text-slate-600 dark:text-slate-400">
+            <p className="font-bold text-slate-800 dark:text-slate-200">Next Steps:</p>
+            <p>• Your Round 2 examination will be accessible during the scheduled window.</p>
+            <p>• Maintain a stable internet connection and ensure full-screen proctor compliance.</p>
+          </div>
+
+          <div className="pt-2 flex items-center gap-3">
+            <Link
+              to="/participant/round-status"
+              onClick={handleDismissQualified}
+              className="flex-1 py-3 rounded-2xl text-xs font-bold text-white bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 shadow-md shadow-emerald-500/20 text-center"
+            >
+              Proceed to Round 2 Schedule
+            </Link>
+          </div>
+        </div>
+      </Modal>
+
+      {/* NOT SELECTED / ELIMINATION MODAL WITH AUTO-LOGOUT */}
+      <Modal
+        isOpen={showEliminatedModal}
+        onClose={handleEliminationLogout}
+        title="Symposium Participation Status"
+        maxWidth="max-w-md"
+      >
+        <div className="text-center space-y-4 py-2">
+          <div className="w-16 h-16 rounded-3xl bg-slate-100 dark:bg-slate-800 text-slate-500 flex items-center justify-center mx-auto">
+            <Award className="w-8 h-8 text-slate-400" />
+          </div>
+
+          <div className="space-y-2">
+            <h3 className="text-lg font-black text-slate-900 dark:text-white">
+              Thank You for Participating!
+            </h3>
+            <p className="text-xs text-slate-600 dark:text-slate-400 leading-relaxed">
+              We sincerely appreciate your enthusiastic participation in <strong>Eloquence '26</strong>.
+              Based on the official Round 1 cutoff rankings, you have not been shortlisted for the next round.
+            </p>
+          </div>
+
+          {roundStatus?.round_1_result && (
+            <div className="p-3 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs">
+              <span className="text-slate-400">Your Final Round 1 Score:</span>{' '}
+              <strong className="text-slate-900 dark:text-white">{roundStatus.round_1_result.score} pts</strong>
+              {' '}(Rank #{roundStatus.round_1_result.rank || 'N/A'})
+            </div>
+          )}
+
+          <p className="text-[11px] text-slate-400 italic">
+            Best wishes for your future academic and technical endeavors! Click OK to end your session.
+          </p>
+
+          <div className="pt-2">
+            <button
+              type="button"
+              onClick={handleEliminationLogout}
+              className="w-full py-3 rounded-2xl text-xs font-bold text-white bg-slate-900 hover:bg-black dark:bg-slate-700 dark:hover:bg-slate-600 shadow-md transition-all flex items-center justify-center gap-2"
+            >
+              <LogOut className="w-4 h-4" />
+              <span>OK (Log Out)</span>
+            </button>
+          </div>
+        </div>
+      </Modal>
     </div>
   );
 }

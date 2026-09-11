@@ -194,9 +194,12 @@ export default function UserRegistrationPage() {
       };
 
       const res = await adminService.createParticipant(payload);
-      if (res.success) {
+      if (res.success && res.data) {
         toast.success(`Participant ${res.data.full_name} registered successfully!`);
         setCreatedParticipant(res.data);
+        
+        // Immediately prepend newly created participant into table state
+        setParticipants((prev) => [res.data, ...prev.filter((p) => p.id !== res.data.id)]);
         const updatedCount = participants.length + 1;
         fetchParticipants();
 
@@ -467,8 +470,18 @@ export default function UserRegistrationPage() {
       if (res.success) {
         setBulkResult(res.data);
         setShowBulkResultModal(true);
+
+        // Prepend newly imported items into state immediately
+        if (res.data.imported && res.data.imported.length > 0) {
+          setParticipants((prev) => [...res.data.imported, ...prev]);
+        }
+
         toast.success(res.message || `Successfully registered ${res.data.importedCount} participants!`);
         fetchParticipants();
+
+        // Switch to credentials lookup tab so all imported scholars are immediately visible
+        setActiveTab('DIRECTORY');
+
         // Clear preview
         setParsedRows([]);
         setBulkFile(null);
@@ -843,22 +856,6 @@ export default function UserRegistrationPage() {
                 )}
               </div>
 
-              {/* Round 1 Auto-Assignment */}
-              <div className="flex items-center justify-between p-3 rounded-xl bg-slate-50 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-700">
-                <div className="flex items-center gap-2 text-xs">
-                  <BookOpen className="w-4 h-4 text-emerald-600" />
-                  <span className="font-semibold text-slate-700 dark:text-slate-300">
-                    Auto-Assign to Live Round 1 Quiz
-                  </span>
-                </div>
-                <input
-                  type="checkbox"
-                  checked={singleForm.assign_round1}
-                  onChange={(e) => setSingleForm({ ...singleForm, assign_round1: e.target.checked })}
-                  className="rounded text-brand-600"
-                />
-              </div>
-
               <button
                 type="submit"
                 disabled={submittingSingle}
@@ -930,19 +927,30 @@ export default function UserRegistrationPage() {
                   </div>
                 </div>
 
-                <div className="pt-2 flex gap-2">
+                <div className="pt-2 flex flex-wrap gap-2">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setActiveTab('DIRECTORY');
+                      fetchParticipants();
+                    }}
+                    className="flex-1 py-2 rounded-xl bg-white text-brand-700 hover:bg-brand-50 text-xs font-bold flex items-center justify-center gap-1.5 shadow-md"
+                  >
+                    <KeyRound className="w-3.5 h-3.5 text-brand-600" />
+                    <span>View in Table</span>
+                  </button>
                   <button
                     type="button"
                     onClick={() => window.print()}
-                    className="flex-1 py-2 rounded-xl bg-white text-brand-700 hover:bg-brand-50 text-xs font-bold flex items-center justify-center gap-1.5 shadow-md"
+                    className="py-2 px-3 rounded-xl bg-white/20 hover:bg-white/30 text-white text-xs font-bold flex items-center justify-center gap-1"
                   >
                     <Printer className="w-3.5 h-3.5" />
-                    <span>Print Slip</span>
+                    <span>Print</span>
                   </button>
                   <button
                     type="button"
                     onClick={() => setCreatedParticipant(null)}
-                    className="py-2 px-3 rounded-xl bg-white/20 hover:bg-white/30 text-xs font-bold"
+                    className="py-2 px-3 rounded-xl bg-white/10 hover:bg-white/20 text-xs font-semibold"
                   >
                     Dismiss
                   </button>

@@ -27,6 +27,7 @@ import ExamTerminatedPage from '../pages/exam/ExamTerminatedPage';
 // Admin Pages
 import AdminDashboard from '../pages/admin/AdminDashboard';
 import ParticipantsPage from '../pages/admin/ParticipantsPage';
+import AssignParticipantsPage from '../pages/admin/AssignParticipantsPage';
 import UserRegistrationPage from '../pages/admin/UserRegistrationPage';
 import QuizzesPage from '../pages/admin/QuizzesPage';
 import QuestionsPage from '../pages/admin/QuestionsPage';
@@ -76,6 +77,7 @@ export default function AppRoutes() {
         <Route element={<AdminLayout />}>
           <Route path="/admin/dashboard" element={<AdminDashboard />} />
           <Route path="/admin/participants" element={<ParticipantsPage />} />
+          <Route path="/admin/assign-participants" element={<AssignParticipantsPage />} />
           <Route path="/admin/user-register" element={<UserRegistrationPage />} />
           <Route path="/admin/register-participants" element={<UserRegistrationPage />} />
           <Route path="/admin/users" element={<UsersPage />} />

@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useSearchParams } from 'react-router-dom';
 import {
   Search,
   Filter,
@@ -36,6 +36,9 @@ import ManualRegisterParticipantModal from '../../components/admin/ManualRegiste
 
 export default function ParticipantsPage() {
   const toast = useToast();
+  const [searchParams, setSearchParams] = useSearchParams();
+  const initialEvent = searchParams.get('event') || searchParams.get('quiz') || 'ALL';
+
   const [participants, setParticipants] = useState([]);
   const [events, setEvents] = useState([]);
   const [quizzes, setQuizzes] = useState([]);
@@ -44,7 +47,12 @@ export default function ParticipantsPage() {
 
   // Filters
   const [searchTerm, setSearchTerm] = useState('');
-  const [filterEvent, setFilterEvent] = useState('ALL');
+  const [filterEvent, setFilterEvent] = useState(initialEvent);
+
+  useEffect(() => {
+    const ev = searchParams.get('event') || searchParams.get('quiz');
+    if (ev) setFilterEvent(ev);
+  }, [searchParams]);
 
   // Manual Register Modal State
   const [showManualRegisterModal, setShowManualRegisterModal] = useState(false);
@@ -205,9 +213,14 @@ export default function ParticipantsPage() {
   let filtered = participants;
 
   if (filterEvent && filterEvent !== 'ALL') {
-    filtered = filtered.filter(
-      (p) => (p.event || 'Technical Quiz').toLowerCase() === filterEvent.toLowerCase()
-    );
+    const selectedFilter = filterEvent.toLowerCase().trim();
+    filtered = filtered.filter((p) => {
+      const pEvent = (p.event || '').toLowerCase();
+      const matchDirectEvent = pEvent.includes(selectedFilter) || selectedFilter.includes(pEvent);
+      const matchAssignedQuiz = (p.assigned_quiz_titles || []).some((t) => (t || '').toLowerCase().includes(selectedFilter) || selectedFilter.includes((t || '').toLowerCase()));
+      const matchAssignedEvent = (p.assigned_event_names || []).some((e) => (e || '').toLowerCase().includes(selectedFilter) || selectedFilter.includes((e || '').toLowerCase()));
+      return matchDirectEvent || matchAssignedQuiz || matchAssignedEvent;
+    });
   }
 
   if (searchTerm) {
@@ -221,7 +234,8 @@ export default function ParticipantsPage() {
         p.mobile?.toLowerCase().includes(term) ||
         p.college?.toLowerCase().includes(term) ||
         p.department?.toLowerCase().includes(term) ||
-        p.event?.toLowerCase().includes(term)
+        p.event?.toLowerCase().includes(term) ||
+        (p.assigned_quiz_titles || []).some((t) => (t || '').toLowerCase().includes(term))
     );
   }
 
@@ -232,10 +246,12 @@ export default function ParticipantsPage() {
   const disabledCount = participants.filter((p) => p.is_disabled).length;
   const activeCount = totalCount - disabledCount;
 
-  // Build unique event options strictly sourced from Event Management (events table)
-  const eventOptions = events && events.length > 0
-    ? events.filter(Boolean)
-    : Array.from(new Set(participants.map((p) => p.event).filter(Boolean)));
+  // Build unique event options strictly sourced ONLY from Event Management (events table)
+  const eventOptions = Array.from(
+    new Set(
+      (events || []).map((e) => (typeof e === 'string' ? e : e.title || e.name || '')).filter(Boolean)
+    )
+  );
 
   return (
     <div className="space-y-6">
@@ -544,11 +560,23 @@ export default function ParticipantsPage() {
                       )}
                     </td>
 
-                    {/* Quizzes Assigned Count */}
+                    {/* Quizzes Assigned Count & Badges */}
                     <td className="py-3 px-4 text-center">
-                      <span className="inline-flex items-center justify-center px-2 py-0.5 rounded-full text-[10px] font-bold bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300">
-                        {p.assigned_quizzes_count ?? '—'}
-                      </span>
+                      {(p.assigned_quizzes_count > 0 || (p.assigned_quiz_titles && p.assigned_quiz_titles.length > 0)) ? (
+                        <div className="flex flex-col items-center gap-1">
+                          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-brand-50 dark:bg-brand-950/80 text-brand-700 dark:text-brand-300 border border-brand-200 dark:border-brand-800">
+                            <BookOpen className="w-2.5 h-2.5" />
+                            <span>{p.assigned_quizzes_count || p.assigned_quiz_titles?.length || 1} {((p.assigned_quizzes_count || p.assigned_quiz_titles?.length || 1) === 1) ? 'Quiz' : 'Quizzes'}</span>
+                          </span>
+                          {p.assigned_quiz_titles && p.assigned_quiz_titles.length > 0 && (
+                            <span className="text-[9px] text-slate-500 dark:text-slate-400 font-semibold truncate max-w-[120px] block" title={p.assigned_quiz_titles.join(', ')}>
+                              {p.assigned_quiz_titles[0]}
+                            </span>
+                          )}
+                        </div>
+                      ) : (
+                        <span className="text-[10px] text-slate-400">Unassigned</span>
+                      )}
                     </td>
 
                     {/* Actions: Assign, Edit, Status, Delete */}
@@ -772,7 +800,7 @@ export default function ParticipantsPage() {
                       </div>
                       <div className="text-right">
                         <span className="inline-block px-2 py-0.5 rounded-md text-[10px] font-bold bg-slate-100 dark:bg-slate-700 text-slate-700 dark:text-slate-300">
-                          {p.event || 'Technical Quiz'}
+                          {p.assigned_quiz_titles && p.assigned_quiz_titles.length > 0 ? p.assigned_quiz_titles[0] : (p.event || 'Unassigned')}
                         </span>
                       </div>
                     </div>

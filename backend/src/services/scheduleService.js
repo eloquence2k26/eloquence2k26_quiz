@@ -49,7 +49,7 @@ class ScheduleService {
   }
 
   /**
-   * Evaluate the 5-minute entry window status for a quiz
+   * Evaluate the entry window and full schedule status for a quiz
    * @param {object} quiz
    * @returns {object} status details
    */
@@ -59,30 +59,45 @@ class ScheduleService {
         hasSchedule: false,
         isEntryOpen: true,
         isEntryClosed: false,
+        isBeforeStart: false,
+        isAfterEnd: false,
         isLateAllowed: Boolean(quiz?.allow_late_entry)
       };
     }
 
     const entryWindowMinutes = Number(quiz.entry_window_minutes) || 5;
     const startDateTime = new Date(`${quiz.start_date}T${quiz.start_time}`);
+    const endDateTime = quiz.end_date && quiz.end_time ? new Date(`${quiz.end_date}T${quiz.end_time}`) : null;
     const entryCloseTime = new Date(startDateTime.getTime() + entryWindowMinutes * 60 * 1000);
     const now = new Date();
 
     const isBeforeStart = now < startDateTime;
+    const isAfterEnd = endDateTime ? now > endDateTime : false;
     const isLateAllowed = Boolean(quiz.allow_late_entry || quiz.late_entry_allowed);
-    const isEntryOpen = now >= startDateTime && (now <= entryCloseTime || isLateAllowed);
-    const isEntryClosed = now > entryCloseTime && !isLateAllowed;
-    const remainingEntrySeconds = Math.max(0, Math.floor((entryCloseTime.getTime() - now.getTime()) / 1000));
+    const isEntryOpen = !isBeforeStart && !isAfterEnd && (now <= entryCloseTime || isLateAllowed);
+    const isEntryClosed = !isBeforeStart && (now > entryCloseTime && !isLateAllowed);
+
+    const secondsUntilStart = isBeforeStart ? Math.max(0, Math.floor((startDateTime.getTime() - now.getTime()) / 1000)) : 0;
+    const remainingEntrySeconds = isEntryOpen && !isLateAllowed
+      ? Math.max(0, Math.floor((entryCloseTime.getTime() - now.getTime()) / 1000))
+      : 0;
+    const secondsUntilEnd = endDateTime && !isAfterEnd
+      ? Math.max(0, Math.floor((endDateTime.getTime() - now.getTime()) / 1000))
+      : 0;
 
     return {
       hasSchedule: true,
       startDateTime,
+      endDateTime,
       entryCloseTime,
       entryWindowMinutes,
       isBeforeStart,
+      isAfterEnd,
       isEntryOpen,
       isEntryClosed,
       isLateAllowed,
+      secondsUntilStart,
+      secondsUntilEnd,
       remainingEntrySeconds
     };
   }

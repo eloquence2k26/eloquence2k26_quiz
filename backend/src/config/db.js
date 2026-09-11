@@ -72,7 +72,60 @@ const TABLE_COLUMNS = {
   system_settings: ['key', 'value', 'updated_at']
 };
 
+// Table Aliases map for singular/plural/alternative table names
+const TABLE_ALIASES = {
+  exam_attempt: 'exam_attempts',
+  exam_attempts: 'exam_attempts',
+  exam_session: 'exam_sessions',
+  exam_sessions: 'exam_sessions',
+  question_order: 'question_orders',
+  question_orders: 'question_orders',
+  question: 'questions',
+  questions: 'questions',
+  quiz_question: 'quiz_questions',
+  quiz_questions: 'quiz_questions',
+  quiz_access: 'quiz_assignments',
+  quiz_assignment: 'quiz_assignments',
+  quiz_assignments: 'quiz_assignments',
+  quiz_answer: 'attempt_answers',
+  quiz_answers: 'attempt_answers',
+  attempt_answer: 'attempt_answers',
+  attempt_answers: 'attempt_answers',
+  result: 'results',
+  results: 'results',
+  round_selection: 'round_selections',
+  round_selections: 'round_selections',
+  security_violation: 'security_violations',
+  security_violations: 'security_violations',
+  quiz: 'quizzes',
+  quizzes: 'quizzes',
+  round: 'rounds',
+  rounds: 'rounds',
+  event: 'events',
+  events: 'events',
+  participant: 'participants',
+  participants: 'participants',
+  user: 'users',
+  users: 'users',
+  profile: 'profiles',
+  profiles: 'profiles',
+  admin: 'admins',
+  admins: 'admins',
+  announcement: 'announcements',
+  announcements: 'announcements',
+  audit_log: 'audit_logs',
+  audit_logs: 'audit_logs',
+  role: 'roles',
+  roles: 'roles'
+};
+
 const TABLES = Object.keys(TABLE_COLUMNS).filter((t) => t !== 'system_settings');
+
+const UUID_FIELDS = new Set([
+  'id', 'created_by', 'quiz_id', 'question_id', 'participant_id',
+  'attempt_id', 'event_id', 'round_id', 'admin_id', 'assigned_by'
+]);
+const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 class DBStore {
   constructor() {
@@ -114,18 +167,57 @@ class DBStore {
   }
 
   /**
-   * Sanitize an item object to only valid PostgreSQL table columns
+   * Resolve any table name or alias to canonical table name
+   */
+  resolveTable(name) {
+    if (!name) return name;
+    const clean = String(name).trim().toLowerCase();
+    return TABLE_ALIASES[clean] || clean;
+  }
+
+  /**
+   * Sanitize an item object to only valid PostgreSQL table columns and valid datatypes
    */
   sanitize(collection, item) {
     if (!item || typeof item !== 'object') return item;
-    const allowed = TABLE_COLUMNS[collection];
+    const tbl = this.resolveTable(collection);
+    const allowed = TABLE_COLUMNS[tbl];
     if (!allowed) {
       return Object.fromEntries(Object.entries(item).filter(([_, v]) => v !== undefined));
     }
     const clean = {};
     for (const key of allowed) {
       if (item[key] !== undefined) {
-        clean[key] = item[key];
+        let val = item[key];
+        // Handle UUID fields
+        if (UUID_FIELDS.has(key) && tbl !== 'roles') {
+          if (typeof val === 'string' && !UUID_REGEX.test(val.trim())) {
+            // Intelligent UUID resolver for foreign keys
+            if (key === 'participant_id') {
+              const p = (this.data.participants || []).find(
+                (part) => part.participant_id === val || part.id === val || part.email === val || part.registration_number === val
+              );
+              if (p && UUID_REGEX.test(String(p.id).trim())) {
+                val = p.id;
+              } else {
+                const u = (this.data.users || []).find(
+                  (user) => user.email === val || user.id === val
+                );
+                if (u && UUID_REGEX.test(String(u.id).trim())) {
+                  val = u.id;
+                }
+              }
+            } else if (key === 'quiz_id') {
+              const q = (this.data.quizzes || []).find((quiz) => quiz.id === val || quiz.title === val);
+              if (q && UUID_REGEX.test(String(q.id).trim())) {
+                val = q.id;
+              }
+            } else if (key === 'id') {
+              val = uuidv4();
+            }
+          }
+        }
+        clean[key] = val;
       }
     }
     return clean;
@@ -243,11 +335,58 @@ class DBStore {
         rootAdmin.is_active = true;
       }
 
-      // Start automatic live background synchronization timer (every 45s)
+      // Auto-synchronize any PARTICIPANT users into participants table and Supabase
+      const participantsList = this.data.participants || [];
+      const usersList = this.data.users || [];
+      const profilesList = this.data.profiles || [];
+      const pUserIds = new Set(participantsList.map((p) => p.id));
+      const pEmails = new Set(participantsList.map((p) => (p.email || '').toLowerCase()));
+
+      const missingParticipants = usersList.filter(
+        (u) => u.role === 'PARTICIPANT' && !pUserIds.has(u.id) && !pEmails.has((u.email || '').toLowerCase())
+      );
+
+      for (let idx = 0; idx < missingParticipants.length; idx++) {
+        const u = missingParticipants[idx];
+        const profile = profilesList.find((p) => p.id === u.id) || {};
+        const count = participantsList.length + idx + 1;
+        const pId = `ELQ-2026-${String(count).padStart(3, '0')}`;
+        const regNo = `REG-2026-${String(count).padStart(3, '0')}`;
+
+        const newP = {
+          id: u.id,
+          participant_id: pId,
+          full_name: profile.full_name || (u.email || '').split('@')[0],
+          email: u.email,
+          mobile: profile.mobile || '',
+          college: 'Engineering College',
+          department: 'Computer Science & Engineering',
+          year: '3rd Year',
+          event: 'Technical Quiz',
+          registration_number: regNo,
+          round_1_selected: false,
+          round_2_selected: false,
+          is_disabled: !u.is_active,
+          created_at: u.created_at || new Date().toISOString(),
+          updated_at: new Date().toISOString()
+        };
+
+        this.data.participants.push(newP);
+
+        // Persist to Supabase so foreign keys in quiz_assignments, exam_attempts work
+        try {
+          const cleanP = this.sanitize('participants', newP);
+          await supabase.from('participants').upsert([cleanP]);
+        } catch (syncErr) {
+          logger.warn(`[DB] Auto-sync participant error: ${syncErr.message}`);
+        }
+      }
+
+      // Start automatic live background synchronization timer (every 60s)
       if (!this._bgSyncTimer) {
         this._bgSyncTimer = setInterval(() => {
           this.init().catch((e) => logger.warn(`[DB] Background live sync notice: ${e.message}`));
-        }, 45000);
+        }, 60000);
       }
     } catch (err) {
       logger.error(`[DB] Critical error initializing Supabase connection: ${err.message}`);
@@ -257,14 +396,18 @@ class DBStore {
   /**
    * Reload single table or all tables from Supabase
    */
+  /**
+   * Reload single table or all tables from Supabase
+   */
   async refresh(collection) {
     try {
       if (collection && collection !== 'system_settings') {
-        const { data, error } = await supabase.from(collection).select('*');
+        const tbl = this.resolveTable(collection);
+        const { data, error } = await supabase.from(tbl).select('*');
         if (!error && data) {
-          this.data[collection] = data;
+          this.data[tbl] = data;
         }
-        return this.data[collection];
+        return this.data[tbl];
       }
       return this.init();
     } catch (err) {
@@ -273,14 +416,16 @@ class DBStore {
   }
 
   get(collection) {
-    if (collection === 'system_settings') {
+    const tbl = this.resolveTable(collection);
+    if (tbl === 'system_settings') {
       return this.data.system_settings || {};
     }
-    return this.data[collection] || [];
+    return this.data[tbl] || [];
   }
 
   set(collection, items) {
-    if (collection === 'system_settings') {
+    const tbl = this.resolveTable(collection);
+    if (tbl === 'system_settings') {
       this.data.system_settings = items;
       // Persist system_settings to Supabase
       (async () => {
@@ -297,17 +442,19 @@ class DBStore {
       return this.data.system_settings;
     }
 
-    this.data[collection] = items;
-    return this.data[collection];
+    this.data[tbl] = items;
+    return this.data[tbl];
   }
 
   find(collection, predicate) {
-    const list = this.get(collection);
+    const tbl = this.resolveTable(collection);
+    const list = this.get(tbl);
     return list.find(predicate);
   }
 
   filter(collection, predicate) {
-    const list = this.get(collection);
+    const tbl = this.resolveTable(collection);
+    const list = this.get(tbl);
     return list.filter(predicate);
   }
 
@@ -315,23 +462,26 @@ class DBStore {
    * Insert record into memory and live Supabase table
    */
   insert(collection, item) {
+    const tbl = this.resolveTable(collection);
     if (!item.id) item.id = uuidv4();
     if (!item.created_at) item.created_at = new Date().toISOString();
-    if (!this.data[collection]) this.data[collection] = [];
+    if (!this.data[tbl]) this.data[tbl] = [];
 
     // Push to cache
-    this.data[collection].push(item);
+    this.data[tbl].push(item);
 
     // Save directly to Supabase DB table
-    const cleanItem = this.sanitize(collection, item);
+    const cleanItem = this.sanitize(tbl, item);
     (async () => {
       try {
-        const { error } = await supabase.from(collection).insert([cleanItem]);
+        const { error } = await supabase.from(tbl).upsert([cleanItem]);
         if (error) {
-          logger.error(`[DB] Supabase insert error on "${collection}": ${error.message}`);
+          logger.error(`[DB Live] Supabase upsert error on "${tbl}": ${error.message}`);
+        } else {
+          logger.info(`[DB Live] Stored/updated record in Supabase table "${tbl}" (${item.id})`);
         }
       } catch (err) {
-        logger.error(`[DB] Supabase insert exception on "${collection}": ${err.message}`);
+        logger.error(`[DB Live] Supabase insert exception on "${tbl}": ${err.message}`);
       }
     })();
 
@@ -342,7 +492,8 @@ class DBStore {
    * Update record in memory and live Supabase table
    */
   update(collection, predicate, updates) {
-    const list = this.get(collection);
+    const tbl = this.resolveTable(collection);
+    const list = this.get(tbl);
     const index = list.findIndex(predicate);
     if (index === -1) return null;
 
@@ -352,19 +503,22 @@ class DBStore {
 
     // Save directly to Supabase DB table
     if (updated.id) {
-      const cleanUpdates = this.sanitize(collection, updated);
+      const cleanUpdates = this.sanitize(tbl, updated);
+      const { id, ...fieldsToUpdate } = cleanUpdates;
       (async () => {
         try {
           const { error } = await supabase
-            .from(collection)
-            .update(cleanUpdates)
+            .from(tbl)
+            .update(fieldsToUpdate)
             .eq('id', updated.id);
 
           if (error) {
-            logger.error(`[DB] Supabase update error on "${collection}" ID ${updated.id}: ${error.message}`);
+            logger.error(`[DB Live] Supabase update error on "${tbl}" ID ${updated.id}: ${error.message}`);
+          } else {
+            logger.info(`[DB Live] Updated record in Supabase table "${tbl}" (${updated.id})`);
           }
         } catch (err) {
-          logger.error(`[DB] Supabase update exception on "${collection}" ID ${updated.id}: ${err.message}`);
+          logger.error(`[DB Live] Supabase update exception on "${tbl}" ID ${updated.id}: ${err.message}`);
         }
       })();
     }
@@ -376,12 +530,13 @@ class DBStore {
    * Remove record in memory and live Supabase table
    */
   remove(collection, predicate) {
-    const list = this.get(collection);
+    const tbl = this.resolveTable(collection);
+    const list = this.get(tbl);
     const itemsToDelete = list.filter(predicate);
     const initialLen = list.length;
 
-    this.data[collection] = list.filter((item) => !predicate(item));
-    const wasRemoved = this.data[collection].length !== initialLen;
+    this.data[tbl] = list.filter((item) => !predicate(item));
+    const wasRemoved = this.data[tbl].length !== initialLen;
 
     // Delete directly from Supabase DB table
     if (itemsToDelete.length > 0) {
@@ -390,15 +545,17 @@ class DBStore {
         (async () => {
           try {
             const { error } = await supabase
-              .from(collection)
+              .from(tbl)
               .delete()
               .in('id', idsToDelete);
 
             if (error) {
-              logger.error(`[DB] Supabase delete error on "${collection}": ${error.message}`);
+              logger.error(`[DB Live] Supabase delete error on "${tbl}": ${error.message}`);
+            } else {
+              logger.info(`[DB Live] Deleted ${idsToDelete.length} records from Supabase table "${tbl}"`);
             }
           } catch (err) {
-            logger.error(`[DB] Supabase delete exception on "${collection}": ${err.message}`);
+            logger.error(`[DB Live] Supabase delete exception on "${tbl}": ${err.message}`);
           }
         })();
       }
