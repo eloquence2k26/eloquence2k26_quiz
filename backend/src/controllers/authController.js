@@ -101,14 +101,14 @@ class AuthController {
       if (user.role === 'PARTICIPANT') {
         const participant = db.find('participants', (p) => p.id === user.id || p.participant_id === user.id || (p.email && p.email.toLowerCase() === user.email.toLowerCase()));
         if (participant) {
-          if (participant.round_1_eliminated || participant.is_disabled || user.is_active === false) {
-            return error(res, 'Access closed: You have not been selected for Round 2. Thank you for your active participation in Eloquence \'26.', 403);
+          if (participant.round_1_eliminated || participant.round_2_eliminated || participant.is_disabled || user.is_active === false || user.account_deleted) {
+            return error(res, 'Account not found. You do not have an active participant account in Eloquence \'26 as your participation has concluded.', 401);
           }
         }
       }
 
-      if (user.is_active === false) {
-        return error(res, 'Account has been disabled or participation concluded. Contact symposium admin.', 403);
+      if (user.is_active === false || user.account_deleted) {
+        return error(res, 'Account not found. You do not have an active participant account in Eloquence \'26.', 401);
       }
 
       const isMatch = await bcrypt.compare(password, user.password_hash);

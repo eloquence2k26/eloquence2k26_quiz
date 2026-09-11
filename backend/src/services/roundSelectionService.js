@@ -12,15 +12,22 @@ class RoundSelectionService {
   }
 
   /**
-   * Auto-selects participants based on Round 1 Quiz Results with support for:
+   * Auto-selects participants based on Quiz Results for ANY round (Round 1 -> Round 2, Round 2 -> Round 3, etc.)
+   * with support for:
    * - Marks / Cutoff Score
    * - Percentage Cutoff
    * - Time Taken (seconds/tiebreaker)
    * - Top N Count
+   * - Automatic assignment of selected scholars to the next round quiz
    */
   static autoSelectCriteria(quizId, { topN, minScore, minPercentage, maxTimeSeconds } = {}, adminId) {
     const quiz = db.find('quizzes', (q) => q.id === quizId);
     if (!quiz) throw new Error('Quiz not found');
+
+    const sourceRoundNumber = Number(quiz.round_number) || 1;
+    const targetRoundNumber = sourceRoundNumber + 1;
+    const selectionField = `round_${sourceRoundNumber}_selected`;
+    const eliminationField = `round_${sourceRoundNumber}_eliminated`;
 
     const results = db.filter('results', (r) => r.quiz_id === quizId);
 
@@ -40,12 +47,23 @@ class RoundSelectionService {
     const parsedMaxTime = maxTimeSeconds !== undefined && maxTimeSeconds !== '' && maxTimeSeconds !== null ? Number(maxTimeSeconds) : null;
     const parsedTopN = topN !== undefined && topN !== '' && topN !== null ? Number(topN) : null;
 
+    // Find Next Round Quiz for auto-assignment (e.g., Round 2 or Round 3)
+    const nextRoundQuiz = db.find(
+      'quizzes',
+      (q) => Number(q.round_number) === targetRoundNumber && (q.event_id === quiz.event_id || !quiz.event_id)
+    ) || db.find('quizzes', (q) => Number(q.round_number) === targetRoundNumber);
+
     // Reset selection for all participants who took this quiz
     results.forEach((r) => {
       db.update('participants', (p) => p.id === r.participant_id || p.participant_id === r.participant_id, {
-        round_1_selected: false,
-        round_1_eliminated: false
+        [selectionField]: false,
+        [eliminationField]: false
       });
+
+      // Remove unselected participants from next round quiz assignment if previously assigned
+      if (nextRoundQuiz) {
+        db.remove('quiz_assignments', (qa) => qa.quiz_id === nextRoundQuiz.id && (qa.participant_id === r.participant_id));
+      }
     });
 
     // Determine qualifying candidates matching criteria
@@ -76,10 +94,6 @@ class RoundSelectionService {
         : qualifyingIndices
     );
 
-    // Find Round 2 Quiz for auto-assignment
-    const round2Quiz = db.find('quizzes', (q) => Number(q.round_number) === 2 && (q.event_id === quiz.event_id || !quiz.event_id)) ||
-                       db.find('quizzes', (q) => Number(q.round_number) === 2);
-
     const selectedList = [];
 
     for (let i = 0; i < results.length; i++) {
@@ -87,21 +101,21 @@ class RoundSelectionService {
       const isSelected = selectedIndicesSet.has(i);
 
       db.update('participants', (p) => p.id === res.participant_id || p.participant_id === res.participant_id, {
-        round_1_selected: isSelected,
-        round_1_eliminated: false
+        [selectionField]: isSelected,
+        [eliminationField]: false
       });
 
       const participant = db.find('participants', (p) => p.id === res.participant_id || p.participant_id === res.participant_id);
 
-      // If selected and Round 2 quiz exists, auto-assign
-      if (isSelected && round2Quiz && participant) {
+      // If selected and Next Round Quiz exists, automatically assign
+      if (isSelected && nextRoundQuiz && participant) {
         const existingAssignment = db.find(
           'quiz_assignments',
-          (qa) => qa.quiz_id === round2Quiz.id && (qa.participant_id === participant.id || qa.participant_id === res.participant_id)
+          (qa) => qa.quiz_id === nextRoundQuiz.id && (qa.participant_id === participant.id || qa.participant_id === res.participant_id)
         );
         if (!existingAssignment) {
           db.insert('quiz_assignments', {
-            quiz_id: round2Quiz.id,
+            quiz_id: nextRoundQuiz.id,
             participant_id: participant.id,
             assigned_by: adminId,
             status: 'ASSIGNED'
@@ -112,12 +126,16 @@ class RoundSelectionService {
       // Save to round_selections
       const existing = db.find(
         'round_selections',
-        (rs) => rs.event_id === quiz.event_id && rs.round_number === quiz.round_number && (rs.participant_id === res.participant_id || rs.participant_id === participant?.id)
+        (rs) =>
+          rs.event_id === quiz.event_id &&
+          Number(rs.round_number) === sourceRoundNumber &&
+          (rs.participant_id === res.participant_id || rs.participant_id === participant?.id)
       );
 
       const selectionPayload = {
         event_id: quiz.event_id || 'c0000000-0000-0000-0000-000000000001',
-        round_number: quiz.round_number || 1,
+        round_number: sourceRoundNumber,
+        target_round: targetRoundNumber,
         participant_id: participant ? participant.id : res.participant_id,
         score: res.final_score,
         time_taken_seconds: res.time_taken_seconds || 0,
@@ -144,7 +162,9 @@ class RoundSelectionService {
         time_taken_seconds: res.time_taken_seconds || 0,
         time_taken_formatted: this.formatTime(res.time_taken_seconds || 0),
         rank: res.rank || (i + 1),
-        selected: isSelected
+        selected: isSelected,
+        round_number: sourceRoundNumber,
+        target_round: targetRoundNumber
       });
     }
 
@@ -159,34 +179,40 @@ class RoundSelectionService {
   }
 
   /**
-   * Manually toggles participant selection status for next round.
+   * Manually toggles participant selection status for any next round.
    */
   static toggleParticipantSelection(participantId, roundNumber, selected, adminId) {
     const participant = db.find('participants', (p) => p.id === participantId || p.participant_id === participantId);
     if (!participant) throw new Error('Participant not found');
 
-    const updateField = roundNumber === 1 ? 'round_1_selected' : 'round_2_selected';
+    const sourceRoundNumber = Number(roundNumber) || 1;
+    const targetRoundNumber = sourceRoundNumber + 1;
+    const updateField = `round_${sourceRoundNumber}_selected`;
+    const elimField = `round_${sourceRoundNumber}_eliminated`;
+
     db.update('participants', (p) => p.id === participant.id, {
       [updateField]: selected,
-      round_1_eliminated: false
+      [elimField]: false
     });
 
-    // If selected for Round 2, auto-assign to Round 2 quiz
-    if (selected && roundNumber === 1) {
-      const round2Quiz = db.find('quizzes', (q) => Number(q.round_number) === 2);
-      if (round2Quiz) {
+    // If selected, auto-assign to the target round quiz; if unselected, remove assignment
+    const targetRoundQuiz = db.find('quizzes', (q) => Number(q.round_number) === targetRoundNumber);
+    if (targetRoundQuiz) {
+      if (selected) {
         const existing = db.find(
           'quiz_assignments',
-          (qa) => qa.quiz_id === round2Quiz.id && qa.participant_id === participant.id
+          (qa) => qa.quiz_id === targetRoundQuiz.id && qa.participant_id === participant.id
         );
         if (!existing) {
           db.insert('quiz_assignments', {
-            quiz_id: round2Quiz.id,
+            quiz_id: targetRoundQuiz.id,
             participant_id: participant.id,
             assigned_by: adminId,
             status: 'ASSIGNED'
           });
         }
+      } else {
+        db.remove('quiz_assignments', (qa) => qa.quiz_id === targetRoundQuiz.id && qa.participant_id === participant.id);
       }
     }
 
@@ -194,12 +220,17 @@ class RoundSelectionService {
   }
 
   /**
-   * Validates if a participant is qualified for Round 2.
+   * Validates if a participant is qualified for a given target round (e.g. Round 2, Round 3).
    */
-  static isEligibleForRound2(participantId) {
+  static isEligibleForRound(participantId, targetRoundNumber = 2) {
     const participant = db.find('participants', (p) => p.id === participantId || p.participant_id === participantId);
     if (!participant) return false;
-    return Boolean(participant.round_1_selected && !participant.is_disabled && !participant.round_1_eliminated);
+    const reqField = `round_${targetRoundNumber - 1}_selected`;
+    return Boolean(participant[reqField] && !participant.is_disabled && !participant.round_1_eliminated && !participant.round_2_eliminated);
+  }
+
+  static isEligibleForRound2(participantId) {
+    return this.isEligibleForRound(participantId, 2);
   }
 }
 

@@ -586,13 +586,26 @@ class ParticipantController {
       const quiz = db.find('quizzes', (q) => q.id === quiz_id);
       if (!quiz) return error(res, 'Quiz not found', 404);
 
+      const roundNum = Number(quiz.round_number) || 1;
       let targetIds = participant_ids;
+
       if (assign_all) {
-        targetIds = db.get('participants').map((p) => p.id);
+        let allParts = db.get('participants') || [];
+        if (roundNum > 1) {
+          const reqField = `round_${roundNum - 1}_selected`;
+          allParts = allParts.filter((p) => p[reqField] && !p.is_disabled && !p.round_1_eliminated && !p.round_2_eliminated);
+        }
+        targetIds = allParts.map((p) => p.id);
       }
 
       if (!targetIds || targetIds.length === 0) {
-        return error(res, 'No participants selected for assignment', 400);
+        return error(
+          res,
+          roundNum > 1
+            ? `No qualified participants found for Round ${roundNum}. Please select qualifiers in the Round Selection panel first.`
+            : 'No participants selected for assignment',
+          400
+        );
       }
 
       const supabase = db.client;
@@ -601,6 +614,14 @@ class ParticipantController {
       for (const pId of targetIds) {
         // Resolve participant record and user record
         let p = db.find('participants', (item) => item.id === pId || item.participant_id === pId || item.email === pId);
+
+        // Verify qualification for Round 2, Round 3, etc.
+        if (roundNum > 1 && p) {
+          const reqField = `round_${roundNum - 1}_selected`;
+          if (!p[reqField] || p.is_disabled || p.round_1_eliminated || p.round_2_eliminated) {
+            continue; // Skip unqualified candidates for this advanced round
+          }
+        }
         const u = p
           ? db.find('users', (user) => user.id === p.id || (p.email && user.email?.toLowerCase() === p.email.toLowerCase()))
           : db.find('users', (user) => user.id === pId);

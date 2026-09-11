@@ -566,20 +566,27 @@ class RoundController {
       if (participant) {
         db.update('participants', (p) => p.id === participant.id, {
           is_disabled: true,
-          round_1_eliminated: true
+          round_1_eliminated: true,
+          round_2_eliminated: true,
+          account_deleted: true
         });
+
+        // Remove from future quiz assignments
+        db.remove('quiz_assignments', (qa) => qa.participant_id === participant.id || qa.participant_id === userId);
       }
 
-      // Mark user account inactive
+      // Mark user account deleted & inactive
       db.update('users', (u) => u.id === userId || (u.email && u.email.toLowerCase() === req.user.email?.toLowerCase()), {
-        is_active: false
+        is_active: false,
+        account_deleted: true
       });
 
       AuditService.log(userId, 'ACKNOWLEDGE_ELIMINATION_LOGOUT', 'PARTICIPANT', userId);
 
       return success(res, {
-        deactivated: true
-      }, 'Participation session successfully concluded. Thank you for participating in Eloquence 26.');
+        deactivated: true,
+        deleted: true
+      }, 'Participation session successfully concluded. Your account access has ended.');
     } catch (err) {
       return error(res, err.message, 500);
     }
