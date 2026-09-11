@@ -338,15 +338,25 @@ export default function ExamArenaPage() {
                   <span>Previous</span>
                 </button>
 
-                <button
-                  type="button"
-                  onClick={handleNext}
-                  disabled={currentIndex === questions.length - 1}
-                  className="flex items-center gap-1 px-5 py-2 rounded-xl text-xs font-bold text-white bg-brand-600 hover:bg-brand-700 shadow-md shadow-brand-500/20 disabled:opacity-40 disabled:cursor-not-allowed"
-                >
-                  <span>Save & Next</span>
-                  <ChevronRight className="w-4 h-4" />
-                </button>
+                {currentIndex < questions.length - 1 ? (
+                  <button
+                    type="button"
+                    onClick={handleNext}
+                    className="flex items-center gap-1.5 px-5 py-2.5 rounded-xl text-xs font-bold text-white bg-brand-600 hover:bg-brand-700 shadow-md shadow-brand-500/20 transition-all cursor-pointer"
+                  >
+                    <span>Save & Next</span>
+                    <ChevronRight className="w-4 h-4" />
+                  </button>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => setShowSubmitConfirm(true)}
+                    className="flex items-center gap-1.5 px-5 py-2.5 rounded-xl text-xs font-bold text-white bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 shadow-lg shadow-emerald-500/25 transition-all cursor-pointer animate-pulse"
+                  >
+                    <CheckCircle className="w-4 h-4" />
+                    <span>Save & Submit Exam</span>
+                  </button>
+                )}
               </div>
             </div>
           </div>

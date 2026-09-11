@@ -27,6 +27,7 @@ import {
 import { quizService } from '../../services/quizService';
 import { adminService } from '../../services/adminService';
 import { examService } from '../../services/examService';
+import { getSocket } from '../../services/socket';
 import { useToast } from '../../context/ToastContext';
 import Badge from '../../components/common/Badge';
 import Modal from '../../components/common/Modal';
@@ -58,7 +59,29 @@ export default function ResultsPage() {
 
   useEffect(() => {
     fetchQuizzes();
-  }, []);
+
+    const socket = getSocket();
+    const handleResultsUpdate = (data) => {
+      console.log('[WebSocket Admin] Real-time results/status update:', data);
+      if (selectedQuizId) {
+        loadEventOverview(selectedQuizId);
+      }
+    };
+
+    socket.on('RESULTS_UPDATED', handleResultsUpdate);
+    socket.on('LEADERBOARD_UPDATED', handleResultsUpdate);
+    socket.on('EXAM_SUBMITTED', handleResultsUpdate);
+    socket.on('EXAM_TERMINATED', handleResultsUpdate);
+    socket.on('ROUND_STATUS_UPDATED', handleResultsUpdate);
+
+    return () => {
+      socket.off('RESULTS_UPDATED', handleResultsUpdate);
+      socket.off('LEADERBOARD_UPDATED', handleResultsUpdate);
+      socket.off('EXAM_SUBMITTED', handleResultsUpdate);
+      socket.off('EXAM_TERMINATED', handleResultsUpdate);
+      socket.off('ROUND_STATUS_UPDATED', handleResultsUpdate);
+    };
+  }, [selectedQuizId]);
 
   useEffect(() => {
     if (selectedQuizId) {

@@ -67,8 +67,30 @@ class SocketService {
     this.broadcast('REFRESH_DASHBOARD', { type: 'EXAM_RESTARTED', participant_id: participantId, quiz_id: quizId });
   }
 
+  static notifyExamSubmitted(data = {}) {
+    this.broadcast('EXAM_SUBMITTED', data);
+    this.broadcast('RESULTS_UPDATED', data);
+    this.broadcast('LEADERBOARD_UPDATED', data);
+    this.broadcast('REFRESH_DASHBOARD', data);
+  }
+
+  static notifyExamTerminated(data = {}) {
+    this.broadcast('EXAM_TERMINATED', data);
+    this.broadcast('RESULTS_UPDATED', data);
+    this.broadcast('LEADERBOARD_UPDATED', data);
+    this.broadcast('REFRESH_DASHBOARD', data);
+  }
+
+  static notifyResultsUpdated(data = {}) {
+    this.broadcast('RESULTS_UPDATED', data);
+    this.broadcast('LEADERBOARD_UPDATED', data);
+    this.broadcast('REFRESH_DASHBOARD', data);
+  }
+
   static notifyRoundPublished(data = {}) {
     this.broadcast('ROUND_STATUS_UPDATED', data);
+    this.broadcast('RESULTS_UPDATED', data);
+    this.broadcast('LEADERBOARD_UPDATED', data);
     this.broadcast('REFRESH_DASHBOARD', data);
   }
 

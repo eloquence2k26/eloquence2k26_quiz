@@ -3,6 +3,7 @@ import { useSearchParams, Link } from 'react-router-dom';
 import { Award, CheckCircle2, XCircle, Clock, BookOpen, ChevronDown, ChevronUp, Sparkles } from 'lucide-react';
 import { quizService } from '../../services/quizService';
 import { examService } from '../../services/examService';
+import { getSocket } from '../../services/socket';
 import Badge from '../../components/common/Badge';
 import Loading from '../../components/common/Loading';
 
@@ -16,27 +17,45 @@ export default function ResultsHistoryPage() {
   const [detailsLoading, setDetailsLoading] = useState(false);
 
   useEffect(() => {
-    const fetchHistory = async () => {
-      try {
-        const res = await quizService.getAllQuizzes();
-        if (res.success && res.data) {
-          const completed = res.data.filter((q) => q.attempt_status === 'COMPLETED' || q.attempt_status === 'TERMINATED' || q.attempt_id);
-          setQuizzes(completed);
+    fetchHistory();
 
-          const targetAttempt = requestedAttemptId || (completed.length > 0 ? completed[0].attempt_id : null);
-          if (targetAttempt) {
-            loadAttemptDetails(targetAttempt);
-          }
-        }
-      } catch (err) {
-        console.error('Error fetching results history:', err.message);
-      } finally {
-        setLoading(false);
-      }
+    const socket = getSocket();
+    const handleRealtimeUpdate = (data) => {
+      console.log('[WebSocket] Results/ranks update received:', data);
+      fetchHistory();
     };
 
-    fetchHistory();
+    socket.on('RESULTS_UPDATED', handleRealtimeUpdate);
+    socket.on('LEADERBOARD_UPDATED', handleRealtimeUpdate);
+    socket.on('REFRESH_DASHBOARD', handleRealtimeUpdate);
+    socket.on('ROUND_STATUS_UPDATED', handleRealtimeUpdate);
+
+    return () => {
+      socket.off('RESULTS_UPDATED', handleRealtimeUpdate);
+      socket.off('LEADERBOARD_UPDATED', handleRealtimeUpdate);
+      socket.off('REFRESH_DASHBOARD', handleRealtimeUpdate);
+      socket.off('ROUND_STATUS_UPDATED', handleRealtimeUpdate);
+    };
   }, [requestedAttemptId]);
+
+  const fetchHistory = async () => {
+    try {
+      const res = await quizService.getAllQuizzes();
+      if (res.success && res.data) {
+        const completed = res.data.filter((q) => q.attempt_status === 'COMPLETED' || q.attempt_status === 'TERMINATED' || q.attempt_id);
+        setQuizzes(completed);
+
+        const targetAttempt = requestedAttemptId || (completed.length > 0 ? completed[0].attempt_id : null);
+        if (targetAttempt) {
+          loadAttemptDetails(targetAttempt);
+        }
+      }
+    } catch (err) {
+      console.error('Error fetching results history:', err.message);
+    } finally {
+      setLoading(false);
+    }
+  };
 
   const [unreleasedMsg, setUnreleasedMsg] = useState('');
 

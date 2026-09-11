@@ -99,6 +99,16 @@ class ScoringService {
     // Recalculate leaderboard ranks for this quiz
     this.recalculateQuizRanks(quiz.id);
 
+    try {
+      const SocketService = require('./socketService');
+      SocketService.notifyResultsUpdated({
+        quiz_id: quiz.id,
+        participant_id: attempt.participant_id,
+        attempt_id: attemptId,
+        score: resultPayload.final_score
+      });
+    } catch (e) {}
+
     return db.find('results', (r) => r.attempt_id === attemptId);
   }
 

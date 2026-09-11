@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { Sparkles, Award, Clock, Calendar, HelpCircle, Lock, ArrowRight, ShieldCheck, CheckCircle2, XCircle } from 'lucide-react';
 import { adminService } from '../../services/adminService';
+import { getSocket } from '../../services/socket';
 import { formatDate } from '../../utils/formatters';
 import Loading from '../../components/common/Loading';
 
@@ -10,21 +11,39 @@ export default function RoundStatusPage() {
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
 
-  useEffect(() => {
-    const fetchStatus = async () => {
-      try {
-        const res = await adminService.getParticipantRoundStatus();
-        if (res.success) {
-          setData(res.data);
-        }
-      } catch (err) {
-        console.error('Error fetching round status:', err.message);
-      } finally {
-        setLoading(false);
+  const fetchStatus = async () => {
+    try {
+      const res = await adminService.getParticipantRoundStatus();
+      if (res.success) {
+        setData(res.data);
       }
+    } catch (err) {
+      console.error('Error fetching round status:', err.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchStatus();
+
+    const socket = getSocket();
+    const handleUpdate = (payload) => {
+      console.log('[WebSocket RoundStatus] Real-time update:', payload);
+      fetchStatus();
     };
 
-    fetchStatus();
+    socket.on('ROUND_STATUS_UPDATED', handleUpdate);
+    socket.on('RESULTS_UPDATED', handleUpdate);
+    socket.on('LEADERBOARD_UPDATED', handleUpdate);
+    socket.on('REFRESH_DASHBOARD', handleUpdate);
+
+    return () => {
+      socket.off('ROUND_STATUS_UPDATED', handleUpdate);
+      socket.off('RESULTS_UPDATED', handleUpdate);
+      socket.off('LEADERBOARD_UPDATED', handleUpdate);
+      socket.off('REFRESH_DASHBOARD', handleUpdate);
+    };
   }, []);
 
   if (loading) return <Loading text="Checking qualification records..." />;
