@@ -33,7 +33,27 @@ const validateActiveExamSession = (req, res, next) => {
       return error(res, 'Exam attempt not found.', 404);
     }
 
-    if (attempt.participant_id !== req.user.id) {
+    const participant = db.find(
+      'participants',
+      (p) =>
+        p.id === req.user.id ||
+        p.participant_id === req.user.id ||
+        (p.email && p.email.toLowerCase() === (req.user.email || '').toLowerCase())
+    );
+
+    const possibleUserIds = new Set([
+      req.user.id,
+      req.user.email ? req.user.email.toLowerCase() : null,
+      participant ? participant.id : null,
+      participant ? participant.participant_id : null,
+      participant ? participant.registration_number : null
+    ].filter(Boolean));
+
+    const matchesUser =
+      possibleUserIds.has(attempt.participant_id) ||
+      (attempt.participant_id && possibleUserIds.has(attempt.participant_id.toLowerCase()));
+
+    if (!matchesUser) {
       return error(res, 'Unauthorized access to this examination attempt.', 403);
     }
 

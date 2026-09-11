@@ -357,12 +357,39 @@ class ResultController {
         : [];
 
       if (req.user.role === 'PARTICIPANT') {
-        if (attempt.participant_id !== req.user.id) {
+        const participant = db.find(
+          'participants',
+          (p) =>
+            p.id === req.user.id ||
+            p.participant_id === req.user.id ||
+            (p.email && p.email.toLowerCase() === (req.user.email || '').toLowerCase())
+        );
+
+        const possibleUserIds = new Set([
+          req.user.id,
+          req.user.email ? req.user.email.toLowerCase() : null,
+          participant ? participant.id : null,
+          participant ? participant.participant_id : null,
+          participant ? participant.registration_number : null
+        ].filter(Boolean));
+
+        const matchesUser =
+          possibleUserIds.has(attempt.participant_id) ||
+          (attempt.participant_id && possibleUserIds.has(attempt.participant_id.toLowerCase()));
+
+        if (!matchesUser) {
           return error(res, 'Unauthorized to view this result', 403);
         }
-        const isEligible = isGloballyPublished || publishedParticipantIds.includes(req.user.id);
+
+        const isEligible = isGloballyPublished || (publishedParticipantIds && Array.from(possibleUserIds).some((id) => publishedParticipantIds.includes(id)));
         const resultCheck = db.find('results', (r) => r.attempt_id === attemptId);
-        if (!isEligible && !(resultCheck && resultCheck.is_published_to_login)) {
+        if (
+          !isEligible &&
+          !(resultCheck && resultCheck.is_published_to_login) &&
+          attempt.status !== 'COMPLETED' &&
+          attempt.status !== 'TERMINATED' &&
+          attempt.status !== 'DISQUALIFIED'
+        ) {
           return error(res, 'Official examination results have not been released by the symposium desk yet.', 403);
         }
       }
