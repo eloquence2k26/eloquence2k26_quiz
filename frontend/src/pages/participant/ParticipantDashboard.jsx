@@ -24,10 +24,13 @@ import StatsCard from '../../components/common/StatsCard';
 import Badge from '../../components/common/Badge';
 import Loading from '../../components/common/Loading';
 import Modal from '../../components/common/Modal';
+import { useToast } from '../../context/ToastContext';
+import { getSocket, joinUserRoom } from '../../services/socket';
 
 export default function ParticipantDashboard() {
   const { user, logout } = useAuth();
   const navigate = useNavigate();
+  const toast = useToast();
 
   const [quizzes, setQuizzes] = useState([]);
   const [announcements, setAnnouncements] = useState([]);
@@ -38,48 +41,91 @@ export default function ParticipantDashboard() {
   const [showQualifiedModal, setShowQualifiedModal] = useState(false);
   const [showEliminatedModal, setShowEliminatedModal] = useState(false);
 
-  useEffect(() => {
-    const fetchData = async () => {
-      try {
-        const [qRes, aRes, rRes] = await Promise.all([
-          quizService.getAllQuizzes(),
-          adminService.getAnnouncements(),
-          adminService.getParticipantRoundStatus()
-        ]);
+  const fetchData = async (showLoadingState = false) => {
+    if (showLoadingState) setLoading(true);
+    try {
+      const [qRes, aRes, rRes] = await Promise.all([
+        quizService.getAllQuizzes(),
+        adminService.getAnnouncements(),
+        adminService.getParticipantRoundStatus()
+      ]);
 
-        if (qRes.success) setQuizzes(qRes.data || []);
-        if (aRes.success) setAnnouncements(aRes.data || []);
-        if (rRes.success) {
-          const rData = rRes.data || null;
-          setRoundStatus(rData);
+      if (qRes.success) setQuizzes(qRes.data || []);
+      if (aRes.success) setAnnouncements(aRes.data || []);
+      if (rRes.success) {
+        const rData = rRes.data || null;
+        setRoundStatus(rData);
 
-          // Check for qualification or elimination triggers
-          if (rData) {
-            const hasAttemptedR1 = Boolean(rData.round_1_attempted || rData.round_1_result);
-            const isPublished = Boolean(rData.round_1_published);
-            const isSelected = Boolean(rData.round_1_selected);
+        // Check for qualification or elimination triggers
+        if (rData) {
+          const hasAttemptedR1 = Boolean(rData.round_1_attempted || rData.round_1_result);
+          const isPublished = Boolean(rData.round_1_published);
+          const isSelected = Boolean(rData.round_1_selected);
 
-            // If selected for round 2: check if we should show celebration
-            if (isSelected) {
-              const celebrationSeen = sessionStorage.getItem('elq26_r2_celebration_seen');
-              if (!celebrationSeen) {
-                setShowQualifiedModal(true);
-              }
-            } else if (hasAttemptedR1 && isPublished && !isSelected) {
-              // Not selected / Eliminated after publication
-              setShowEliminatedModal(true);
+          // If selected for round 2: check if we should show celebration
+          if (isSelected) {
+            const celebrationSeen = sessionStorage.getItem('elq26_r2_celebration_seen');
+            if (!celebrationSeen) {
+              setShowQualifiedModal(true);
             }
+          } else if (hasAttemptedR1 && isPublished && !isSelected) {
+            // Not selected / Eliminated after publication
+            setShowEliminatedModal(true);
           }
         }
-      } catch (err) {
-        console.error('Error fetching participant dashboard data:', err.message);
-      } finally {
-        setLoading(false);
+      }
+    } catch (err) {
+      console.error('Error fetching participant dashboard data:', err.message);
+    } finally {
+      if (showLoadingState) setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchData(true);
+
+    // WebSocket real-time event listener
+    const socket = getSocket();
+    if (user?.id) {
+      joinUserRoom(user.id);
+    }
+
+    const handleRealtimeRefresh = (data) => {
+      fetchData(false);
+    };
+
+    const handleExamRestarted = (data) => {
+      fetchData(false);
+      toast.success('Your examination access has been reset by administrators! You can now start the test.');
+    };
+
+    const handleQuizUpdated = (data) => {
+      fetchData(false);
+      if (data?.status === 'Live') {
+        toast.info('An examination has just gone LIVE!');
       }
     };
 
-    fetchData();
-  }, []);
+    socket.on('REFRESH_DASHBOARD', handleRealtimeRefresh);
+    socket.on('EXAM_RESTARTED', handleExamRestarted);
+    socket.on('QUIZ_UPDATED', handleQuizUpdated);
+    socket.on('ROUND_STATUS_UPDATED', handleRealtimeRefresh);
+    socket.on('ANNOUNCEMENT_CREATED', handleRealtimeRefresh);
+
+    // Polling fallback every 8 seconds
+    const interval = setInterval(() => {
+      fetchData(false);
+    }, 8000);
+
+    return () => {
+      socket.off('REFRESH_DASHBOARD', handleRealtimeRefresh);
+      socket.off('EXAM_RESTARTED', handleExamRestarted);
+      socket.off('QUIZ_UPDATED', handleQuizUpdated);
+      socket.off('ROUND_STATUS_UPDATED', handleRealtimeRefresh);
+      socket.off('ANNOUNCEMENT_CREATED', handleRealtimeRefresh);
+      clearInterval(interval);
+    };
+  }, [user?.id]);
 
   const handleDismissQualified = () => {
     sessionStorage.setItem('elq26_r2_celebration_seen', 'true');

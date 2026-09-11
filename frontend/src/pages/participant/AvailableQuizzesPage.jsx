@@ -4,6 +4,7 @@ import { useAuth } from '../../context/AuthContext';
 import { quizService } from '../../services/quizService';
 import QuizCard from '../../components/participant/QuizCard';
 import Loading from '../../components/common/Loading';
+import { getSocket, joinUserRoom } from '../../services/socket';
 
 export default function AvailableQuizzesPage() {
   const { user } = useAuth();
@@ -12,20 +13,39 @@ export default function AvailableQuizzesPage() {
   const [filterRound, setFilterRound] = useState('ALL');
   const [searchTerm, setSearchTerm] = useState('');
 
-  useEffect(() => {
-    const fetchQuizzes = async () => {
-      try {
-        const res = await quizService.getAllQuizzes();
-        if (res.success) setQuizzes(res.data || []);
-      } catch (err) {
-        console.error('Error loading quizzes:', err.message);
-      } finally {
-        setLoading(false);
-      }
-    };
+  const fetchQuizzes = async (showLoading = false) => {
+    if (showLoading) setLoading(true);
+    try {
+      const res = await quizService.getAllQuizzes();
+      if (res.success) setQuizzes(res.data || []);
+    } catch (err) {
+      console.error('Error loading quizzes:', err.message);
+    } finally {
+      if (showLoading) setLoading(false);
+    }
+  };
 
-    fetchQuizzes();
-  }, []);
+  useEffect(() => {
+    fetchQuizzes(true);
+
+    const socket = getSocket();
+    if (user?.id) joinUserRoom(user.id);
+
+    const handleRefresh = () => fetchQuizzes(false);
+
+    socket.on('REFRESH_DASHBOARD', handleRefresh);
+    socket.on('EXAM_RESTARTED', handleRefresh);
+    socket.on('QUIZ_UPDATED', handleRefresh);
+
+    const interval = setInterval(() => fetchQuizzes(false), 8000);
+
+    return () => {
+      socket.off('REFRESH_DASHBOARD', handleRefresh);
+      socket.off('EXAM_RESTARTED', handleRefresh);
+      socket.off('QUIZ_UPDATED', handleRefresh);
+      clearInterval(interval);
+    };
+  }, [user?.id]);
 
   if (loading) return <Loading text="Loading available examinations..." />;
 

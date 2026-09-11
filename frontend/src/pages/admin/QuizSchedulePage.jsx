@@ -213,7 +213,7 @@ export default function QuizSchedulePage() {
         fetchData();
       }
     } catch (err) {
-      toast.error('Failed to update late entry settings');
+      toast.error(err.response?.data?.message || 'Failed to update late entry settings');
     }
   };
 

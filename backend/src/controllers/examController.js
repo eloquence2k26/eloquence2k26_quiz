@@ -5,6 +5,7 @@ const SessionService = require('../services/sessionService');
 const ScoringService = require('../services/scoringService');
 const AuditService = require('../services/auditService');
 const ScheduleService = require('../services/scheduleService');
+const SocketService = require('../services/socketService');
 
 // Helper to shuffle array (Fisher-Yates)
 function shuffleArray(array) {
@@ -707,6 +708,9 @@ class ExamController {
         previous_status: attempt.status,
         previous_termination_reason: attempt.termination_reason
       });
+
+      // Real-time WebSocket notify to participant dashboard
+      SocketService.notifyExamRestart(participantId, quizId);
 
       return success(
         res,

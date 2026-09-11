@@ -2,6 +2,7 @@ const db = require('../config/db');
 const { success, error } = require('../utils/responseHelper');
 const AuditService = require('../services/auditService');
 const ScheduleService = require('../services/scheduleService');
+const SocketService = require('../services/socketService');
 
 class QuizController {
   /**
@@ -394,6 +395,8 @@ class QuizController {
 
       AuditService.log(req.user.id, 'CHANGE_QUIZ_STATUS', 'QUIZ', id, { new_status: status });
 
+      SocketService.notifyQuizUpdate({ quiz_id: id, status });
+
       return success(res, updated, `Quiz status changed to ${status}`);
     } catch (err) {
       return error(res, err.message, 500);
@@ -408,20 +411,26 @@ class QuizController {
       const { id } = req.params;
       const { allow_late_entry } = req.body;
 
+      let quiz = db.find('quizzes', (q) => q.id === id);
+      if (!quiz) {
+        quiz = db.find('quizzes', (q) => q.event_id === id || q.title?.toLowerCase() === id.toLowerCase());
+      }
+      if (!quiz) return error(res, 'Quiz not found', 404);
+
       const updated = db.update(
         'quizzes',
-        (q) => q.id === id,
+        (q) => q.id === quiz.id,
         {
           allow_late_entry: Boolean(allow_late_entry),
           late_entry_allowed: Boolean(allow_late_entry)
         }
       );
 
-      if (!updated) return error(res, 'Quiz not found', 404);
-
-      AuditService.log(req.user.id, 'UPDATE_ENTRY_CONTROL', 'QUIZ', id, {
+      AuditService.log(req.user?.id || 'ADMIN', 'UPDATE_ENTRY_CONTROL', 'QUIZ', quiz.id, {
         allow_late_entry: Boolean(allow_late_entry)
       });
+
+      SocketService.notifyQuizUpdate({ quiz_id: quiz.id, allow_late_entry: Boolean(allow_late_entry) });
 
       return success(
         res,
