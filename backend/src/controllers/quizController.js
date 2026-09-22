@@ -161,9 +161,11 @@ class QuizController {
       const quizQuestions = db.filter('quiz_questions', (qq) => qq.quiz_id === id);
       let questions = [];
 
+      const isStaff = ['ADMIN', 'SUPER_ADMIN', 'COORDINATOR', 'PROCTOR'].includes(req.user.role) || ['ADMIN', 'SUPER_ADMIN', 'COORDINATOR', 'PROCTOR'].includes(req.user.admin_level);
+
       if (quizQuestions.length > 0) {
         const questionIds = quizQuestions.map((qq) => qq.question_id);
-        if (req.user.role === 'ADMIN') {
+        if (isStaff) {
           questions = db.filter('questions', (q) => questionIds.includes(q.id));
         }
       } else {
@@ -172,7 +174,7 @@ class QuizController {
           const matchesEvent = !q.event_name || q.event_name === quiz.event_name || q.event_name === quiz.title;
           return matchesRound && matchesEvent;
         });
-        if (req.user.role === 'ADMIN') {
+        if (isStaff) {
           questions = roundQuestions;
         }
       }
@@ -184,7 +186,7 @@ class QuizController {
         ...quiz,
         entry_window_status: ScheduleService.getEntryWindowStatus(quiz),
         total_questions: totalQCount,
-        questions: req.user.role === 'ADMIN' ? questions : undefined,
+        questions: isStaff ? questions : undefined,
         assigned_participants_count: assignedParticipants.length
       });
     } catch (err) {

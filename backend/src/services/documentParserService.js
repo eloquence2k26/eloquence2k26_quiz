@@ -31,11 +31,7 @@ class DocumentParserService {
           if (pdfModule.PDFParse) {
             // pdf-parse v2 class structure
             const parser = new pdfModule.PDFParse({ data: buffer });
-            const result = await parser.getText({
-              pageJoiner: '\n\n',
-              lineEnforce: true,
-              cellSeparator: '   '
-            });
+            const result = await parser.getText();
             if (result && result.text && result.text.trim()) {
               pdfText = result.text;
             } else if (result && Array.isArray(result.pages) && result.pages.length > 0) {
@@ -187,7 +183,6 @@ class DocumentParserService {
 
       slideEntries.forEach((slideEntry) => {
         const xml = slideEntry.getData().toString('utf8');
-        // Match each paragraph <a:p>
         const paraMatches = xml.match(/<a:p[\s>][\s\S]*?<\/a:p>/g);
         if (paraMatches && paraMatches.length > 0) {
           paraMatches.forEach((paraXml) => {
@@ -222,7 +217,6 @@ class DocumentParserService {
       if (docEntry) {
         let xml = docEntry.getData().toString('utf8');
 
-        // Replace table cell ends with tabs and row ends with newlines
         xml = xml
           .replace(/<\/w:tc>/g, '\t')
           .replace(/<\/w:tr>/g, '\n')
@@ -232,7 +226,6 @@ class DocumentParserService {
           .replace(/<\/w:p>/g, '\n')
           .replace(/<[^>]+>/g, '');
 
-        // Decode XML entities
         xml = xml
           .replace(/&amp;/g, '&')
           .replace(/&lt;/g, '<')
@@ -246,10 +239,8 @@ class DocumentParserService {
       }
     } catch (err) {}
 
-    // Fallback for binary .doc or damaged docx: extract readable text runs
     try {
       const bufStr = buffer.toString('binary');
-      // Extract ASCII chunks of length >= 4
       const asciiRuns = bufStr.match(/[\x20-\x7E\t\r\n]{4,}/g);
       if (asciiRuns && asciiRuns.length > 0) {
         return asciiRuns.join(' ');
@@ -344,7 +335,6 @@ class DocumentParserService {
       return parsedQuestions;
     }
 
-    // Fallback: If spreadsheet had no headers or unusual column keys, convert to text and parse as MCQs
     const textDump = rawRows.map((r) => Object.values(r).join(' ')).join('\n');
     return this.parseMCQsFromText(textDump, defaultMeta);
   }
@@ -417,7 +407,6 @@ class DocumentParserService {
     const expandedLines = this.expandInlineOptions(filteredLines);
 
     // Step 6: Primary Strategy - Sequential State-Machine Parser
-    // Handles unnumbered questions, numbered questions, and multi-line options flawlessly
     let questions = this.parseMCQsSequential(expandedLines, answerKeyMap, meta);
 
     // Step 7: Fallback Strategy - Segmentation by Question Number / Prefix
@@ -439,8 +428,7 @@ class DocumentParserService {
   }
 
   /**
-   * Filter out page numbers, footer markers, and isolated margin numbers dumped from PDF tables
-   * Protects genuine numeric MCQ options (e.g. 23, 5, 6, 10) by only removing sequential runs (1, 2, 3...)
+   * Filter out page numbers, footer markers, and isolated page headers
    */
   static cleanSolitaryNumbersAndFooters(rawLines) {
     const isFooter = (l) =>
@@ -448,48 +436,11 @@ class DocumentParserService {
       /^Page\s+\d+(?:\s*(?:of|\/)\s*\d+)?$/i.test(l) ||
       /^(?:Technical\s+Quiz|Department\s+of|Eloquence\s*2026?|Semester\s+\d+)\s*$/i.test(l);
 
-    const parseNum = (l) => {
-      const m = l.trim().match(/^(\d+)[\.\)]?$/);
-      return m ? parseInt(m[1], 10) : null;
-    };
-
-    // Detect sequential runs of >= 3 ascending integers (e.g. margin serials 1., 2., 3. or 8., 9., 10.)
-    const marginIndices = new Set();
-    let currentRun = [];
-
-    for (let i = 0; i < rawLines.length; i++) {
-      const val = parseNum(rawLines[i]);
-      if (val !== null) {
-        if (currentRun.length === 0) {
-          currentRun.push({ index: i, val });
-        } else {
-          const last = currentRun[currentRun.length - 1];
-          if (val === last.val + 1) {
-            currentRun.push({ index: i, val });
-          } else {
-            if (currentRun.length >= 3) {
-              currentRun.forEach((item) => marginIndices.add(item.index));
-            }
-            currentRun = [{ index: i, val }];
-          }
-        }
-      } else {
-        if (currentRun.length >= 3) {
-          currentRun.forEach((item) => marginIndices.add(item.index));
-        }
-        currentRun = [];
-      }
-    }
-    if (currentRun.length >= 3) {
-      currentRun.forEach((item) => marginIndices.add(item.index));
-    }
-
     const cleanLines = [];
     for (let i = 0; i < rawLines.length; i++) {
       const l = rawLines[i].trim();
       if (!l) continue;
       if (isFooter(l)) continue;
-      if (marginIndices.has(i)) continue;
 
       // Filter lone page numbers that sit immediately next to footers
       if (/^\d+$/.test(l)) {
@@ -507,7 +458,7 @@ class DocumentParserService {
 
   /**
    * Expand inline options onto new lines safely
-   * Does NOT touch Answer lines and does NOT split on English words like "a function"
+   * Does NOT touch Answer lines and does NOT split on English words
    */
   static expandInlineOptions(rawInput) {
     const rawLines = Array.isArray(rawInput)
@@ -515,12 +466,17 @@ class DocumentParserService {
       : String(rawInput || '').split('\n');
 
     const isAnsLine = (l) =>
-      /^\s*(?:Correct\s*(?:Answer|Option)|Right\s*Answer|Answer|Ans|Key|Solution)\s*[:=-]+/i.test(l);
-    // Matches:
-    // (A), [A], (a), [a], (1)-(4), [1]-[4], (i)-(iv)
-    // A), A., A:, A - (Uppercase A-D only)
-    // Option A, Choice A
-    const inlineRegex = /(?<=\S)[ \t]+(?=(?:\([A-Da-d1-4]\)|\[[A-Da-d1-4]\]|[A-D][\.:\)\-]\s+|(?:Option|Choice)\s*\(?[A-Da-d1-4]\)?[\s.:\)\-]*|\(?(?:iv|iii|ii|i)\)?[\s.:\)\-]+))/;
+      /^\s*(?:Correct\s*(?:Answer|Option)|Right\s*Answer|Answer\s*Key|Answer|Ans|Key|Solution)\s*[:=-]+/i.test(l);
+
+    // Matches whitespace preceding:
+    // (A), (B), (C), (D) or [A], [B]...
+    // (a), (b), (c), (d) or [a], [b]...
+    // A), B), C), D) or A., B., C., D.
+    // a), b), c), d) or a., b., c., d.
+    // (1), (2), (3), (4) or [1], [2]... or 1), 2), 3), 4)
+    // Option A, Choice A, Option B...
+    // (i), (ii), (iii), (iv)
+    const inlineRegex = /(?<=\S)[ \t]+(?=(?:\([A-Da-d1-4]\)|\[[A-Da-d1-4]\]|[A-Da-d][\.:\)\-]\s+|(?:Option|Choice)\s*\(?[A-Da-d1-4]\)?[\s.:\)\-]*|\(?(?:iv|iii|ii|i)\)?[\s.:\)\-]+|[1-4]\)\s+))/;
 
     const expanded = [];
     for (const l of rawLines) {
@@ -539,10 +495,16 @@ class DocumentParserService {
 
   /**
    * Primary Sequential State-Machine Parser
-   * Accurately parses unnumbered MCQs, numbered MCQs, and unlabeled option blocks
+   * Robustly parses numbered and unnumbered MCQs, multi-line questions and options
    */
   static parseMCQsSequential(cleanLines, answerKeyMap = {}, meta = {}) {
-    const optHeaderRegex = /^\s*(?:(?:\(([A-Da-d])\)[\s.:\)\-]*)|(?:\[([A-Da-d])\][\s.:\)\-]*)|(?:(?:Option|Choice)\s*\(?([A-Da-d])\)?[\s.:\)\-]*)|(?:([A-D])[\.:\)\-]\s+)|(?:\(([1-4])\)[\s.:\)\-]*)|(?:\[([1-4])\][\s.:\)\-]*)|(?:([1-4])[\.:\)\-]\s+)|(?:\(?((?:iv|iii|ii|i))\)?[\s.:\)\-]+))\s*(.*)/i;
+    // Matches letter options: (A), [A], A), A., A:, a), a., (a), [a], Option A, Choice A
+    const letterOptRegex = /^\s*(?:(?:\(([A-Da-d])\)[\s.:\)\-]*)|(?:\[([A-Da-d])\][\s.:\)\-]*)|(?:(?:Option|Choice)\s*\(?([A-Da-d])\)?[\s.:\)\-]*)|(?:([A-Da-d])[\.:\)\-]\s*))\s*(.*)/i;
+    
+    // Matches numeric options: (1), [1], 1), (i), (ii)
+    const numOptRegex = /^\s*(?:(?:\(([1-4])\)[\s.:\)\-]*)|(?:\[([1-4])\][\s.:\)\-]*)|(?:([1-4])\)\s*)|(?:\(?((?:iv|iii|ii|i))\)?[\s.:\)\-]+))\s*(.*)/i;
+    
+    // Matches question markers: 1. , Q1. , Question 1:
     const qMarkerRegex = /^\s*(?:(?:Q(?:uestion|ue)?|Prob(?:lem)?)\s*[:#.-]?\s*(\d+)[\s.:)-]*|(\d+)[\.:)-]\s+)(.*)/i;
     const ansRegex = /^\s*(?:Correct\s*(?:Answer|Option)|Right\s*Answer|Answer\s*Key|Answer|Ans|Key|Correct)\s*[:=-]+\s*(.*)/i;
     const expRegex = /^\s*(?:Explanation|Exp|Reason|Solution|Note)\s*[:=-]+\s*(.*)/i;
@@ -561,7 +523,10 @@ class DocumentParserService {
       // Case 1: Standard options with labels (A, B)
       if (currentPrompt.length > 0 && currentOptions.A && currentOptions.B) {
         let promptText = currentPrompt.join(' ').trim();
-        promptText = promptText.replace(/^(?:PYTHON\s+MCQ\s+QUESTIONS?|TECHNICAL\s+QUIZ|MULTIPLE\s+CHOICE\s+QUESTIONS?|QUESTIONS?\s*BANK)\s*/i, '').trim();
+        promptText = promptText
+          .replace(/^(?:PYTHON\s+MCQ\s+QUESTIONS?|TECHNICAL\s+QUIZ|MULTIPLE\s+CHOICE\s+QUESTIONS?|QUESTIONS?\s*BANK)\s*/i, '')
+          .replace(/^(?:Q(?:uestion|ue)?\s*[:#.-]?\s*\d+[\s.:)-]*|\d+[\.:)-]\s+)/i, '')
+          .trim();
 
         let finalAns = currentAnswer;
         if (!finalAns && currentQNum && answerKeyMap[currentQNum]) {
@@ -570,9 +535,7 @@ class DocumentParserService {
         if (!finalAns && answerKeyMap[questions.length + 1]) {
           finalAns = answerKeyMap[questions.length + 1];
         }
-        if (!finalAns) {
-          finalAns = 'A';
-        }
+        if (!finalAns) finalAns = 'A';
 
         questions.push({
           question_text: promptText,
@@ -609,8 +572,6 @@ class DocumentParserService {
           d = 'All of the above';
         }
 
-        // If the answer line specified a value, e.g. "Answer: C) #" or "Answer: C"
-        // and option C or D was missing/empty or placeholder:
         if (currentAnswerText) {
           if (currentAnswer === 'C' && (!c || c === 'None of the above')) {
             if (d === 'None of the above' && c) d = c;
@@ -621,7 +582,10 @@ class DocumentParserService {
         }
 
         let promptText = currentPrompt.join(' ').trim();
-        promptText = promptText.replace(/^(?:PYTHON\s+MCQ\s+QUESTIONS?|TECHNICAL\s+QUIZ|MULTIPLE\s+CHOICE\s+QUESTIONS?|QUESTIONS?\s*BANK)\s*/i, '').trim();
+        promptText = promptText
+          .replace(/^(?:PYTHON\s+MCQ\s+QUESTIONS?|TECHNICAL\s+QUIZ|MULTIPLE\s+CHOICE\s+QUESTIONS?|QUESTIONS?\s*BANK)\s*/i, '')
+          .replace(/^(?:Q(?:uestion|ue)?\s*[:#.-]?\s*\d+[\s.:)-]*|\d+[\.:)-]\s+)/i, '')
+          .trim();
 
         let finalAns = currentAnswer;
         if (!finalAns && currentQNum && answerKeyMap[currentQNum]) {
@@ -660,7 +624,6 @@ class DocumentParserService {
         const letterMatch = rawAns.match(/(?:Option\s*)?\(?([A-Da-d1-4]|iv|iii|ii|i)\)?/i);
         if (letterMatch) {
           currentAnswer = this.normalizeAnswerKey(letterMatch[1]);
-          // Capture answer value text after letter: e.g. from "C) #" -> "#", or "B) 5" -> "5"
           const afterLetter = rawAns.replace(/^(?:Option\s*)?\(?[A-Da-d1-4]|iv|iii|ii|i\)?[\s.:\)\-]*/i, '').trim();
           if (afterLetter) {
             currentAnswerText = afterLetter;
@@ -683,32 +646,23 @@ class DocumentParserService {
         continue;
       }
 
-      // 3. Question marker line (e.g. 1. , Q1. )
-      const qMatch = line.match(qMarkerRegex);
-      if (qMatch && !optHeaderRegex.test(line)) {
-        if ((currentPrompt.length > 0 && currentOptions.A && currentOptions.B) || (currentPrompt.length >= 3 && currentAnswer)) {
-          pushQuestion();
-          currentOptions = {};
-          currentAnswer = null;
-          currentAnswerText = '';
-          currentExp = '';
-          currentOptKey = null;
-        }
-        currentQNum = parseInt(qMatch[1] || qMatch[2], 10);
-        const rest = (qMatch[3] || '').trim();
-        currentPrompt = rest ? [rest] : [];
-        state = 'PROMPT';
-        continue;
-      }
+      // 3. Option line (A, B, C, D or (1), (2)...)
+      const letterOptMatch = line.match(letterOptRegex);
+      const numOptMatch = currentPrompt.length > 0 ? line.match(numOptRegex) : null;
+      const optMatch = letterOptMatch || numOptMatch;
 
-      // 4. Option line (A), B), C), D), (1), etc.)
-      const optMatch = line.match(optHeaderRegex);
       if (optMatch) {
-        const rawKey = optMatch[1] || optMatch[2] || optMatch[3] || optMatch[4] || optMatch[5] || optMatch[6] || optMatch[7] || optMatch[8];
+        const rawKey = optMatch[1] || optMatch[2] || optMatch[3] || optMatch[4] || optMatch[5];
         const optKey = this.normalizeAnswerKey(rawKey);
-        let optVal = (optMatch[9] || '').trim();
+        let optVal = '';
 
-        // Detect asterisk marking correct answer: e.g. *B) ... or B) ...*
+        if (letterOptMatch) {
+          optVal = line.replace(/^\s*(?:(?:\(([A-Da-d])\)[\s.:\)\-]*)|(?:\[([A-Da-d])\][\s.:\)\-]*)|(?:(?:Option|Choice)\s*\(?([A-Da-d])\)?[\s.:\)\-]*)|(?:([A-Da-d])[\.:\)\-]\s*))/i, '').trim();
+        } else if (numOptMatch) {
+          optVal = line.replace(/^\s*(?:(?:\(([1-4])\)[\s.:\)\-]*)|(?:\[([1-4])\][\s.:\)\-]*)|(?:([1-4])\)\s*)|(?:\(?((?:iv|iii|ii|i))\)?[\s.:\)\-]+))/i, '').trim();
+        }
+
+        // Detect asterisk / [x] marking correct answer
         if (optVal.startsWith('*') || optVal.endsWith('*') || /^\([xX]\)/.test(optVal)) {
           currentAnswer = optKey;
           optVal = optVal.replace(/^\*+|\*+$/g, '').replace(/^\([xX]\)\s*/, '').trim();
@@ -730,6 +684,24 @@ class DocumentParserService {
         continue;
       }
 
+      // 4. Question marker line (e.g. 1. , Q1. )
+      const qMatch = line.match(qMarkerRegex);
+      if (qMatch && !letterOptRegex.test(line)) {
+        if ((currentPrompt.length > 0 && currentOptions.A && currentOptions.B) || (currentPrompt.length >= 3 && currentAnswer)) {
+          pushQuestion();
+          currentOptions = {};
+          currentAnswer = null;
+          currentAnswerText = '';
+          currentExp = '';
+          currentOptKey = null;
+        }
+        currentQNum = parseInt(qMatch[1] || qMatch[2], 10);
+        const rest = (qMatch[3] || '').trim();
+        currentPrompt = rest ? [rest] : [];
+        state = 'PROMPT';
+        continue;
+      }
+
       // 5. General text line
       if (state === 'ANSWER' || state === 'EXPLANATION') {
         pushQuestion();
@@ -742,7 +714,7 @@ class DocumentParserService {
         state = 'PROMPT';
       } else if (state === 'OPTIONS') {
         const nextLine = i + 1 < cleanLines.length ? cleanLines[i + 1] : '';
-        const nextOptMatch = nextLine.match(optHeaderRegex);
+        const nextOptMatch = nextLine.match(letterOptRegex);
         const isNextOptA = nextOptMatch && this.normalizeAnswerKey(nextOptMatch[1]||nextOptMatch[2]||nextOptMatch[3]||nextOptMatch[4]||'') === 'A';
 
         if (isNextOptA) {
@@ -784,7 +756,6 @@ class DocumentParserService {
 
   /**
    * Safely extract Answer Key section at the end of the document
-   * MUST be at the end and contain at least 2 question-answer pairs
    */
   static extractAnswerKeySection(text) {
     const answerKeyMap = {};
@@ -793,7 +764,7 @@ class DocumentParserService {
     const headingRegex = /(?:^|\n)\s*(?:ANSWER\s*KEYS?|ANSWER\s*SHEET|SOLUTION\s*KEYS?|ANSWERS\s*(?:SECTION|LIST|FOR\s*ALL)?)\s*[:\n]([\s\S]*)$/i;
     const match = text.match(headingRegex);
 
-    if (match) {
+    if (match && match.index > text.length * 0.3) {
       const sectionText = match[1];
       const pairRegex = /(?:Q(?:uestion)?\s*[:#.-]?)?(\d+)\s*[\s.:)-]+\s*\(?([A-Da-d1-4]|iv|iii|ii|i)\)?/gi;
       let p;
@@ -816,8 +787,7 @@ class DocumentParserService {
   }
 
   /**
-   * Primary Strategy: Question Segmentation
-   * Splits document into chunks by finding question start markers
+   * Fallback Strategy: Question Segmentation
    */
   static parseByQuestionSegmentation(text, answerKeyMap, meta) {
     const qMarkerRegex = /(?:^|\n)\s*(?:(?:Q(?:uestion|ue)?|Prob(?:lem)?)\s*[:#.-]?\s*(\d+)[\s.:)-]*|(\d+)[\.:)-]\s+)/gi;
@@ -838,41 +808,14 @@ class DocumentParserService {
       return [];
     }
 
-    // Detect if markers contain consecutive 1, 2, 3, 4 inside a question (numeric options)
-    const optionMarkerIndices = new Set();
-    const hasOptionLabels = (txt) =>
-      /(?:^|\n)\s*(?:\(?([A-Da-d])\)[\s.:)-]*|\[([A-Da-d])\]|Option\s+[A-Da-d]|Choice\s+[A-Da-d])/i.test(txt);
-
-    for (let i = 0; i < markers.length - 3; i++) {
-      if (
-        markers[i].qNum === 1 &&
-        markers[i + 1].qNum === 2 &&
-        markers[i + 2].qNum === 3 &&
-        markers[i + 3].qNum === 4 &&
-        i > 0
-      ) {
-        const nextEnd = i + 1 < markers.length ? markers[i + 1].index : text.length;
-        const chunkOfOne = text.slice(markers[i].index, nextEnd);
-        if (!hasOptionLabels(chunkOfOne)) {
-          // Marker 1 has no A/B/C/D options: these 1, 2, 3, 4 are options for the preceding question
-          optionMarkerIndices.add(i);
-          optionMarkerIndices.add(i + 1);
-          optionMarkerIndices.add(i + 2);
-          optionMarkerIndices.add(i + 3);
-        }
-      }
-    }
-
-    const filteredMarkers = markers.filter((_, idx) => !optionMarkerIndices.has(idx));
-
     const questions = [];
 
-    for (let i = 0; i < filteredMarkers.length; i++) {
-      const start = filteredMarkers[i].index + filteredMarkers[i].length;
-      const end = i + 1 < filteredMarkers.length ? filteredMarkers[i + 1].index : text.length;
+    for (let i = 0; i < markers.length; i++) {
+      const start = markers[i].index + markers[i].length;
+      const end = i + 1 < markers.length ? markers[i + 1].index : text.length;
       const chunkText = text.slice(start, end).trim();
 
-      const parsed = this.parseQuestionChunk(chunkText, filteredMarkers[i].qNum, answerKeyMap, meta);
+      const parsed = this.parseQuestionChunk(chunkText, markers[i].qNum, answerKeyMap, meta);
       if (parsed) {
         questions.push(parsed);
       }
@@ -915,7 +858,6 @@ class DocumentParserService {
 
     if (lines.length < 2) return null;
 
-    // Regex for matching Option headers at the start of a line
     const optRegex = /^\s*(?:(?:\(?([A-Da-d])\)[\s.:)-]*)|(?:([A-Da-d])[\.:)-]\s*)|(?:\[([A-Da-d])\][\s.:)-]*)|(?:(?:Option|Choice)\s*\(?([A-Da-d])\)?[\s.:)-]*)|(?:\(([1-4])\)[\s.:)-]*)|(?:([1-4])[\.:)-]\s*)|(?:\[([1-4])\][\s.:)-]*)|(?:\(?((?:iv|iii|ii|i))\)?[\s.:)-]+))\s*(.*)/i;
 
     const questionLines = [];
@@ -925,7 +867,6 @@ class DocumentParserService {
     for (let i = 0; i < lines.length; i++) {
       const line = lines[i];
 
-      // Double check if line is an answer line
       const lineAnsMatch = line.match(/^(?:Correct\s*Answer|Answer|Ans|Key|Correct)\s*[:=-]+\s*\(?([A-Da-d1-4]|iv|iii|ii|i)\)?/i);
       if (lineAnsMatch) {
         detectedAnswer = this.normalizeAnswerKey(lineAnsMatch[1]);
@@ -938,7 +879,6 @@ class DocumentParserService {
         const optKey = this.normalizeAnswerKey(rawKey);
         let optVal = match[9] ? match[9].trim() : '';
 
-        // Check if option text has asterisk or [x] marking correct answer
         if (optVal.startsWith('*') || optVal.endsWith('*') || /^\([xX]\)/.test(optVal)) {
           detectedAnswer = optKey;
           optVal = optVal.replace(/^\*+|\*+$/g, '').replace(/^\([xX]\)\s*/, '').trim();
@@ -947,10 +887,8 @@ class DocumentParserService {
         options[optKey] = optVal;
         currentOptKey = optKey;
       } else if (currentOptKey) {
-        // Line continuation of current option
         options[currentOptKey] = (options[currentOptKey] + ' ' + line).trim();
       } else {
-        // Line continuation of question text
         questionLines.push(line);
       }
     }
@@ -958,7 +896,6 @@ class DocumentParserService {
     const questionText = questionLines.join(' ').trim();
     if (!questionText) return null;
 
-    // Validate options: must have at least A and B
     let optA = options.A;
     let optB = options.B;
     let optC = options.C;
@@ -971,7 +908,6 @@ class DocumentParserService {
     if (!optC) optC = 'None of the above';
     if (!optD) optD = 'All of the above';
 
-    // Determine final correct answer
     let finalAnswer = detectedAnswer;
     if (!finalAnswer && qNum && answerKeyMap[qNum]) {
       finalAnswer = answerKeyMap[qNum];
@@ -998,7 +934,7 @@ class DocumentParserService {
   }
 
   /**
-   * Secondary Strategy: Scan for Option Groups [A, B, C, D]
+   * Fallback Strategy: Scan for Option Groups [A, B, C, D]
    */
   static parseByOptionGroups(text, answerKeyMap, meta) {
     const lines = text.split('\n').map((l) => l.trim()).filter(Boolean);
@@ -1088,7 +1024,7 @@ class DocumentParserService {
   }
 
   /**
-   * Tertiary Fallback: Paragraph Blocks
+   * Fallback Strategy: Paragraph Blocks
    */
   static parseByParagraphBlocks(text, meta) {
     const blocks = text.split(/\n\s*\n+/);
@@ -1153,7 +1089,6 @@ class DocumentParserService {
     if (d.includes('hard') || d.includes('adv')) return 'Hard';
     return 'Medium';
   }
-
 
   /**
    * Main entrypoint to parse any supported document into participant registration records

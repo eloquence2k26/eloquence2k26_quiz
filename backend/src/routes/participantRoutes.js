@@ -10,7 +10,7 @@ const upload = multer({
   limits: { fileSize: 50 * 1024 * 1024 }
 });
 
-router.use(authenticate, authorize('ADMIN'));
+router.use(authenticate, authorize('ADMIN', 'SUPER_ADMIN', 'COORDINATOR', 'VOLUNTEER'));
 
 router.get('/', ParticipantController.getAllParticipants);
 router.post('/', ParticipantController.createParticipant);

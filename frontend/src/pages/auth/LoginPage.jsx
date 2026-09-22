@@ -60,6 +60,10 @@ export default function LoginPage() {
       setLoginType('ADMIN');
       setIdentifier('admin');
       setPassword('admin123');
+    } else if (role === 'COORDINATOR') {
+      setLoginType('ADMIN');
+      setIdentifier('coordinator');
+      setPassword('coordinator123');
     } else {
       setLoginType('PARTICIPANT');
       setIdentifier('alex.chen@university.edu');
@@ -99,9 +103,21 @@ export default function LoginPage() {
           }`}
         >
           <Shield className="w-4 h-4" />
-          <span>Admin Portal</span>
+          <span>Admin & Staff Portal</span>
         </button>
       </div>
+
+      {/* Role guidance tags for Staff Portal */}
+      {loginType === 'ADMIN' && (
+        <div className="p-2.5 rounded-xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200/80 dark:border-slate-700/80 flex items-center justify-between text-[11px] text-slate-500">
+          <span className="font-semibold text-slate-700 dark:text-slate-300">Supported Roles:</span>
+          <div className="flex items-center gap-1 font-mono font-bold text-[10px]">
+            <span className="px-1.5 py-0.5 rounded bg-blue-100 dark:bg-blue-950 text-blue-700 dark:text-blue-300">Coordinator</span>
+            <span className="px-1.5 py-0.5 rounded bg-brand-100 dark:bg-brand-950 text-brand-700 dark:text-brand-300">Admin</span>
+            <span className="px-1.5 py-0.5 rounded bg-purple-100 dark:bg-purple-950 text-purple-700 dark:text-purple-300">Proctor</span>
+          </div>
+        </div>
+      )}
 
       {/* Error notification banner */}
       {errorMessage && (
@@ -115,7 +131,7 @@ export default function LoginPage() {
       <form onSubmit={handleSubmit} className="space-y-4">
         <div>
           <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 uppercase mb-1">
-            {loginType === 'ADMIN' ? 'Admin Username or Email' : 'Email or Participant ID'}
+            {loginType === 'ADMIN' ? 'Staff / Coordinator / Admin Username' : 'Email or Participant ID'}
           </label>
           <div className="relative">
             <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-slate-400">
@@ -126,7 +142,7 @@ export default function LoginPage() {
               required
               value={identifier}
               onChange={(e) => setIdentifier(e.target.value)}
-              placeholder={loginType === 'ADMIN' ? 'e.g. admin or admin@eloquence.com' : 'e.g. alex.chen@university.edu or ELQ-2026-001'}
+              placeholder={loginType === 'ADMIN' ? 'e.g. coordinator, admin, or staff email' : 'e.g. alex.chen@university.edu or ELQ-2026-001'}
               className="w-full pl-10 pr-3.5 py-2.5 rounded-2xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800/80 text-xs text-slate-900 dark:text-white placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-brand-500/20"
             />
           </div>
@@ -174,13 +190,6 @@ export default function LoginPage() {
           )}
         </button>
       </form>
-
-      {/* Quick Demo Fill Buttons */}
-      <div className="pt-2 border-t border-slate-200 dark:border-slate-800">
-        
-        <div className="grid grid-cols-2 gap-2">
-        </div>
-      </div>
     </div>
   );
 }

@@ -4,7 +4,7 @@ const SecurityController = require('../controllers/securityController');
 const authenticate = require('../middleware/authMiddleware');
 const authorize = require('../middleware/roleMiddleware');
 
-router.use(authenticate, authorize('ADMIN'));
+router.use(authenticate, authorize('ADMIN', 'SUPER_ADMIN', 'COORDINATOR', 'PROCTOR'));
 
 router.get('/violations', SecurityController.getAllViolations);
 router.get('/stats', SecurityController.getViolationStats);

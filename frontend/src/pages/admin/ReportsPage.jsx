@@ -22,7 +22,7 @@ export default function ReportsPage() {
       }
     };
     fetchQuizzes();
-  }, [toast]);
+  }, []);
 
   const handleExportResults = async (quizId, title) => {
     try {

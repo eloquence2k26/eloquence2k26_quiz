@@ -32,7 +32,7 @@ export default function ExamInstructionsPage() {
     };
 
     fetchQuiz();
-  }, [quizId, toast]);
+  }, [quizId]);
 
   const handleEnterExam = async () => {
     if (!agreed) {

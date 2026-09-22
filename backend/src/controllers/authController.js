@@ -16,11 +16,13 @@ class AuthController {
         return error(res, 'Password is required', 400);
       }
 
-      const inputLogin = (email || username || '').trim().toLowerCase();
+      const inputLogin = (email || username || participant_id || '').trim().toLowerCase();
       let user = null;
 
       if (inputLogin) {
-        // Instant In-Memory Cache Lookup by email, exact username, or prefix
+        const cleanDigits = inputLogin.replace(/\D/g, '');
+
+        // 1. In-Memory Cache Lookup by email, exact username, or prefix
         user = db.find('users', (u) => {
           if (!u.email) return false;
           const uEmail = u.email.toLowerCase();
@@ -28,7 +30,40 @@ class AuthController {
           return uEmail === inputLogin || uUsername === inputLogin || uEmail === `${inputLogin}@eloquence.com`;
         });
 
-        // Fallback to Supabase only if not in memory cache
+        // 2. Lookup by participant_id in participants table
+        if (!user) {
+          const participantById = db.find('participants', (p) => p.participant_id && p.participant_id.toLowerCase() === inputLogin);
+          if (participantById) {
+            user = db.find('users', (u) => u.id === participantById.id || (u.email && u.email.toLowerCase() === participantById.email.toLowerCase()));
+          }
+        }
+
+        // 3. Lookup by mobile in participants or profiles if input has digits
+        if (!user && cleanDigits.length >= 4) {
+          const participantByMobile = db.find('participants', (p) => {
+            if (!p.mobile) return false;
+            const pDigits = p.mobile.replace(/\D/g, '');
+            return pDigits === cleanDigits || (cleanDigits.length === 10 && pDigits.endsWith(cleanDigits));
+          });
+
+          if (participantByMobile) {
+            user = db.find('users', (u) => u.id === participantByMobile.id || (u.email && u.email.toLowerCase() === participantByMobile.email.toLowerCase()));
+          }
+        }
+
+        if (!user && cleanDigits.length >= 4) {
+          const profileByMobile = db.find('profiles', (p) => {
+            if (!p.mobile) return false;
+            const pDigits = p.mobile.replace(/\D/g, '');
+            return pDigits === cleanDigits || (cleanDigits.length === 10 && pDigits.endsWith(cleanDigits));
+          });
+
+          if (profileByMobile) {
+            user = db.find('users', (u) => u.id === profileByMobile.id);
+          }
+        }
+
+        // 4. Fallback to Supabase only if not in memory cache
         if (!user && db.client) {
           const { data: dbUsers } = await db.client
             .from('users')
@@ -42,35 +77,10 @@ class AuthController {
             }
           }
         }
-      } else if (participant_id) {
-        const cleanPartId = participant_id.trim().toLowerCase();
-        // Instant In-Memory Cache Lookup (< 1ms)
-        let participant = db.find(
-          'participants',
-          (p) => p.participant_id && p.participant_id.toLowerCase() === cleanPartId
-        );
-
-        if (!participant && db.client) {
-          const { data: dbParts } = await db.client.from('participants').select('*').ilike('participant_id', cleanPartId);
-          if (dbParts && dbParts.length > 0) {
-            participant = dbParts[0];
-            if (!db.find('participants', (p) => p.id === participant.id)) {
-              db.data.participants.push(participant);
-            }
-          }
-        }
-
-        if (participant) {
-          user = db.find('users', (u) => u.id === participant.id);
-          if (!user && db.client) {
-            const { data: dbUsers } = await db.client.from('users').select('*').eq('id', participant.id);
-            if (dbUsers && dbUsers.length > 0) user = dbUsers[0];
-          }
-        }
       }
 
       if (!user) {
-        // Fallback for primary default admin if not yet in database
+        // Fallback for primary default admin or coordinator if not yet in database
         if ((inputLogin === 'admin' || inputLogin === 'admin@eloquence.com') && password === 'admin123') {
           const defaultHash = await bcrypt.hash('admin123', 10);
           user = {
@@ -87,13 +97,29 @@ class AuthController {
             email: user.email,
             admin_level: 'SUPER_ADMIN'
           });
+        } else if ((inputLogin === 'coordinator' || inputLogin === 'coordinator@eloquence.com') && (password === 'coordinator123' || password === 'admin123')) {
+          const defaultHash = await bcrypt.hash(password, 10);
+          user = {
+            id: 'a0000000-0000-0000-0000-000000000002',
+            email: 'coordinator@eloquence.com',
+            password_hash: defaultHash,
+            role: 'COORDINATOR',
+            is_active: true
+          };
+          db.insert('users', user);
+          db.insert('admins', {
+            id: user.id,
+            full_name: 'Event Coordinator',
+            email: user.email,
+            admin_level: 'COORDINATOR'
+          });
         } else {
           return error(res, 'Invalid credentials. User not found.', 401);
         }
       }
 
       // Root admin is always active; for other users verify active status
-      if (user.email?.toLowerCase() === 'admin@eloquence.com') {
+      if (user.email?.toLowerCase() === 'admin@eloquence.com' || user.email?.toLowerCase() === 'coordinator@eloquence.com') {
         user.is_active = true;
       }
 
@@ -142,11 +168,12 @@ class AuthController {
       const token = generateToken({
         id: user.id,
         email: user.email,
-        role: user.role
+        role: user.role,
+        admin_level: adminData ? adminData.admin_level : null
       });
 
       if (user.role !== 'PARTICIPANT') {
-        AuditService.log(user.id, 'ADMIN_LOGIN', 'AUTH', user.id, { email: user.email });
+        AuditService.log(user.id, 'ADMIN_LOGIN', 'AUTH', user.id, { email: user.email, role: user.role, admin_level: adminData?.admin_level });
       }
 
       return success(res, {
@@ -155,6 +182,7 @@ class AuthController {
           id: user.id,
           email: user.email,
           role: user.role,
+          admin_level: adminData ? adminData.admin_level : (user.role !== 'PARTICIPANT' ? user.role : null),
           full_name: profile.full_name || (participantData ? participantData.full_name : (adminData ? adminData.full_name : 'User')),
           avatar_url: profile.avatar_url || null,
           participant: participantData,
@@ -183,20 +211,39 @@ class AuthController {
         registration_number
       } = req.body;
 
-      if (!full_name || !email || !password || !college || !department || !year) {
+      const rawMobile = (mobile || '').toString().trim();
+      let mobileDigits = rawMobile.replace(/\D/g, '');
+      if (mobileDigits.length === 12 && mobileDigits.startsWith('91')) {
+        mobileDigits = mobileDigits.slice(2);
+      } else if (mobileDigits.length === 11 && mobileDigits.startsWith('0')) {
+        mobileDigits = mobileDigits.slice(1);
+      }
+      const cleanMobile = mobileDigits.length === 10 ? mobileDigits : rawMobile;
+
+      let finalPassword = password && password.toString().trim() ? password.toString().trim() : '';
+      if (!finalPassword) {
+        finalPassword = mobileDigits.length >= 4 ? mobileDigits.slice(0, 4) : (mobileDigits || '1234');
+      }
+
+      let finalEmail = email && email.trim() ? email.trim().toLowerCase() : '';
+      if (!finalEmail) {
+        finalEmail = `elq_${mobileDigits || Date.now().toString().slice(-6)}@eloquence.com`;
+      }
+
+      if (!full_name || (!finalEmail && !cleanMobile) || !college || !department || !year) {
         return error(res, 'All required fields must be provided.', 400);
       }
 
-      let existingUser = db.find('users', (u) => u.email.toLowerCase() === email.trim().toLowerCase());
+      let existingUser = db.find('users', (u) => u.email.toLowerCase() === finalEmail.toLowerCase());
       if (!existingUser && db.client) {
-        const { data: dbUsers } = await db.client.from('users').select('*').ilike('email', email.trim());
+        const { data: dbUsers } = await db.client.from('users').select('*').ilike('email', finalEmail);
         if (dbUsers && dbUsers.length > 0) existingUser = dbUsers[0];
       }
       if (existingUser) {
         return error(res, 'Email already registered. Please login.', 409);
       }
 
-      const password_hash = await bcrypt.hash(password, 10);
+      const password_hash = await bcrypt.hash(finalPassword, 10);
       let participantCount = db.get('participants').length + 1;
       if (db.client) {
         const { count } = await db.client.from('participants').select('*', { count: 'exact', head: true });
@@ -207,7 +254,7 @@ class AuthController {
       const participantId = `ELQ-2026-${String(participantCount).padStart(3, '0')}`;
 
       const newUser = db.insert('users', {
-        email: email.trim().toLowerCase(),
+        email: finalEmail,
         password_hash,
         role: 'PARTICIPANT',
         is_active: true
@@ -216,15 +263,15 @@ class AuthController {
       db.insert('profiles', {
         id: newUser.id,
         full_name: full_name.trim(),
-        mobile: mobile ? mobile.trim() : ''
+        mobile: cleanMobile
       });
 
       const newParticipant = db.insert('participants', {
         id: newUser.id,
         participant_id: participantId,
         full_name: full_name.trim(),
-        email: email.trim().toLowerCase(),
-        mobile: mobile ? mobile.trim() : '',
+        email: finalEmail,
+        mobile: cleanMobile,
         college: college.trim(),
         department: department.trim(),
         year: year.trim(),

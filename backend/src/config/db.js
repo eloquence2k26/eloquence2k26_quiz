@@ -346,10 +346,59 @@ class DBStore {
         ];
       }
 
-      // Ensure root administrator is always active
-      const rootAdmin = (this.data.users || []).find((u) => u.email && u.email.toLowerCase() === 'admin@eloquence.com');
-      if (rootAdmin) {
+      // Ensure root administrator and coordinator exist and are active
+      let rootAdmin = (this.data.users || []).find((u) => u.email && u.email.toLowerCase() === 'admin@eloquence.com');
+      if (!rootAdmin) {
+        const bcrypt = require('bcryptjs');
+        const hash = bcrypt.hashSync('admin123', 10);
+        rootAdmin = {
+          id: 'a0000000-0000-0000-0000-000000000001',
+          email: 'admin@eloquence.com',
+          password_hash: hash,
+          role: 'ADMIN',
+          is_active: true,
+          created_at: new Date().toISOString()
+        };
+        this.data.users.push(rootAdmin);
+      } else {
         rootAdmin.is_active = true;
+      }
+
+      if (!this.data.admins.find((a) => a.id === rootAdmin.id || (a.email && a.email.toLowerCase() === 'admin@eloquence.com'))) {
+        this.data.admins.push({
+          id: rootAdmin.id,
+          full_name: 'Symposium Director',
+          email: 'admin@eloquence.com',
+          admin_level: 'SUPER_ADMIN',
+          created_at: new Date().toISOString()
+        });
+      }
+
+      let coordinator = (this.data.users || []).find((u) => u.email && u.email.toLowerCase() === 'coordinator@eloquence.com');
+      if (!coordinator) {
+        const bcrypt = require('bcryptjs');
+        const hash = bcrypt.hashSync('coordinator123', 10);
+        coordinator = {
+          id: 'a0000000-0000-0000-0000-000000000002',
+          email: 'coordinator@eloquence.com',
+          password_hash: hash,
+          role: 'COORDINATOR',
+          is_active: true,
+          created_at: new Date().toISOString()
+        };
+        this.data.users.push(coordinator);
+      } else {
+        coordinator.is_active = true;
+      }
+
+      if (!this.data.admins.find((a) => a.id === coordinator.id || (a.email && a.email.toLowerCase() === 'coordinator@eloquence.com'))) {
+        this.data.admins.push({
+          id: coordinator.id,
+          full_name: 'Event Coordinator',
+          email: 'coordinator@eloquence.com',
+          admin_level: 'COORDINATOR',
+          created_at: new Date().toISOString()
+        });
       }
 
       // Auto-synchronize any PARTICIPANT users into participants table and Supabase

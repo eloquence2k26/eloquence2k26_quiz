@@ -190,10 +190,8 @@ class ExamController {
       }
 
       questionList.forEach((q, idx) => {
-        let optionsOrder = ['A', 'B', 'C', 'D'];
-        if (quiz.shuffle_options) {
-          optionsOrder = shuffleArray(optionsOrder);
-        }
+        // Standard A, B, C, D order without option shuffling (options never shuffle)
+        const optionsOrder = ['A', 'B', 'C', 'D'];
 
         db.insert('question_orders', {
           attempt_id: attempt.id,
@@ -225,7 +223,7 @@ class ExamController {
 
       const userAns = savedAnswers.find((ans) => ans.question_id === q.id);
 
-      // Map options based on options_order
+      // Standard A, B, C, D option mapping (Option A = option_a, Option B = option_b, etc.)
       const rawOptions = {
         A: q.option_a,
         B: q.option_b,
@@ -233,7 +231,7 @@ class ExamController {
         D: q.option_d
       };
 
-      const options = qo.options_order.map((key) => ({
+      const options = ['A', 'B', 'C', 'D'].map((key) => ({
         key,
         text: rawOptions[key]
       }));

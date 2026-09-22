@@ -10,7 +10,7 @@ const upload = multer({
   limits: { fileSize: 50 * 1024 * 1024 } // 50MB file limit
 });
 
-router.use(authenticate, authorize('ADMIN'));
+router.use(authenticate, authorize('ADMIN', 'SUPER_ADMIN', 'COORDINATOR'));
 
 router.get('/', QuestionController.getAllQuestions);
 router.post('/', QuestionController.createQuestion);

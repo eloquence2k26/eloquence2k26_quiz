@@ -45,6 +45,32 @@ export default function AdminLayout() {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [isSyncing, setIsSyncing] = useState(false);
 
+  // Role detection
+  const userRole = (user?.admin?.admin_level || user?.role || 'ADMIN').toUpperCase();
+  const isSuperAdmin = userRole === 'SUPER_ADMIN';
+  const isAdmin = userRole === 'ADMIN' || isSuperAdmin;
+  const isCoordinator = userRole === 'COORDINATOR';
+  const isProctor = userRole === 'PROCTOR';
+  const isVolunteer = userRole === 'VOLUNTEER';
+
+  const getPortalMeta = () => {
+    switch (userRole) {
+      case 'SUPER_ADMIN':
+        return { title: 'Director Portal', badge: 'Super Admin', color: 'from-amber-600 to-orange-600' };
+      case 'COORDINATOR':
+        return { title: 'Coordinator Portal', badge: 'Event Coordinator', color: 'from-blue-600 to-cyan-600' };
+      case 'PROCTOR':
+        return { title: 'Proctor Arena', badge: 'Exam Invigilator', color: 'from-emerald-600 to-teal-600' };
+      case 'VOLUNTEER':
+        return { title: 'Volunteer Desk', badge: 'Desk Support', color: 'from-purple-600 to-pink-600' };
+      case 'ADMIN':
+      default:
+        return { title: 'Admin Portal', badge: 'Symposium Admin', color: 'from-brand-600 to-indigo-600' };
+    }
+  };
+
+  const portalMeta = getPortalMeta();
+
   const handleGlobalSync = async () => {
     setIsSyncing(true);
     try {
@@ -60,42 +86,55 @@ export default function AdminLayout() {
   };
 
   // User Management Sub-items definition
-  const userManagerItems = [
-    { label: 'Users', icon: Users, path: '/admin/users', desc: 'All users, staff & participants' },
-    { label: 'Roles', icon: ShieldCheck, path: '/admin/roles', desc: 'Roles & permissions matrix' },
-    { label: 'User Registration', icon: UserPlus, path: '/admin/user-register', desc: 'Single & Multi-format import' },
-    { label: 'Participants', icon: Users, path: '/admin/participants', desc: 'Registered scholars directory' },
-    { label: 'Assign Participants', icon: UserCheck, path: '/admin/assign-participants', desc: 'Direct quiz & round assignment' }
+  const allUserManagerItems = [
+    { label: 'Users Directory', icon: Users, path: '/admin/users', desc: 'All users, staff & participants', allowed: ['ADMIN', 'SUPER_ADMIN', 'COORDINATOR'] },
+    { label: 'Roles & Hierarchy', icon: ShieldCheck, path: '/admin/roles', desc: 'Roles & permissions matrix', allowed: ['ADMIN', 'SUPER_ADMIN', 'COORDINATOR', 'PROCTOR', 'VOLUNTEER'] },
+    { label: 'User Registration', icon: UserPlus, path: '/admin/user-register', desc: 'Single & Multi-format import', allowed: ['ADMIN', 'SUPER_ADMIN', 'COORDINATOR', 'VOLUNTEER'] },
+    { label: 'Participants', icon: Users, path: '/admin/participants', desc: 'Registered scholars directory', allowed: ['ADMIN', 'SUPER_ADMIN', 'COORDINATOR', 'VOLUNTEER'] },
+    { label: 'Assign Participants', icon: UserCheck, path: '/admin/assign-participants', desc: 'Direct quiz & round assignment', allowed: ['ADMIN', 'SUPER_ADMIN', 'COORDINATOR', 'VOLUNTEER'] }
   ];
+
+  const userManagerItems = allUserManagerItems.filter((i) => i.allowed.includes(userRole) || isSuperAdmin);
 
   // Event Manager Sub-items definition
-  const eventManagerItems = [
-    { label: 'Event Management', icon: BookOpen, path: '/admin/quizzes', desc: 'Manage events & quizzes' },
-    { label: 'Assign Participants', icon: UserCheck, path: '/admin/assign-participants', desc: 'Enroll scholars to quizzes' },
-    { label: 'Questions', icon: HelpCircle, path: '/admin/questions', desc: 'MCQ question bank' },
-    { label: 'Quiz Schedule', icon: Calendar, path: '/admin/schedule', desc: 'Timeline & entry windows' },
-    { label: 'Rounds', icon: Layers, path: '/admin/rounds', desc: 'Round 1 & Round 2 setup' },
-    { label: 'Round Selection', icon: Filter, path: '/admin/round-selection', desc: 'Qualifiers & promotion' },
-    { label: 'Results', icon: Award, path: '/admin/results', desc: 'Scores & leaderboards' }
+  const allEventManagerItems = [
+    { label: 'Event Management', icon: BookOpen, path: '/admin/quizzes', desc: 'Manage events & quizzes', allowed: ['ADMIN', 'SUPER_ADMIN', 'COORDINATOR'] },
+    { label: 'Assign Participants', icon: UserCheck, path: '/admin/assign-participants', desc: 'Enroll scholars to quizzes', allowed: ['ADMIN', 'SUPER_ADMIN', 'COORDINATOR', 'VOLUNTEER'] },
+    { label: 'Question Bank', icon: HelpCircle, path: '/admin/questions', desc: 'MCQ question bank authoring', allowed: ['ADMIN', 'SUPER_ADMIN', 'COORDINATOR'] },
+    { label: 'Quiz Schedule', icon: Calendar, path: '/admin/schedule', desc: 'Timeline & entry windows', allowed: ['ADMIN', 'SUPER_ADMIN', 'COORDINATOR'] },
+    { label: 'Rounds Setup', icon: Layers, path: '/admin/rounds', desc: 'Round 1 & Round 2 setup', allowed: ['ADMIN', 'SUPER_ADMIN', 'COORDINATOR'] },
+    { label: 'Round Selection', icon: Filter, path: '/admin/round-selection', desc: 'Qualifiers & promotion to Round 2', allowed: ['ADMIN', 'SUPER_ADMIN', 'COORDINATOR'] },
+    { label: 'Results & Standings', icon: Award, path: '/admin/results', desc: 'Scores & leaderboards', allowed: ['ADMIN', 'SUPER_ADMIN', 'COORDINATOR', 'PROCTOR', 'VOLUNTEER'] }
   ];
 
-  // Primary menu items
-  const primaryItems = [
-    { label: 'Dashboard', icon: LayoutDashboard, path: '/admin/dashboard' },
-    { label: 'Assign Participants', icon: UserCheck, path: '/admin/assign-participants' },
-    { label: 'User Registration', icon: UserPlus, path: '/admin/user-register' },
-    { label: 'Participants', icon: Users, path: '/admin/participants' }
+  const eventManagerItems = allEventManagerItems.filter((i) => i.allowed.includes(userRole) || isSuperAdmin);
+
+  // Primary Overview menu items
+  const allPrimaryItems = [
+    { label: 'Dashboard', icon: LayoutDashboard, path: '/admin/dashboard', allowed: ['ADMIN', 'SUPER_ADMIN', 'COORDINATOR', 'PROCTOR', 'VOLUNTEER'] },
+    { label: 'Event Quizzes', icon: BookOpen, path: '/admin/quizzes', allowed: ['COORDINATOR'] },
+    { label: 'Question Bank', icon: HelpCircle, path: '/admin/questions', allowed: ['COORDINATOR'] },
+    { label: 'Assign Participants', icon: UserCheck, path: '/admin/assign-participants', allowed: ['ADMIN', 'SUPER_ADMIN', 'COORDINATOR', 'VOLUNTEER'] },
+    { label: 'User Registration', icon: UserPlus, path: '/admin/user-register', allowed: ['ADMIN', 'SUPER_ADMIN', 'COORDINATOR', 'VOLUNTEER'] },
+    { label: 'Participants', icon: Users, path: '/admin/participants', allowed: ['ADMIN', 'SUPER_ADMIN', 'COORDINATOR', 'VOLUNTEER'] }
   ];
+
+  // Distinct primary items
+  const primaryItems = allPrimaryItems
+    .filter((i) => i.allowed.includes(userRole) || isSuperAdmin)
+    .filter((item, index, self) => index === self.findIndex((t) => t.path === item.path));
 
   // Operations & proctoring items
-  const operationsItems = [
-    { label: 'Live Exams', icon: Activity, path: '/admin/live-exams' },
-    { label: 'Exam Restarts', icon: RotateCcw, path: '/admin/restarts' },
-    { label: 'Announcements', icon: Bell, path: '/admin/announcements' },
-    { label: 'Security Violations', icon: ShieldAlert, path: '/admin/violations' },
-    { label: 'Reports', icon: FileSpreadsheet, path: '/admin/reports' },
-    { label: 'Settings', icon: Settings, path: '/admin/settings' }
+  const allOperationsItems = [
+    { label: 'Live Exams', icon: Activity, path: '/admin/live-exams', allowed: ['ADMIN', 'SUPER_ADMIN', 'COORDINATOR', 'PROCTOR'] },
+    { label: 'Exam Restarts', icon: RotateCcw, path: '/admin/restarts', allowed: ['ADMIN', 'SUPER_ADMIN', 'PROCTOR'] },
+    { label: 'Announcements', icon: Bell, path: '/admin/announcements', allowed: ['ADMIN', 'SUPER_ADMIN', 'COORDINATOR', 'PROCTOR'] },
+    { label: 'Security Violations', icon: ShieldAlert, path: '/admin/violations', allowed: ['ADMIN', 'SUPER_ADMIN', 'COORDINATOR', 'PROCTOR'] },
+    { label: 'Reports & Exports', icon: FileSpreadsheet, path: '/admin/reports', allowed: ['ADMIN', 'SUPER_ADMIN', 'COORDINATOR'] },
+    { label: 'System Settings', icon: Settings, path: '/admin/settings', allowed: ['ADMIN', 'SUPER_ADMIN'] }
   ];
+
+  const operationsItems = allOperationsItems.filter((i) => i.allowed.includes(userRole) || isSuperAdmin);
 
   // Check active accordion states
   const isUserManagerActive = userManagerItems.some((item) => location.pathname === item.path);
@@ -150,14 +189,16 @@ export default function AdminLayout() {
         {/* Brand Header */}
         <div className="h-16 px-6 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <div className="w-9 h-9 rounded-xl bg-gradient-to-tr from-brand-600 to-indigo-600 flex items-center justify-center text-white font-bold shadow-md shadow-brand-500/20">
+            <div className={`w-9 h-9 rounded-xl bg-gradient-to-tr ${portalMeta.color} flex items-center justify-center text-white font-bold shadow-md`}>
               <Sparkles className="w-5 h-5" />
             </div>
             <div>
               <h1 className="text-sm font-black tracking-tight text-slate-900 dark:text-white uppercase">
                 Eloquence <span className="text-brand-600 dark:text-brand-400">'26</span>
               </h1>
-              <p className="text-[10px] font-semibold tracking-wider text-slate-400 uppercase">Admin Portal</p>
+              <p className="text-[10px] font-bold tracking-wider text-brand-600 dark:text-brand-400 uppercase">
+                {portalMeta.title}
+              </p>
             </div>
           </div>
           <button
@@ -197,168 +238,176 @@ export default function AdminLayout() {
             })}
           </div>
 
-          {/* User Management Section & Dropdown */}
-          <div className="pt-1">
-            <div className="px-3.5 mb-1.5 flex items-center justify-between">
-              <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">
-                Staff & Roles
-              </span>
-            </div>
-
-            {/* User Management Accordion Dropdown Trigger */}
-            <button
-              type="button"
-              onClick={() => setUserManagerOpen(!userManagerOpen)}
-              className={`w-full flex items-center justify-between px-3.5 py-2.5 rounded-xl text-xs font-bold transition-all duration-150 border ${
-                isUserManagerActive
-                  ? 'bg-purple-50/80 dark:bg-purple-950/40 text-purple-700 dark:text-purple-300 border-purple-200 dark:border-purple-900/60 shadow-sm'
-                  : 'bg-white dark:bg-slate-900/50 text-slate-700 dark:text-slate-200 border-slate-200/80 dark:border-slate-800/80 hover:bg-slate-100 dark:hover:bg-slate-800/60'
-              }`}
-            >
-              <div className="flex items-center gap-2.5">
-                <div className={`w-6 h-6 rounded-lg flex items-center justify-center ${
-                  isUserManagerActive
-                    ? 'bg-purple-600 text-white shadow-sm shadow-purple-500/30'
-                    : 'bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400'
-                }`}>
-                  <UserCog className="w-3.5 h-3.5" />
-                </div>
-                <span className="font-extrabold tracking-tight">User Management</span>
-              </div>
-
-              <div className="flex items-center gap-1.5">
-                <span className="px-1.5 py-0.5 rounded-md text-[10px] font-bold bg-purple-100 dark:bg-purple-950 text-purple-700 dark:text-purple-300">
-                  2
+          {/* User Management Section & Dropdown (For Admins and Coordinators) */}
+          {userManagerItems.length > 0 && (
+            <div className="pt-1">
+              <div className="px-3.5 mb-1.5 flex items-center justify-between">
+                <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">
+                  {isCoordinator ? 'Scholars & Roles' : 'Staff & Roles'}
                 </span>
-                <ChevronDown
-                  className={`w-3.5 h-3.5 text-slate-400 transition-transform duration-200 ${
-                    userManagerOpen ? 'rotate-0' : '-rotate-90'
-                  }`}
-                />
               </div>
-            </button>
 
-            {/* User Management Dropdown Items */}
-            {userManagerOpen && (
-              <div className="mt-1.5 ml-3 pl-3 border-l-2 border-purple-200 dark:border-purple-900/50 space-y-1">
-                {userManagerItems.map((item) => {
-                  const Icon = item.icon;
-                  const isActive = location.pathname === item.path;
+              {/* User Management Accordion Dropdown Trigger */}
+              <button
+                type="button"
+                onClick={() => setUserManagerOpen(!userManagerOpen)}
+                className={`w-full flex items-center justify-between px-3.5 py-2.5 rounded-xl text-xs font-bold transition-all duration-150 border ${
+                  isUserManagerActive
+                    ? 'bg-purple-50/80 dark:bg-purple-950/40 text-purple-700 dark:text-purple-300 border-purple-200 dark:border-purple-900/60 shadow-sm'
+                    : 'bg-white dark:bg-slate-900/50 text-slate-700 dark:text-slate-200 border-slate-200/80 dark:border-slate-800/80 hover:bg-slate-100 dark:hover:bg-slate-800/60'
+                }`}
+              >
+                <div className="flex items-center gap-2.5">
+                  <div className={`w-6 h-6 rounded-lg flex items-center justify-center ${
+                    isUserManagerActive
+                      ? 'bg-purple-600 text-white shadow-sm shadow-purple-500/30'
+                      : 'bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400'
+                  }`}>
+                    <UserCog className="w-3.5 h-3.5" />
+                  </div>
+                  <span className="font-extrabold tracking-tight">
+                    {isCoordinator ? 'Roster & Roles' : 'User Management'}
+                  </span>
+                </div>
 
-                  return (
-                    <Link
-                      key={item.path}
-                      to={item.path}
-                      onClick={() => setSidebarOpen(false)}
-                      className={`flex items-center gap-2.5 px-3 py-2 rounded-xl text-xs font-semibold transition-all duration-150 ${
-                        isActive
-                          ? 'bg-purple-600 text-white font-bold shadow-sm shadow-purple-500/20'
-                          : 'text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800/60 hover:text-slate-900 dark:hover:text-slate-100'
-                      }`}
-                    >
-                      <Icon className={`w-3.5 h-3.5 flex-shrink-0 ${isActive ? 'text-white' : 'text-slate-400'}`} />
-                      <span className="truncate">{item.label}</span>
-                    </Link>
-                  );
-                })}
-              </div>
-            )}
-          </div>
+                <div className="flex items-center gap-1.5">
+                  <span className="px-1.5 py-0.5 rounded-md text-[10px] font-bold bg-purple-100 dark:bg-purple-950 text-purple-700 dark:text-purple-300">
+                    {userManagerItems.length}
+                  </span>
+                  <ChevronDown
+                    className={`w-3.5 h-3.5 text-slate-400 transition-transform duration-200 ${
+                      userManagerOpen ? 'rotate-0' : '-rotate-90'
+                    }`}
+                  />
+                </div>
+              </button>
+
+              {/* User Management Dropdown Items */}
+              {userManagerOpen && (
+                <div className="mt-1.5 ml-3 pl-3 border-l-2 border-purple-200 dark:border-purple-900/50 space-y-1">
+                  {userManagerItems.map((item) => {
+                    const Icon = item.icon;
+                    const isActive = location.pathname === item.path;
+
+                    return (
+                      <Link
+                        key={item.path}
+                        to={item.path}
+                        onClick={() => setSidebarOpen(false)}
+                        className={`flex items-center gap-2.5 px-3 py-2 rounded-xl text-xs font-semibold transition-all duration-150 ${
+                          isActive
+                            ? 'bg-purple-600 text-white font-bold shadow-sm shadow-purple-500/20'
+                            : 'text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800/60 hover:text-slate-900 dark:hover:text-slate-100'
+                        }`}
+                      >
+                        <Icon className={`w-3.5 h-3.5 flex-shrink-0 ${isActive ? 'text-white' : 'text-slate-400'}`} />
+                        <span className="truncate">{item.label}</span>
+                      </Link>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          )}
 
           {/* Event Manager Section & Dropdown */}
-          <div className="pt-1">
-            <div className="px-3.5 mb-1.5 flex items-center justify-between">
-              <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">
-                Competition Hub
-              </span>
-            </div>
-
-            {/* Event Manager Accordion Dropdown Trigger */}
-            <button
-              type="button"
-              onClick={() => setEventManagerOpen(!eventManagerOpen)}
-              className={`w-full flex items-center justify-between px-3.5 py-2.5 rounded-xl text-xs font-bold transition-all duration-150 border ${
-                isEventManagerActive
-                  ? 'bg-brand-50/80 dark:bg-brand-950/40 text-brand-700 dark:text-brand-300 border-brand-200 dark:border-brand-900/60 shadow-sm'
-                  : 'bg-white dark:bg-slate-900/50 text-slate-700 dark:text-slate-200 border-slate-200/80 dark:border-slate-800/80 hover:bg-slate-100 dark:hover:bg-slate-800/60'
-              }`}
-            >
-              <div className="flex items-center gap-2.5">
-                <div className={`w-6 h-6 rounded-lg flex items-center justify-center ${
-                  isEventManagerActive
-                    ? 'bg-brand-600 text-white shadow-sm shadow-brand-500/30'
-                    : 'bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400'
-                }`}>
-                  <FolderKanban className="w-3.5 h-3.5" />
-                </div>
-                <span className="font-extrabold tracking-tight">Event Manager</span>
-              </div>
-
-              <div className="flex items-center gap-1.5">
-                <span className="px-1.5 py-0.5 rounded-md text-[10px] font-bold bg-brand-100 dark:bg-brand-950 text-brand-700 dark:text-brand-300">
-                  6
+          {eventManagerItems.length > 0 && (
+            <div className="pt-1">
+              <div className="px-3.5 mb-1.5 flex items-center justify-between">
+                <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">
+                  Competition Hub
                 </span>
-                <ChevronDown
-                  className={`w-3.5 h-3.5 text-slate-400 transition-transform duration-200 ${
-                    eventManagerOpen ? 'rotate-0' : '-rotate-90'
-                  }`}
-                />
               </div>
-            </button>
 
-            {/* Event Manager Dropdown Items */}
-            {eventManagerOpen && (
-              <div className="mt-1.5 ml-3 pl-3 border-l-2 border-brand-200 dark:border-brand-900/50 space-y-1">
-                {eventManagerItems.map((item) => {
-                  const Icon = item.icon;
-                  const isActive = location.pathname === item.path;
+              {/* Event Manager Accordion Dropdown Trigger */}
+              <button
+                type="button"
+                onClick={() => setEventManagerOpen(!eventManagerOpen)}
+                className={`w-full flex items-center justify-between px-3.5 py-2.5 rounded-xl text-xs font-bold transition-all duration-150 border ${
+                  isEventManagerActive
+                    ? 'bg-brand-50/80 dark:bg-brand-950/40 text-brand-700 dark:text-brand-300 border-brand-200 dark:border-brand-900/60 shadow-sm'
+                    : 'bg-white dark:bg-slate-900/50 text-slate-700 dark:text-slate-200 border-slate-200/80 dark:border-slate-800/80 hover:bg-slate-100 dark:hover:bg-slate-800/60'
+                }`}
+              >
+                <div className="flex items-center gap-2.5">
+                  <div className={`w-6 h-6 rounded-lg flex items-center justify-center ${
+                    isEventManagerActive
+                      ? 'bg-brand-600 text-white shadow-sm shadow-brand-500/30'
+                      : 'bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400'
+                  }`}>
+                    <FolderKanban className="w-3.5 h-3.5" />
+                  </div>
+                  <span className="font-extrabold tracking-tight">Event Manager</span>
+                </div>
 
-                  return (
-                    <Link
-                      key={item.path}
-                      to={item.path}
-                      onClick={() => setSidebarOpen(false)}
-                      className={`flex items-center gap-2.5 px-3 py-2 rounded-xl text-xs font-semibold transition-all duration-150 ${
-                        isActive
-                          ? 'bg-brand-600 text-white font-bold shadow-sm shadow-brand-500/20'
-                          : 'text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800/60 hover:text-slate-900 dark:hover:text-slate-100'
-                      }`}
-                    >
-                      <Icon className={`w-3.5 h-3.5 flex-shrink-0 ${isActive ? 'text-white' : 'text-slate-400'}`} />
-                      <span className="truncate">{item.label}</span>
-                    </Link>
-                  );
-                })}
-              </div>
-            )}
-          </div>
+                <div className="flex items-center gap-1.5">
+                  <span className="px-1.5 py-0.5 rounded-md text-[10px] font-bold bg-brand-100 dark:bg-brand-950 text-brand-700 dark:text-brand-300">
+                    {eventManagerItems.length}
+                  </span>
+                  <ChevronDown
+                    className={`w-3.5 h-3.5 text-slate-400 transition-transform duration-200 ${
+                      eventManagerOpen ? 'rotate-0' : '-rotate-90'
+                    }`}
+                  />
+                </div>
+              </button>
+
+              {/* Event Manager Dropdown Items */}
+              {eventManagerOpen && (
+                <div className="mt-1.5 ml-3 pl-3 border-l-2 border-brand-200 dark:border-brand-900/50 space-y-1">
+                  {eventManagerItems.map((item) => {
+                    const Icon = item.icon;
+                    const isActive = location.pathname === item.path;
+
+                    return (
+                      <Link
+                        key={item.path}
+                        to={item.path}
+                        onClick={() => setSidebarOpen(false)}
+                        className={`flex items-center gap-2.5 px-3 py-2 rounded-xl text-xs font-semibold transition-all duration-150 ${
+                          isActive
+                            ? 'bg-brand-600 text-white font-bold shadow-sm shadow-brand-500/20'
+                            : 'text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800/60 hover:text-slate-900 dark:hover:text-slate-100'
+                        }`}
+                      >
+                        <Icon className={`w-3.5 h-3.5 flex-shrink-0 ${isActive ? 'text-white' : 'text-slate-400'}`} />
+                        <span className="truncate">{item.label}</span>
+                      </Link>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          )}
 
           {/* Operations & Security Group */}
-          <div className="space-y-1 pt-1">
-            <p className="px-3.5 text-[10px] font-bold uppercase tracking-wider text-slate-400">
-              Proctoring & System
-            </p>
-            {operationsItems.map((item) => {
-              const Icon = item.icon;
-              const isActive = location.pathname === item.path;
+          {operationsItems.length > 0 && (
+            <div className="space-y-1 pt-1">
+              <p className="px-3.5 text-[10px] font-bold uppercase tracking-wider text-slate-400">
+                Proctoring & Operations
+              </p>
+              {operationsItems.map((item) => {
+                const Icon = item.icon;
+                const isActive = location.pathname === item.path;
 
-              return (
-                <Link
-                  key={item.path}
-                  to={item.path}
-                  onClick={() => setSidebarOpen(false)}
-                  className={`flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-xs font-semibold transition-all duration-150 ${
-                    isActive
-                      ? 'bg-brand-50 text-brand-700 dark:bg-brand-950/60 dark:text-brand-300 font-bold border border-brand-200 dark:border-brand-900/50 shadow-sm'
-                      : 'text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800/60 hover:text-slate-900 dark:hover:text-slate-100'
-                  }`}
-                >
-                  <Icon className={`w-4 h-4 ${isActive ? 'text-brand-600 dark:text-brand-400' : 'text-slate-400'}`} />
-                  <span>{item.label}</span>
-                </Link>
-              );
-            })}
-          </div>
+                return (
+                  <Link
+                    key={item.path}
+                    to={item.path}
+                    onClick={() => setSidebarOpen(false)}
+                    className={`flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-xs font-semibold transition-all duration-150 ${
+                      isActive
+                        ? 'bg-brand-50 text-brand-700 dark:bg-brand-950/60 dark:text-brand-300 font-bold border border-brand-200 dark:border-brand-900/50 shadow-sm'
+                        : 'text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800/60 hover:text-slate-900 dark:hover:text-slate-100'
+                    }`}
+                  >
+                    <Icon className={`w-4 h-4 ${isActive ? 'text-brand-600 dark:text-brand-400' : 'text-slate-400'}`} />
+                    <span>{item.label}</span>
+                  </Link>
+                );
+              })}
+            </div>
+          )}
         </div>
 
         {/* User Info & Logout Footer */}
@@ -366,11 +415,13 @@ export default function AdminLayout() {
           <div className="flex items-center justify-between p-2 rounded-xl bg-slate-50 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-800 mb-2">
             <div className="flex items-center gap-2.5 min-w-0">
               <div className="w-8 h-8 rounded-lg bg-brand-100 dark:bg-brand-950 text-brand-700 dark:text-brand-300 font-bold flex items-center justify-center text-xs">
-                {user?.full_name?.charAt(0) || 'A'}
+                {user?.full_name?.charAt(0) || 'U'}
               </div>
               <div className="truncate">
-                <p className="text-xs font-bold text-slate-800 dark:text-slate-200 truncate">{user?.full_name || 'Admin'}</p>
-                <p className="text-[10px] text-slate-400 truncate">{user?.email}</p>
+                <p className="text-xs font-bold text-slate-800 dark:text-slate-200 truncate">{user?.full_name || 'Staff'}</p>
+                <div className="flex items-center gap-1">
+                  <span className="text-[10px] font-mono text-brand-600 dark:text-brand-400 font-semibold">{portalMeta.badge}</span>
+                </div>
               </div>
             </div>
             <ThemeToggle className="scale-90" />
@@ -398,7 +449,7 @@ export default function AdminLayout() {
               <Menu className="w-5 h-5" />
             </button>
 
-            {/* Quick User Management Switcher Dropdown in Top Header */}
+            {/* Quick Portal Switcher Dropdown in Top Header */}
             <div className="relative" ref={topDropdownRef}>
               <button
                 type="button"
@@ -412,108 +463,123 @@ export default function AdminLayout() {
                 }`}
               >
                 <UserCog className="w-3.5 h-3.5 text-purple-600 dark:text-purple-400" />
-                <span>Manage Portals</span>
+                <span>Quick Navigator</span>
                 <ChevronDown className={`w-3.5 h-3.5 text-slate-400 transition-transform duration-150 ${topEventMenuOpen ? 'rotate-180' : ''}`} />
               </button>
 
               {topEventMenuOpen && (
                 <div className="absolute left-0 mt-2 w-72 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-2xl p-2 z-50 animate-in fade-in slide-in-from-top-2 duration-150">
-                  <div className="px-3 py-1 text-[10px] font-extrabold uppercase tracking-wider text-purple-600 dark:text-purple-400 flex items-center justify-between">
-                    <span>User Management</span>
-                    <span className="px-1.5 py-0.2 rounded text-[9px] bg-purple-100 dark:bg-purple-950 font-mono">2 Sections</span>
-                  </div>
-                  <div className="space-y-0.5 mt-1 mb-2">
-                    {userManagerItems.map((item) => {
-                      const Icon = item.icon;
-                      const isActive = location.pathname === item.path;
-                      return (
-                        <Link
-                          key={item.path}
-                          to={item.path}
-                          onClick={() => setTopEventMenuOpen(false)}
-                          className={`flex items-start gap-2.5 px-3 py-2 rounded-xl transition-all ${
-                            isActive
-                              ? 'bg-purple-50 dark:bg-purple-950/70 text-purple-700 dark:text-purple-300 font-bold border border-purple-200 dark:border-purple-900/60'
-                              : 'text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800'
-                          }`}
-                        >
-                          <Icon className={`w-4 h-4 mt-0.5 flex-shrink-0 ${isActive ? 'text-purple-600 dark:text-purple-400' : 'text-slate-400'}`} />
-                          <div>
-                            <p className="text-xs font-bold leading-none">{item.label}</p>
-                            <p className="text-[10px] text-slate-400 mt-0.5 leading-tight">{item.desc}</p>
-                          </div>
-                        </Link>
-                      );
-                    })}
-                  </div>
+                  {userManagerItems.length > 0 && (
+                    <>
+                      <div className="px-3 py-1 text-[10px] font-extrabold uppercase tracking-wider text-purple-600 dark:text-purple-400 flex items-center justify-between">
+                        <span>{isCoordinator ? 'Roster & Roles' : 'User Management'}</span>
+                        <span className="px-1.5 py-0.2 rounded text-[9px] bg-purple-100 dark:bg-purple-950 font-mono">{userManagerItems.length} Sections</span>
+                      </div>
+                      <div className="space-y-0.5 mt-1 mb-2">
+                        {userManagerItems.map((item) => {
+                          const Icon = item.icon;
+                          const isActive = location.pathname === item.path;
+                          return (
+                            <Link
+                              key={item.path}
+                              to={item.path}
+                              onClick={() => setTopEventMenuOpen(false)}
+                              className={`flex items-start gap-2.5 px-3 py-2 rounded-xl transition-all ${
+                                isActive
+                                  ? 'bg-purple-50 dark:bg-purple-950/70 text-purple-700 dark:text-purple-300 font-bold border border-purple-200 dark:border-purple-900/60'
+                                  : 'text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800'
+                              }`}
+                            >
+                              <Icon className={`w-4 h-4 mt-0.5 flex-shrink-0 ${isActive ? 'text-purple-600 dark:text-purple-400' : 'text-slate-400'}`} />
+                              <div>
+                                <p className="text-xs font-bold leading-none">{item.label}</p>
+                                <p className="text-[10px] text-slate-400 mt-0.5 leading-tight">{item.desc}</p>
+                              </div>
+                            </Link>
+                          );
+                        })}
+                      </div>
+                    </>
+                  )}
 
-                  <div className="px-3 py-1 text-[10px] font-extrabold uppercase tracking-wider text-brand-600 dark:text-brand-400 flex items-center justify-between border-t border-slate-100 dark:border-slate-800 pt-2">
-                    <span>Event Manager</span>
-                    <span className="px-1.5 py-0.2 rounded text-[9px] bg-brand-100 dark:bg-brand-950 font-mono">6 Sections</span>
-                  </div>
-                  <div className="space-y-0.5 mt-1">
-                    {eventManagerItems.map((item) => {
-                      const Icon = item.icon;
-                      const isActive = location.pathname === item.path;
-                      return (
-                        <Link
-                          key={item.path}
-                          to={item.path}
-                          onClick={() => setTopEventMenuOpen(false)}
-                          className={`flex items-start gap-2.5 px-3 py-2 rounded-xl transition-all ${
-                            isActive
-                              ? 'bg-brand-50 dark:bg-brand-950/70 text-brand-700 dark:text-brand-300 font-bold border border-brand-200 dark:border-brand-900/60'
-                              : 'text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800'
-                          }`}
-                        >
-                          <Icon className={`w-4 h-4 mt-0.5 flex-shrink-0 ${isActive ? 'text-brand-600 dark:text-brand-400' : 'text-slate-400'}`} />
-                          <div>
-                            <p className="text-xs font-bold leading-none">{item.label}</p>
-                            <p className="text-[10px] text-slate-400 mt-0.5 leading-tight">{item.desc}</p>
-                          </div>
-                        </Link>
-                      );
-                    })}
-                  </div>
+                  {eventManagerItems.length > 0 && (
+                    <>
+                      <div className="px-3 py-1 text-[10px] font-extrabold uppercase tracking-wider text-brand-600 dark:text-brand-400 flex items-center justify-between border-t border-slate-100 dark:border-slate-800 pt-2">
+                        <span>Competition Hub</span>
+                        <span className="px-1.5 py-0.2 rounded text-[9px] bg-brand-100 dark:bg-brand-950 font-mono">{eventManagerItems.length} Sections</span>
+                      </div>
+                      <div className="space-y-0.5 mt-1">
+                        {eventManagerItems.map((item) => {
+                          const Icon = item.icon;
+                          const isActive = location.pathname === item.path;
+                          return (
+                            <Link
+                              key={item.path}
+                              to={item.path}
+                              onClick={() => setTopEventMenuOpen(false)}
+                              className={`flex items-start gap-2.5 px-3 py-2 rounded-xl transition-all ${
+                                isActive
+                                  ? 'bg-brand-50 dark:bg-brand-950/70 text-brand-700 dark:text-brand-300 font-bold border border-brand-200 dark:border-brand-900/60'
+                                  : 'text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800'
+                              }`}
+                            >
+                              <Icon className={`w-4 h-4 mt-0.5 flex-shrink-0 ${isActive ? 'text-brand-600 dark:text-brand-400' : 'text-slate-400'}`} />
+                              <div>
+                                <p className="text-xs font-bold leading-none">{item.label}</p>
+                                <p className="text-[10px] text-slate-400 mt-0.5 leading-tight">{item.desc}</p>
+                              </div>
+                            </Link>
+                          );
+                        })}
+                      </div>
+                    </>
+                  )}
                 </div>
               )}
             </div>
 
             <div className="hidden md:block text-xs font-medium text-slate-400">
-              Department of CSE • Symposium Examination Console
+              Department of CSE • {portalMeta.badge} Console
             </div>
           </div>
 
           <div className="flex items-center gap-3">
-            <button
-              type="button"
-              onClick={handleGlobalSync}
-              disabled={isSyncing}
-              title="Force Sync & Fetch All Database Tables from Supabase PostgreSQL"
-              className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-blue-50 dark:bg-blue-950/60 border border-blue-200 dark:border-blue-800 text-blue-700 dark:text-blue-300 text-xs font-bold hover:bg-blue-100 transition-colors disabled:opacity-50"
-            >
-              <RefreshCw className={`w-3.5 h-3.5 ${isSyncing ? 'animate-spin text-blue-600' : 'text-blue-500'}`} />
-              <span className="hidden sm:inline">{isSyncing ? 'Syncing...' : 'Sync DB'}</span>
-            </button>
+            {isAdmin && (
+              <button
+                type="button"
+                onClick={handleGlobalSync}
+                disabled={isSyncing}
+                title="Force Sync & Fetch All Database Tables from Supabase PostgreSQL"
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-blue-50 dark:bg-blue-950/60 border border-blue-200 dark:border-blue-800 text-blue-700 dark:text-blue-300 text-xs font-bold hover:bg-blue-100 transition-colors disabled:opacity-50"
+              >
+                <RefreshCw className={`w-3.5 h-3.5 ${isSyncing ? 'animate-spin text-blue-600' : 'text-blue-500'}`} />
+                <span className="hidden sm:inline">{isSyncing ? 'Syncing...' : 'Sync DB'}</span>
+              </button>
+            )}
 
-            <Link
-              to="/admin/restarts"
-              className="hidden sm:flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-amber-50 dark:bg-amber-950/60 border border-amber-200 dark:border-amber-800 text-amber-700 dark:text-amber-300 text-xs font-bold hover:bg-amber-100 transition-colors"
-            >
-              <RotateCcw className="w-3.5 h-3.5" />
-              <span>Exam Restarts</span>
-            </Link>
+            {(isAdmin || isProctor) && (
+              <Link
+                to="/admin/restarts"
+                className="hidden sm:flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-amber-50 dark:bg-amber-950/60 border border-amber-200 dark:border-amber-800 text-amber-700 dark:text-amber-300 text-xs font-bold hover:bg-amber-100 transition-colors"
+              >
+                <RotateCcw className="w-3.5 h-3.5" />
+                <span>Exam Restarts</span>
+              </Link>
+            )}
 
-            <Link
-              to="/admin/user-register"
-              className="hidden md:flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-brand-50 dark:bg-brand-950/60 border border-brand-200 dark:border-brand-800 text-brand-700 dark:text-brand-300 text-xs font-bold hover:bg-brand-100 transition-colors"
-            >
-              <UserPlus className="w-3.5 h-3.5" />
-              <span>Register Users</span>
-            </Link>
+            {(isAdmin || isCoordinator || isVolunteer) && (
+              <Link
+                to="/admin/user-register"
+                className="hidden md:flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-brand-50 dark:bg-brand-950/60 border border-brand-200 dark:border-brand-800 text-brand-700 dark:text-brand-300 text-xs font-bold hover:bg-brand-100 transition-colors"
+              >
+                <UserPlus className="w-3.5 h-3.5" />
+                <span>Register Users</span>
+              </Link>
+            )}
+
             <div className="hidden lg:flex items-center gap-2 px-3 py-1.5 rounded-full bg-emerald-50 dark:bg-emerald-950/60 border border-emerald-200 dark:border-emerald-800 text-emerald-700 dark:text-emerald-300 text-xs font-semibold">
               <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
-              Proctor Active
+              <span>{userRole} Active</span>
             </div>
             <ThemeToggle />
           </div>

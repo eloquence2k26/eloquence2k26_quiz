@@ -649,20 +649,30 @@ class AdminController {
    */
   static async getRoles(req, res) {
     try {
+      const users = db.get('users') || [];
+      const admins = db.get('admins') || [];
+
+      const getCount = (roleName) => {
+        return users.filter((u) => {
+          const admin = admins.find((a) => a.id === u.id);
+          const currentRole = (admin?.admin_level || u.role || '').toUpperCase();
+          return currentRole === roleName;
+        }).length;
+      };
+
       const roles = [
         {
           id: 'role-super-admin',
           name: 'SUPER_ADMIN',
           title: 'Super Administrator / Director',
           description: 'Full unconstrained system authority over examinations, questions, scholars, proctoring, and server credentials.',
-          users_count: (db.get('admins') || []).filter((a) => a.admin_level === 'SUPER_ADMIN').length || 1,
+          users_count: getCount('SUPER_ADMIN') || 1,
           permissions: [
-            'All Privileges',
+            'All Privileges & Full Authority',
             'User & Role Management',
-            'Proctor Zero-Tolerance Overrides',
-            'Full Database Synchronization',
-            'Exam Attempt Restarts',
-            'Result Publishing & Cutoffs'
+            'System Security & Database Sync',
+            'Proctor Overrides & Exam Restarts',
+            'Publishing & Cutoffs'
           ],
           color: 'from-amber-600 to-orange-600',
           badge: 'Level 1 - Core'
@@ -672,7 +682,7 @@ class AdminController {
           name: 'ADMIN',
           title: 'Symposium Admin',
           description: 'Manages quiz events, question pools, participant registrations, schedule windows, and leaderboards.',
-          users_count: (db.get('users') || []).filter((u) => u.role === 'ADMIN').length || 1,
+          users_count: getCount('ADMIN') || 1,
           permissions: [
             'Event & Quiz Configuration',
             'Question Bank Creation',
@@ -688,10 +698,11 @@ class AdminController {
           name: 'COORDINATOR',
           title: 'Event Coordinator',
           description: 'Department coordinator responsible for event-specific quiz questions, candidate verification, and preliminary grading.',
-          users_count: 0,
+          users_count: getCount('COORDINATOR'),
           permissions: [
+            'Event & Quiz Management',
             'Question Bank Authoring',
-            'Event Roster Viewing',
+            'Event Roster & Participant Viewing',
             'Live Exam Monitoring',
             'Candidate Verification'
           ],
@@ -703,7 +714,7 @@ class AdminController {
           name: 'PROCTOR',
           title: 'Exam Proctor / Invigilator',
           description: 'Real-time arena monitor tracking security violations, browser focus loss, and mobile gestures.',
-          users_count: 0,
+          users_count: getCount('PROCTOR'),
           permissions: [
             'Live Examination Monitoring',
             'Security Violations Feed',
@@ -718,7 +729,7 @@ class AdminController {
           name: 'VOLUNTEER',
           title: 'Desk Volunteer',
           description: 'Registration desk staff assisting with participant onboarding, credential lookup, and lab seat allocation.',
-          users_count: 0,
+          users_count: getCount('VOLUNTEER'),
           permissions: [
             'Candidate Lookup',
             'Credential Quick-Fill',

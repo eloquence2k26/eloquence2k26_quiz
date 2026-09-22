@@ -36,32 +36,32 @@ router.post(
   ExamController.submitExam
 );
 
-// Admin live monitoring & control routes
+// Admin & Proctor live monitoring & control routes
 router.get(
   '/live/:quizId',
   authenticate,
-  authorize('ADMIN'),
+  authorize('ADMIN', 'SUPER_ADMIN', 'COORDINATOR', 'PROCTOR'),
   ExamController.getLiveMonitoring
 );
 
 router.post(
   '/attempts/:attemptId/admin-terminate',
   authenticate,
-  authorize('ADMIN'),
+  authorize('ADMIN', 'SUPER_ADMIN', 'COORDINATOR', 'PROCTOR'),
   ExamController.adminTerminateAttempt
 );
 
 router.get(
   '/admin/all-attempts',
   authenticate,
-  authorize('ADMIN'),
+  authorize('ADMIN', 'SUPER_ADMIN', 'COORDINATOR', 'PROCTOR'),
   ExamController.getAllAttemptsAdmin
 );
 
 router.post(
   '/attempts/:attemptId/admin-restart',
   authenticate,
-  authorize('ADMIN'),
+  authorize('ADMIN', 'SUPER_ADMIN'),
   ExamController.adminRestartAttempt
 );
 

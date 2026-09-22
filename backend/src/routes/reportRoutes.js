@@ -4,7 +4,7 @@ const ReportController = require('../controllers/reportController');
 const authenticate = require('../middleware/authMiddleware');
 const authorize = require('../middleware/roleMiddleware');
 
-router.use(authenticate, authorize('ADMIN'));
+router.use(authenticate, authorize('ADMIN', 'SUPER_ADMIN', 'COORDINATOR'));
 
 router.get('/quiz-results/:quizId/csv', ReportController.exportQuizResultsCSV);
 router.get('/participants/csv', ReportController.exportParticipantsCSV);
