@@ -320,26 +320,25 @@ class ParticipantController {
         return error(res, 'Full Name is required', 400);
       }
 
-      if (!mobile || !mobile.toString().trim()) {
+      if (!mobile || !mobile.trim()) {
         return error(res, 'Phone / Mobile number is required', 400);
       }
 
-      const rawMobile = mobile.toString().trim();
-      let mobileDigits = rawMobile.replace(/\D/g, '');
+      const cleanMobile = mobile.trim();
+      let mobileDigits = cleanMobile.replace(/\D/g, '');
       if (mobileDigits.length === 12 && mobileDigits.startsWith('91')) {
         mobileDigits = mobileDigits.slice(2);
       } else if (mobileDigits.length === 11 && mobileDigits.startsWith('0')) {
         mobileDigits = mobileDigits.slice(1);
       }
-      const cleanMobile = mobileDigits.length === 10 ? mobileDigits : rawMobile;
 
-      // Determine password: if custom password provided and auto_password is false, use custom; otherwise use first 4 digits of phone
-      let finalPassword = password && password.toString().trim() && !auto_password ? password.toString().trim() : '';
+      // Determine password: if custom password provided, use it; otherwise use first 4 digits of phone
+      let finalPassword = password && password.trim() ? password.trim() : '';
       if (!finalPassword) {
         finalPassword = mobileDigits.length >= 4 ? mobileDigits.slice(0, 4) : (mobileDigits || '1234');
       }
 
-      // Determine email: if not provided, auto-generate standard format using phone
+      // Determine email: if not provided, auto-generate standard format
       let finalEmail = email && email.trim() ? email.trim().toLowerCase() : '';
       if (!finalEmail) {
         finalEmail = `elq_${mobileDigits || Date.now().toString().slice(-6)}@eloquence.com`;
@@ -417,14 +416,12 @@ class ParticipantController {
         participant_id: participantId,
         full_name: newParticipant.full_name,
         email: finalEmail,
-        mobile: cleanMobile,
-        password: finalPassword
+        mobile: cleanMobile
       });
 
       return success(res, {
         ...newParticipant,
-        generated_password: finalPassword,
-        default_password: finalPassword
+        generated_password: finalPassword
       }, 'Participant registered successfully', 201);
     } catch (err) {
       return error(res, err.message, 500);
@@ -452,23 +449,21 @@ class ParticipantController {
 
       for (let i = 0; i < participants.length; i++) {
         const item = participants[i];
-        const fullName = (item.full_name || item.name || '').toString().trim();
-        const rawMobile = (item.mobile || item.phone || item.phone_number || item.contact || '').toString().trim();
+        const fullName = (item.full_name || item.name || '').trim();
+        const mobile = (item.mobile || item.phone || item.phone_number || '').toString().trim();
 
-        if (!fullName || !rawMobile) {
+        if (!fullName || !mobile) {
           errors.push({ row: i + 1, item, reason: 'Full Name and Phone Number are required' });
           continue;
         }
 
-        let mobileDigits = rawMobile.replace(/\D/g, '');
+        let mobileDigits = mobile.replace(/\D/g, '');
         if (mobileDigits.length === 12 && mobileDigits.startsWith('91')) {
           mobileDigits = mobileDigits.slice(2);
         } else if (mobileDigits.length === 11 && mobileDigits.startsWith('0')) {
           mobileDigits = mobileDigits.slice(1);
         }
-        const cleanMobile = mobileDigits.length === 10 ? mobileDigits : rawMobile;
 
-        // Auto password: use item.password if explicitly provided, otherwise first 4 digits of phone
         const autoPassword = item.password && item.password.toString().trim()
           ? item.password.toString().trim()
           : (mobileDigits.length >= 4 ? mobileDigits.slice(0, 4) : (mobileDigits || '1234'));
@@ -499,7 +494,7 @@ class ParticipantController {
         db.insert('profiles', {
           id: newUser.id,
           full_name: fullName,
-          mobile: cleanMobile
+          mobile
         });
 
         const eventTarget = (
@@ -516,7 +511,7 @@ class ParticipantController {
           participant_id: participantId,
           full_name: fullName,
           email,
-          mobile: cleanMobile,
+          mobile,
           college: (item.college || item.institution || req.body.college || 'Engineering College').toString().trim(),
           department: (item.department || item.dept || item.branch || req.body.department || 'Computer Science & Engineering').toString().trim(),
           year: (item.year || req.body.year || '3rd Year').toString().trim(),
@@ -554,7 +549,7 @@ class ParticipantController {
           id: newParticipant.id,
           participant_id: participantId,
           full_name: fullName,
-          mobile: cleanMobile,
+          mobile,
           email,
           college: newParticipant.college,
           department: newParticipant.department,

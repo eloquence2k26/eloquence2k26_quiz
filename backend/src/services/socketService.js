@@ -7,9 +7,8 @@ class SocketService {
   static init(server) {
     io = new Server(server, {
       cors: {
-        origin: (origin, callback) => callback(null, true),
-        credentials: true,
-        methods: ['GET', 'POST', 'PATCH', 'PUT', 'DELETE', 'OPTIONS']
+        origin: '*',
+        methods: ['GET', 'POST', 'PATCH', 'PUT', 'DELETE']
       }
     });
 

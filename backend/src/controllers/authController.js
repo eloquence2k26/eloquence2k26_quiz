@@ -16,13 +16,11 @@ class AuthController {
         return error(res, 'Password is required', 400);
       }
 
-      const inputLogin = (email || username || participant_id || '').trim().toLowerCase();
+      const inputLogin = (email || username || '').trim().toLowerCase();
       let user = null;
 
       if (inputLogin) {
-        const cleanDigits = inputLogin.replace(/\D/g, '');
-
-        // 1. In-Memory Cache Lookup by email, exact username, or prefix
+        // Instant In-Memory Cache Lookup by email, exact username, or prefix
         user = db.find('users', (u) => {
           if (!u.email) return false;
           const uEmail = u.email.toLowerCase();
@@ -30,40 +28,7 @@ class AuthController {
           return uEmail === inputLogin || uUsername === inputLogin || uEmail === `${inputLogin}@eloquence.com`;
         });
 
-        // 2. Lookup by participant_id in participants table
-        if (!user) {
-          const participantById = db.find('participants', (p) => p.participant_id && p.participant_id.toLowerCase() === inputLogin);
-          if (participantById) {
-            user = db.find('users', (u) => u.id === participantById.id || (u.email && u.email.toLowerCase() === participantById.email.toLowerCase()));
-          }
-        }
-
-        // 3. Lookup by mobile in participants or profiles if input has digits
-        if (!user && cleanDigits.length >= 4) {
-          const participantByMobile = db.find('participants', (p) => {
-            if (!p.mobile) return false;
-            const pDigits = p.mobile.replace(/\D/g, '');
-            return pDigits === cleanDigits || (cleanDigits.length === 10 && pDigits.endsWith(cleanDigits));
-          });
-
-          if (participantByMobile) {
-            user = db.find('users', (u) => u.id === participantByMobile.id || (u.email && u.email.toLowerCase() === participantByMobile.email.toLowerCase()));
-          }
-        }
-
-        if (!user && cleanDigits.length >= 4) {
-          const profileByMobile = db.find('profiles', (p) => {
-            if (!p.mobile) return false;
-            const pDigits = p.mobile.replace(/\D/g, '');
-            return pDigits === cleanDigits || (cleanDigits.length === 10 && pDigits.endsWith(cleanDigits));
-          });
-
-          if (profileByMobile) {
-            user = db.find('users', (u) => u.id === profileByMobile.id);
-          }
-        }
-
-        // 4. Fallback to Supabase only if not in memory cache
+        // Fallback to Supabase only if not in memory cache
         if (!user && db.client) {
           const { data: dbUsers } = await db.client
             .from('users')
@@ -75,6 +40,31 @@ class AuthController {
             if (!db.find('users', (u) => u.id === user.id)) {
               db.data.users.push(user);
             }
+          }
+        }
+      } else if (participant_id) {
+        const cleanPartId = participant_id.trim().toLowerCase();
+        // Instant In-Memory Cache Lookup (< 1ms)
+        let participant = db.find(
+          'participants',
+          (p) => p.participant_id && p.participant_id.toLowerCase() === cleanPartId
+        );
+
+        if (!participant && db.client) {
+          const { data: dbParts } = await db.client.from('participants').select('*').ilike('participant_id', cleanPartId);
+          if (dbParts && dbParts.length > 0) {
+            participant = dbParts[0];
+            if (!db.find('participants', (p) => p.id === participant.id)) {
+              db.data.participants.push(participant);
+            }
+          }
+        }
+
+        if (participant) {
+          user = db.find('users', (u) => u.id === participant.id);
+          if (!user && db.client) {
+            const { data: dbUsers } = await db.client.from('users').select('*').eq('id', participant.id);
+            if (dbUsers && dbUsers.length > 0) user = dbUsers[0];
           }
         }
       }
@@ -211,39 +201,20 @@ class AuthController {
         registration_number
       } = req.body;
 
-      const rawMobile = (mobile || '').toString().trim();
-      let mobileDigits = rawMobile.replace(/\D/g, '');
-      if (mobileDigits.length === 12 && mobileDigits.startsWith('91')) {
-        mobileDigits = mobileDigits.slice(2);
-      } else if (mobileDigits.length === 11 && mobileDigits.startsWith('0')) {
-        mobileDigits = mobileDigits.slice(1);
-      }
-      const cleanMobile = mobileDigits.length === 10 ? mobileDigits : rawMobile;
-
-      let finalPassword = password && password.toString().trim() ? password.toString().trim() : '';
-      if (!finalPassword) {
-        finalPassword = mobileDigits.length >= 4 ? mobileDigits.slice(0, 4) : (mobileDigits || '1234');
-      }
-
-      let finalEmail = email && email.trim() ? email.trim().toLowerCase() : '';
-      if (!finalEmail) {
-        finalEmail = `elq_${mobileDigits || Date.now().toString().slice(-6)}@eloquence.com`;
-      }
-
-      if (!full_name || (!finalEmail && !cleanMobile) || !college || !department || !year) {
+      if (!full_name || !email || !password || !college || !department || !year) {
         return error(res, 'All required fields must be provided.', 400);
       }
 
-      let existingUser = db.find('users', (u) => u.email.toLowerCase() === finalEmail.toLowerCase());
+      let existingUser = db.find('users', (u) => u.email.toLowerCase() === email.trim().toLowerCase());
       if (!existingUser && db.client) {
-        const { data: dbUsers } = await db.client.from('users').select('*').ilike('email', finalEmail);
+        const { data: dbUsers } = await db.client.from('users').select('*').ilike('email', email.trim());
         if (dbUsers && dbUsers.length > 0) existingUser = dbUsers[0];
       }
       if (existingUser) {
         return error(res, 'Email already registered. Please login.', 409);
       }
 
-      const password_hash = await bcrypt.hash(finalPassword, 10);
+      const password_hash = await bcrypt.hash(password, 10);
       let participantCount = db.get('participants').length + 1;
       if (db.client) {
         const { count } = await db.client.from('participants').select('*', { count: 'exact', head: true });
@@ -254,7 +225,7 @@ class AuthController {
       const participantId = `ELQ-2026-${String(participantCount).padStart(3, '0')}`;
 
       const newUser = db.insert('users', {
-        email: finalEmail,
+        email: email.trim().toLowerCase(),
         password_hash,
         role: 'PARTICIPANT',
         is_active: true
@@ -263,15 +234,15 @@ class AuthController {
       db.insert('profiles', {
         id: newUser.id,
         full_name: full_name.trim(),
-        mobile: cleanMobile
+        mobile: mobile ? mobile.trim() : ''
       });
 
       const newParticipant = db.insert('participants', {
         id: newUser.id,
         participant_id: participantId,
         full_name: full_name.trim(),
-        email: finalEmail,
-        mobile: cleanMobile,
+        email: email.trim().toLowerCase(),
+        mobile: mobile ? mobile.trim() : '',
         college: college.trim(),
         department: department.trim(),
         year: year.trim(),
