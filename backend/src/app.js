@@ -18,19 +18,30 @@ const reportRoutes = require('./routes/reportRoutes');
 
 const app = express();
 
-// Security and utility middleware
-app.use(helmet({
-  crossOriginResourcePolicy: false
-}));
+// Bulletproof Production CORS & Preflight OPTIONS Middleware
+app.use((req, res, next) => {
+  const origin = req.headers.origin;
+  if (origin) {
+    res.setHeader('Access-Control-Allow-Origin', origin);
+  } else {
+    res.setHeader('Access-Control-Allow-Origin', '*');
+  }
+  res.setHeader('Access-Control-Allow-Credentials', 'true');
+  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, PATCH, OPTIONS');
+  res.setHeader(
+    'Access-Control-Allow-Headers',
+    'Content-Type, Authorization, X-Requested-With, Accept, Origin, Access-Control-Allow-Origin, Access-Control-Allow-Headers, Access-Control-Request-Method, Access-Control-Request-Headers, x-exam-session-id'
+  );
+
+  // Instantly handle preflight OPTIONS requests with 200 OK
+  if (req.method === 'OPTIONS') {
+    return res.status(200).end();
+  }
+  next();
+});
 
 const corsOptions = {
-  origin: (origin, callback) => {
-    // Allow non-browser clients (curl, Postman, server-to-server)
-    if (!origin) return callback(null, true);
-    
-    // Dynamically match and allow Vercel, localhost, Render, or any frontend domain
-    return callback(null, true);
-  },
+  origin: true,
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
   allowedHeaders: [
