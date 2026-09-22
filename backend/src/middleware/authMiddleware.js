@@ -21,7 +21,7 @@ const authenticate = async (req, res, next) => {
     // Fallback lookup from Supabase if not in in-memory array
     if (!user && db.client) {
       try {
-        const { data } = await db.client.from('users').select('*').eq('id', decoded.id);
+        const { data } = await db.client.from('users').select('id, email, password_hash, role, is_active').eq('id', decoded.id);
         if (data && data.length > 0) {
           user = data[0];
           db.data.users.push(user);

@@ -124,10 +124,11 @@ export default function ParticipantDashboard() {
     socket.on('ROUND_STATUS_UPDATED', handleRealtimeRefresh);
     socket.on('ANNOUNCEMENT_CREATED', handleRealtimeRefresh);
 
-    // Polling fallback every 8 seconds
+    // Polling fallback every 30 seconds (WebSockets handle instant real-time events)
     const interval = setInterval(() => {
+      if (document.hidden) return;
       fetchData(false);
-    }, 8000);
+    }, 30000);
 
     return () => {
       socket.off('REFRESH_DASHBOARD', handleRealtimeRefresh);

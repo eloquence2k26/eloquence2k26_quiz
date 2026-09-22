@@ -37,7 +37,10 @@ export default function AvailableQuizzesPage() {
     socket.on('EXAM_RESTARTED', handleRefresh);
     socket.on('QUIZ_UPDATED', handleRefresh);
 
-    const interval = setInterval(() => fetchQuizzes(false), 8000);
+    const interval = setInterval(() => {
+      if (document.hidden) return;
+      fetchQuizzes(false);
+    }, 30000);
 
     return () => {
       socket.off('REFRESH_DASHBOARD', handleRefresh);

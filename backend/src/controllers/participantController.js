@@ -320,26 +320,31 @@ class ParticipantController {
         return error(res, 'Full Name is required', 400);
       }
 
-      if (!mobile || !mobile.trim()) {
+      if (!mobile || !mobile.toString().trim()) {
         return error(res, 'Phone / Mobile number is required', 400);
       }
 
-      const cleanMobile = mobile.trim();
-      let mobileDigits = cleanMobile.replace(/\D/g, '');
+      const rawMobile = mobile.toString().trim();
+      let mobileDigits = rawMobile.replace(/\D/g, '');
       if (mobileDigits.length === 12 && mobileDigits.startsWith('91')) {
         mobileDigits = mobileDigits.slice(2);
       } else if (mobileDigits.length === 11 && mobileDigits.startsWith('0')) {
         mobileDigits = mobileDigits.slice(1);
       }
 
-      // Determine password: if custom password provided, use it; otherwise use first 4 digits of phone
-      let finalPassword = password && password.trim() ? password.trim() : '';
-      if (!finalPassword) {
+      const cleanMobile = mobileDigits.length === 10 ? mobileDigits : rawMobile;
+
+      // Password: if custom password provided and auto_password is false, use custom password;
+      // otherwise automatically set password to the first 4 digits of phone number!
+      let finalPassword = '';
+      if (password && password.toString().trim() && auto_password === false) {
+        finalPassword = password.toString().trim();
+      } else {
         finalPassword = mobileDigits.length >= 4 ? mobileDigits.slice(0, 4) : (mobileDigits || '1234');
       }
 
       // Determine email: if not provided, auto-generate standard format
-      let finalEmail = email && email.trim() ? email.trim().toLowerCase() : '';
+      let finalEmail = email && email.toString().trim() ? email.toString().trim().toLowerCase() : '';
       if (!finalEmail) {
         finalEmail = `elq_${mobileDigits || Date.now().toString().slice(-6)}@eloquence.com`;
       }
@@ -429,7 +434,7 @@ class ParticipantController {
   }
 
   /**
-   * Bulk import participants (CSV, Excel, JSON)
+   * Bulk import participants (CSV, Excel, JSON, PDF, Word, TXT)
    */
   static async bulkImportParticipants(req, res) {
     try {
@@ -449,26 +454,29 @@ class ParticipantController {
 
       for (let i = 0; i < participants.length; i++) {
         const item = participants[i];
-        const fullName = (item.full_name || item.name || '').trim();
-        const mobile = (item.mobile || item.phone || item.phone_number || '').toString().trim();
+        const fullName = (item.full_name || item.name || item.fullName || '').toString().trim();
+        const rawMobile = (item.mobile || item.phone || item.phone_number || item.contact || item.mobile_number || '').toString().trim();
 
-        if (!fullName || !mobile) {
+        if (!fullName || !rawMobile) {
           errors.push({ row: i + 1, item, reason: 'Full Name and Phone Number are required' });
           continue;
         }
 
-        let mobileDigits = mobile.replace(/\D/g, '');
+        let mobileDigits = rawMobile.replace(/\D/g, '');
         if (mobileDigits.length === 12 && mobileDigits.startsWith('91')) {
           mobileDigits = mobileDigits.slice(2);
         } else if (mobileDigits.length === 11 && mobileDigits.startsWith('0')) {
           mobileDigits = mobileDigits.slice(1);
         }
 
-        const autoPassword = item.password && item.password.toString().trim()
+        const cleanMobile = mobileDigits.length === 10 ? mobileDigits : rawMobile;
+
+        // Auto password: first 4 digits of phone number!
+        const autoPassword = (item.password && item.password.toString().trim())
           ? item.password.toString().trim()
           : (mobileDigits.length >= 4 ? mobileDigits.slice(0, 4) : (mobileDigits || '1234'));
 
-        let email = (item.email || '').trim().toLowerCase();
+        let email = (item.email || '').toString().trim().toLowerCase();
         if (!email) {
           email = `elq_${mobileDigits || (Date.now() + i).toString().slice(-6)}@eloquence.com`;
         }
@@ -494,7 +502,7 @@ class ParticipantController {
         db.insert('profiles', {
           id: newUser.id,
           full_name: fullName,
-          mobile
+          mobile: cleanMobile
         });
 
         const eventTarget = (
@@ -511,7 +519,7 @@ class ParticipantController {
           participant_id: participantId,
           full_name: fullName,
           email,
-          mobile,
+          mobile: cleanMobile,
           college: (item.college || item.institution || req.body.college || 'Engineering College').toString().trim(),
           department: (item.department || item.dept || item.branch || req.body.department || 'Computer Science & Engineering').toString().trim(),
           year: (item.year || req.body.year || '3rd Year').toString().trim(),
@@ -549,7 +557,7 @@ class ParticipantController {
           id: newParticipant.id,
           participant_id: participantId,
           full_name: fullName,
-          mobile,
+          mobile: cleanMobile,
           email,
           college: newParticipant.college,
           department: newParticipant.department,

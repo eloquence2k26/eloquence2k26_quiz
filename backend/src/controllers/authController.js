@@ -32,7 +32,7 @@ class AuthController {
         if (!user && db.client) {
           const { data: dbUsers } = await db.client
             .from('users')
-            .select('*')
+            .select('id, email, password_hash, role, is_active')
             .or(`email.ilike.${inputLogin},email.ilike.${inputLogin}@%`);
 
           if (dbUsers && dbUsers.length > 0) {
@@ -51,7 +51,7 @@ class AuthController {
         );
 
         if (!participant && db.client) {
-          const { data: dbParts } = await db.client.from('participants').select('*').ilike('participant_id', cleanPartId);
+          const { data: dbParts } = await db.client.from('participants').select('id, participant_id, full_name, email, mobile').ilike('participant_id', cleanPartId);
           if (dbParts && dbParts.length > 0) {
             participant = dbParts[0];
             if (!db.find('participants', (p) => p.id === participant.id)) {
@@ -63,7 +63,7 @@ class AuthController {
         if (participant) {
           user = db.find('users', (u) => u.id === participant.id);
           if (!user && db.client) {
-            const { data: dbUsers } = await db.client.from('users').select('*').eq('id', participant.id);
+            const { data: dbUsers } = await db.client.from('users').select('id, email, password_hash, role, is_active').eq('id', participant.id);
             if (dbUsers && dbUsers.length > 0) user = dbUsers[0];
           }
         }
@@ -201,20 +201,37 @@ class AuthController {
         registration_number
       } = req.body;
 
-      if (!full_name || !email || !password || !college || !department || !year) {
+      if (!full_name || !college || !department || !year) {
         return error(res, 'All required fields must be provided.', 400);
       }
 
-      let existingUser = db.find('users', (u) => u.email.toLowerCase() === email.trim().toLowerCase());
+      const rawMobile = (mobile || '').toString().trim();
+      let mobileDigits = rawMobile.replace(/\D/g, '');
+      if (mobileDigits.length === 12 && mobileDigits.startsWith('91')) {
+        mobileDigits = mobileDigits.slice(2);
+      } else if (mobileDigits.length === 11 && mobileDigits.startsWith('0')) {
+        mobileDigits = mobileDigits.slice(1);
+      }
+      const cleanMobile = mobileDigits.length === 10 ? mobileDigits : rawMobile;
+
+      const finalEmail = email && email.toString().trim()
+        ? email.toString().trim().toLowerCase()
+        : `elq_${mobileDigits || Date.now().toString().slice(-6)}@eloquence.com`;
+
+      const finalPassword = password && password.toString().trim()
+        ? password.toString().trim()
+        : (mobileDigits.length >= 4 ? mobileDigits.slice(0, 4) : (mobileDigits || '1234'));
+
+      let existingUser = db.find('users', (u) => u.email.toLowerCase() === finalEmail.toLowerCase());
       if (!existingUser && db.client) {
-        const { data: dbUsers } = await db.client.from('users').select('*').ilike('email', email.trim());
+        const { data: dbUsers } = await db.client.from('users').select('id, email').ilike('email', finalEmail);
         if (dbUsers && dbUsers.length > 0) existingUser = dbUsers[0];
       }
       if (existingUser) {
         return error(res, 'Email already registered. Please login.', 409);
       }
 
-      const password_hash = await bcrypt.hash(password, 10);
+      const password_hash = await bcrypt.hash(finalPassword, 10);
       let participantCount = db.get('participants').length + 1;
       if (db.client) {
         const { count } = await db.client.from('participants').select('*', { count: 'exact', head: true });
@@ -225,7 +242,7 @@ class AuthController {
       const participantId = `ELQ-2026-${String(participantCount).padStart(3, '0')}`;
 
       const newUser = db.insert('users', {
-        email: email.trim().toLowerCase(),
+        email: finalEmail,
         password_hash,
         role: 'PARTICIPANT',
         is_active: true
@@ -234,15 +251,15 @@ class AuthController {
       db.insert('profiles', {
         id: newUser.id,
         full_name: full_name.trim(),
-        mobile: mobile ? mobile.trim() : ''
+        mobile: cleanMobile
       });
 
       const newParticipant = db.insert('participants', {
         id: newUser.id,
         participant_id: participantId,
         full_name: full_name.trim(),
-        email: email.trim().toLowerCase(),
-        mobile: mobile ? mobile.trim() : '',
+        email: finalEmail,
+        mobile: cleanMobile,
         college: college.trim(),
         department: department.trim(),
         year: year.trim(),

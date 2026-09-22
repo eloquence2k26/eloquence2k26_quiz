@@ -1,6 +1,7 @@
 const express = require('express');
 const cors = require('cors');
 const helmet = require('helmet');
+const zlib = require('zlib');
 const errorHandler = require('./middleware/errorHandler');
 
 // Route imports
@@ -29,6 +30,53 @@ app.use(cors({
 }));
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
+
+// Response Gzip Compression middleware (reduces Render HTTP bandwidth by 70-90% for large payloads)
+app.use((req, res, next) => {
+  const acceptEncoding = req.headers['accept-encoding'] || '';
+  if (!acceptEncoding.includes('gzip')) {
+    return next();
+  }
+
+  const originalSend = res.send;
+  res.send = function (body) {
+    if (res.headersSent || !body) {
+      return originalSend.call(this, body);
+    }
+
+    let buf;
+    if (Buffer.isBuffer(body)) {
+      buf = body;
+    } else if (typeof body === 'string') {
+      buf = Buffer.from(body);
+    } else {
+      try {
+        buf = Buffer.from(JSON.stringify(body));
+      } catch (e) {
+        return originalSend.call(this, body);
+      }
+    }
+
+    // Only compress responses >= 1 KB (1024 bytes)
+    if (buf.length < 1024) {
+      return originalSend.call(this, body);
+    }
+
+    res.setHeader('Content-Encoding', 'gzip');
+    res.removeHeader('Content-Length');
+
+    zlib.gzip(buf, (err, compressed) => {
+      if (err) {
+        res.removeHeader('Content-Encoding');
+        return originalSend.call(this, body);
+      }
+      res.setHeader('Content-Length', compressed.length);
+      originalSend.call(this, compressed);
+    });
+  };
+
+  next();
+});
 
 // Health check endpoint
 app.get('/api/health', (req, res) => {

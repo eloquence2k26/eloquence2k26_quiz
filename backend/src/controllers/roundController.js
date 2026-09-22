@@ -16,7 +16,7 @@ class RoundController {
 
       // If rounds is empty in memory, fetch live from Supabase
       if (rounds.length === 0 && db.client) {
-        const { data: dbRounds } = await db.client.from('rounds').select('*');
+        const { data: dbRounds } = await db.client.from('rounds').select('id, event_id, round_number, round_name, description, is_active, is_published');
         if (dbRounds && dbRounds.length > 0) {
           rounds = dbRounds;
           db.data.rounds = dbRounds;
@@ -25,7 +25,7 @@ class RoundController {
 
       // If events is empty in memory, fetch live from Supabase
       if (events.length === 0 && db.client) {
-        const { data: dbEvents } = await db.client.from('events').select('*');
+        const { data: dbEvents } = await db.client.from('events').select('id, title, code, description, is_active');
         if (dbEvents && dbEvents.length > 0) {
           events = dbEvents;
           db.data.events = dbEvents;

@@ -33,7 +33,10 @@ export default function LiveExamsPage() {
   useEffect(() => {
     if (selectedQuizId) {
       fetchLiveMonitor();
-      const interval = setInterval(fetchLiveMonitor, 5000); // 5 sec auto refresh
+      const interval = setInterval(() => {
+        if (document.hidden) return;
+        fetchLiveMonitor();
+      }, 12000); // 12 sec auto refresh
       return () => clearInterval(interval);
     }
   }, [selectedQuizId]);

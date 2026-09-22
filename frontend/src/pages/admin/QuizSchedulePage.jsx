@@ -52,15 +52,16 @@ export default function QuizSchedulePage() {
   useEffect(() => {
     fetchData();
 
-    // Live background polling every 15s to keep schedule & auto-publishing in sync
+    // Live background polling every 30s to keep schedule & auto-publishing in sync
     const interval = setInterval(() => {
+      if (document.hidden) return;
       quizService
         .getAllQuizzes()
         .then((res) => {
           if (res.success && res.data) setQuizzes(res.data);
         })
         .catch(() => {});
-    }, 15000);
+    }, 30000);
 
     return () => clearInterval(interval);
   }, []);
