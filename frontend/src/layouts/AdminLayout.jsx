@@ -20,7 +20,6 @@ import {
   LogOut,
   Menu,
   X,
-  Sparkles,
   ChevronDown,
   ChevronRight,
   FolderKanban,
@@ -189,9 +188,11 @@ export default function AdminLayout() {
         {/* Brand Header */}
         <div className="h-16 px-6 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <div className={`w-9 h-9 rounded-xl bg-gradient-to-tr ${portalMeta.color} flex items-center justify-center text-white font-bold shadow-md`}>
-              <Sparkles className="w-5 h-5" />
-            </div>
+            <img
+              src="/eloquence-logo.png"
+              alt="Eloquence '26 Logo"
+              className="w-10 h-10 object-contain drop-shadow-[0_2px_8px_rgba(34,197,94,0.4)] transition-transform hover:scale-105"
+            />
             <div>
               <h1 className="text-sm font-black tracking-tight text-slate-900 dark:text-white uppercase">
                 Eloquence <span className="text-brand-600 dark:text-brand-400">'26</span>

@@ -1,7 +1,6 @@
 import React, { useState } from 'react';
 import { Link, useLocation, useNavigate, Outlet } from 'react-router-dom';
 import {
-  Sparkles,
   BookOpen,
   Award,
   Layers,
@@ -39,10 +38,12 @@ export default function ParticipantLayout() {
       <header className="sticky top-0 z-40 bg-white/90 dark:bg-slate-900/90 backdrop-blur-md border-b border-slate-200 dark:border-slate-800">
         <div className="max-w-7xl mx-auto px-4 sm:px-8 h-16 flex items-center justify-between">
           {/* Logo */}
-          <Link to="/participant/dashboard" className="flex items-center gap-3">
-            <div className="w-9 h-9 rounded-xl bg-gradient-to-tr from-brand-600 to-indigo-600 flex items-center justify-center text-white font-bold shadow-md shadow-brand-500/20">
-              <Sparkles className="w-5 h-5" />
-            </div>
+          <Link to="/participant/dashboard" className="flex items-center gap-3 group">
+            <img
+              src="/eloquence-logo.png"
+              alt="Eloquence '26 Logo"
+              className="w-10 h-10 object-contain drop-shadow-[0_2px_8px_rgba(34,197,94,0.4)] transition-transform group-hover:scale-105"
+            />
             <div>
               <span className="text-base font-black tracking-tight text-slate-900 dark:text-white uppercase">
                 Eloquence <span className="text-brand-600 dark:text-brand-400">'26</span>
