@@ -205,6 +205,9 @@ class QuestionController {
         explanation: explanation ? explanation.trim() : '',
         category: category.trim(),
         difficulty: ['Easy', 'Medium', 'Hard'].includes(difficulty) ? difficulty : 'Medium',
+        image_url: req.body.image_url || req.body.image || '',
+        image: req.body.image || req.body.image_url || '',
+        code_snippet: req.body.code_snippet || '',
         event_name: event_name ? event_name.trim() : 'Technical Quiz',
         round_number: Number(round_number) || 1,
         created_by: req.user.id
@@ -322,6 +325,9 @@ class QuestionController {
             explanation: q.explanation ? String(q.explanation).trim() : '',
             category: q.category ? String(q.category).trim() : 'General',
             difficulty: ['Easy', 'Medium', 'Hard'].includes(q.difficulty) ? q.difficulty : 'Medium',
+            image_url: q.image_url || q.image || '',
+            image: q.image || q.image_url || '',
+            code_snippet: q.code_snippet || '',
             event_name: q.event_name ? String(q.event_name).trim() : 'Technical Quiz',
             round_number: Number(q.round_number) || 1,
             created_by: req.user ? req.user.id : 'a0000000-0000-0000-0000-000000000001'
@@ -398,6 +404,9 @@ class QuestionController {
           explanation: q.explanation || '',
           category: q.category || 'General',
           difficulty: q.difficulty || 'Medium',
+          image_url: q.image_url || q.image || '',
+          image: q.image || q.image_url || '',
+          code_snippet: q.code_snippet || '',
           event_name: q.event_name || targetEvent,
           round_number: Number(q.round_number) || numRound,
           created_by: req.user ? req.user.id : 'a0000000-0000-0000-0000-000000000001'

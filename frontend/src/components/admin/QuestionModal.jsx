@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import Modal from '../common/Modal';
+import { Image as ImageIcon, Code, Upload, Trash2 } from 'lucide-react';
 
 export default function QuestionModal({
   isOpen,
@@ -22,6 +23,8 @@ export default function QuestionModal({
     negative_marks: 0.0,
     difficulty: 'Medium',
     category: 'General',
+    image_url: '',
+    code_snippet: '',
     event_name: 'Eloquence 2026',
     round_number: 1,
     explanation: ''
@@ -40,6 +43,8 @@ export default function QuestionModal({
         negative_marks: initialData.negative_marks || 0.0,
         difficulty: initialData.difficulty || 'Medium',
         category: initialData.category || 'General',
+        image_url: initialData.image_url || initialData.image || '',
+        code_snippet: initialData.code_snippet || '',
         event_name: initialData.event_name || 'Eloquence 2026',
         round_number: initialData.round_number || 1,
         explanation: initialData.explanation || ''
@@ -58,12 +63,24 @@ export default function QuestionModal({
         negative_marks: 0.0,
         difficulty: 'Medium',
         category: 'Algorithms',
+        image_url: '',
+        code_snippet: '',
         event_name: defaultEvt,
         round_number: defaultRnd,
         explanation: ''
       });
     }
   }, [initialData, isOpen, initialEvent, initialRound, eventsList]);
+
+  const handleImageFileChange = (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onloadend = () => {
+      setFormData((prev) => ({ ...prev, image_url: reader.result }));
+    };
+    reader.readAsDataURL(file);
+  };
 
   const handleSubmit = (e) => {
     e.preventDefault();
@@ -77,7 +94,7 @@ export default function QuestionModal({
       title={initialData ? 'Edit MCQ Question' : 'Create New MCQ Question'}
       maxWidth="max-w-2xl"
     >
-      <form onSubmit={handleSubmit} className="space-y-4">
+      <form onSubmit={handleSubmit} className="space-y-4 max-h-[80vh] overflow-y-auto pr-1 text-xs">
         {/* Question Text */}
         <div>
           <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 uppercase mb-1">
@@ -90,6 +107,66 @@ export default function QuestionModal({
             onChange={(e) => setFormData({ ...formData, question_text: e.target.value })}
             placeholder="Type the complete question prompt here..."
             className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-xs text-slate-900 dark:text-white focus:ring-2 focus:ring-brand-500/20 focus:outline-none"
+          />
+        </div>
+
+        {/* Image Attachment (For Image Type Questions like logos, circuit diagrams, figures) */}
+        <div className="p-3 rounded-2xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700 space-y-2">
+          <div className="flex items-center justify-between">
+            <label className="text-xs font-bold text-slate-800 dark:text-slate-200 flex items-center gap-1.5">
+              <ImageIcon className="w-4 h-4 text-brand-500" />
+              <span>Question Image / Diagram (Optional)</span>
+            </label>
+            {formData.image_url && (
+              <button
+                type="button"
+                onClick={() => setFormData({ ...formData, image_url: '' })}
+                className="text-[11px] text-rose-500 hover:underline flex items-center gap-1 font-bold"
+              >
+                <Trash2 className="w-3 h-3" /> Remove Image
+              </button>
+            )}
+          </div>
+
+          <div className="flex items-center gap-3">
+            <input
+              type="text"
+              value={formData.image_url}
+              onChange={(e) => setFormData({ ...formData, image_url: e.target.value })}
+              placeholder="Paste image URL (https://... or data:image/...)"
+              className="flex-1 px-3 py-1.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-xs text-slate-900 dark:text-white"
+            />
+            <label className="px-3 py-1.5 rounded-xl bg-brand-600 hover:bg-brand-700 text-white font-bold text-xs cursor-pointer flex items-center gap-1 shrink-0">
+              <Upload className="w-3.5 h-3.5" />
+              <span>Upload Image</span>
+              <input type="file" accept="image/*" onChange={handleImageFileChange} className="hidden" />
+            </label>
+          </div>
+
+          {formData.image_url && (
+            <div className="mt-2 p-2 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 flex justify-center">
+              <img
+                src={formData.image_url}
+                alt="Question Preview"
+                className="max-h-40 object-contain rounded-lg"
+                onError={(e) => (e.target.style.display = 'none')}
+              />
+            </div>
+          )}
+        </div>
+
+        {/* Program Code Snippet (For Programmer Type Questions e.g. C, C++, Java, Python, SQL) */}
+        <div className="p-3 rounded-2xl bg-slate-950 border border-slate-800 space-y-2 text-slate-200">
+          <label className="text-xs font-bold text-emerald-400 flex items-center gap-1.5 uppercase tracking-wide">
+            <Code className="w-4 h-4 text-emerald-400" />
+            <span>Program Code Structure (Optional)</span>
+          </label>
+          <textarea
+            rows={4}
+            value={formData.code_snippet}
+            onChange={(e) => setFormData({ ...formData, code_snippet: e.target.value })}
+            placeholder="e.g.&#10;#include <stdio.h>&#10;int main() {&#10;    printf(&quot;Hello World&quot;);&#10;    return 0;&#10;}"
+            className="w-full p-3 rounded-xl border border-slate-800 bg-slate-900 text-emerald-400 font-mono text-xs focus:ring-2 focus:ring-emerald-500/20 focus:outline-none whitespace-pre"
           />
         </div>
 

@@ -27,6 +27,7 @@ import QuestionModal from '../../components/admin/QuestionModal';
 import MultiFormatImportModal from '../../components/admin/MultiFormatImportModal';
 import Badge from '../../components/common/Badge';
 import Loading from '../../components/common/Loading';
+import QuestionContent from '../../components/common/QuestionContent';
 import { getRoundBadgeVariant } from '../../utils/formatters';
 
 export default function QuestionsPage() {
@@ -710,9 +711,9 @@ export default function QuestionsPage() {
                                         </span>
                                       </div>
 
-                                      <h4 className="text-xs sm:text-sm font-bold text-slate-900 dark:text-white leading-snug">
-                                        {q.question_text}
-                                      </h4>
+                                      <div className="pt-1">
+                                        <QuestionContent question={q} textClassName="text-xs sm:text-sm font-bold text-slate-900 dark:text-white leading-snug" />
+                                      </div>
                                     </div>
 
                                     {/* Action Buttons: Duplicate, Edit, Delete */}

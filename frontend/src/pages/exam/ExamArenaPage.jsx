@@ -18,6 +18,7 @@ import { useToast } from '../../context/ToastContext';
 import ExamHeader from '../../components/exam/ExamHeader';
 import QuestionPalette from '../../components/exam/QuestionPalette';
 import ViolationWarningModal from '../../components/exam/ViolationWarningModal';
+import QuestionContent from '../../components/common/QuestionContent';
 import Modal from '../../components/common/Modal';
 import Loading from '../../components/common/Loading';
 
@@ -262,10 +263,11 @@ export default function ExamArenaPage() {
               </div>
 
               {/* Question Prompt */}
-              <div className="py-6">
-                <p className="text-base sm:text-lg font-bold text-slate-900 dark:text-white leading-relaxed">
-                  {currentQ.question_text}
-                </p>
+              <div className="py-4">
+                <QuestionContent
+                  question={currentQ}
+                  textClassName="text-base sm:text-lg font-bold text-slate-900 dark:text-white leading-relaxed"
+                />
               </div>
 
               {/* Four MCQ Options */}

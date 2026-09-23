@@ -312,6 +312,8 @@ class DocumentParserService {
 
       if (questionText && optionA && optionB) {
         const cleanAnswer = this.normalizeAnswerKey(answer);
+        const imageUrl = findCol(row, ['image_url', 'image', 'photo_url', 'img', 'picture', 'logo', 'diagram', 'imageurl']);
+        const codeSnippet = findCol(row, ['code_snippet', 'code', 'snippet', 'program', 'code_block', 'codesnippet']);
 
         parsedQuestions.push({
           question_text: questionText,
@@ -325,6 +327,9 @@ class DocumentParserService {
           category: findCol(row, ['category', 'topic', 'subject', 'domain']) || defaultMeta.category,
           difficulty: this.normalizeDifficulty(findCol(row, ['difficulty', 'level'])),
           explanation: findCol(row, ['explanation', 'exp', 'reason', 'solution', 'notes']),
+          image_url: imageUrl,
+          image: imageUrl,
+          code_snippet: codeSnippet,
           event_name: findCol(row, ['event', 'event_name']) || defaultMeta.event_name,
           round_number: parseInt(findCol(row, ['round', 'round_number'])) || defaultMeta.round_number
         });
@@ -359,6 +364,9 @@ class DocumentParserService {
           category: q.category || defaultMeta.category,
           difficulty: this.normalizeDifficulty(q.difficulty),
           explanation: q.explanation || '',
+          image_url: q.image_url || q.image || q.img || '',
+          image: q.image || q.image_url || q.img || '',
+          code_snippet: q.code_snippet || q.code || '',
           event_name: q.event_name || defaultMeta.event_name,
           round_number: parseInt(q.round_number) || defaultMeta.round_number
         }))
@@ -457,6 +465,55 @@ class DocumentParserService {
   }
 
   /**
+   * Helper to extract image URL and code block snippets from raw question prompt
+   */
+  static extractImageAndCode(rawPromptText) {
+    let text = rawPromptText || '';
+    let image_url = '';
+    let code_snippet = '';
+
+    // 1. Extract image URL from markdown ![...](url), [Image: url], raw http/https image URL, or base64 data URI
+    const imgRegex = /(?:!\[.*?\]\((https?:\/\/[^\s\)]+|data:image\/[^\s\)]+)\)|\[(?:Image|Img|Picture|Photo):\s*(https?:\/\/[^\s\]]+|data:image\/[^\s\]]+)\]|(https?:\/\/[^\s\)]+\.(?:png|jpg|jpeg|gif|webp|svg))|(data:image\/(?:png|jpeg|jpg|gif|webp|svg)\+xml;base64,[A-Za-z0-9+/=]+))/i;
+    const imgMatch = text.match(imgRegex);
+    if (imgMatch) {
+      image_url = imgMatch[1] || imgMatch[2] || imgMatch[3] || imgMatch[4] || '';
+      text = text
+        .replace(/!\[.*?\]\(https?:\/\/.*?\)|!\[.*?\]\(data:image\/.*?\)/gi, '')
+        .replace(/\[(?:Image|Img|Picture|Photo):\s*https?:\/\/.*?\]|\[(?:Image|Img|Picture|Photo):\s*data:image\/.*?\]/gi, '')
+        .trim();
+    }
+
+    // 2. Extract code snippet between ``` ... ``` markdown blocks or Code: blocks
+    const codeBlockMatch = text.match(/```(?:[a-zA-Z0-9_-]*)\n?([\s\S]*?)```/);
+    if (codeBlockMatch) {
+      code_snippet = codeBlockMatch[1].trim();
+      text = text.replace(/```(?:[a-zA-Z0-9_-]*)\n?[\s\S]*?```/g, '').trim();
+    } else {
+      // Check if text has inline multiline program code (e.g. C/Java/Python/SQL)
+      const lines = text.split('\n');
+      const isCodeLine = (l) =>
+        /^\s*(?:#include|public\s+class|class\s+|import\s+|def\s+|function\s+|int\s+main|void\s+|for\s*\(|while\s*\(|if\s*\(|SELECT\s+|FROM\s+|[\{\}\;\/])/.test(l);
+      
+      const codeLines = [];
+      const textLines = [];
+      for (const line of lines) {
+        if (isCodeLine(line)) {
+          codeLines.push(line);
+        } else {
+          textLines.push(line);
+        }
+      }
+
+      if (codeLines.length > 0 && textLines.length > 0) {
+        text = textLines.join('\n').trim();
+        code_snippet = codeLines.join('\n').trim();
+      }
+    }
+
+    return { question_text: text || rawPromptText, image_url, code_snippet };
+  }
+
+  /**
    * Expand inline options onto new lines safely
    * Does NOT touch Answer lines and does NOT split on English words
    */
@@ -522,11 +579,13 @@ class DocumentParserService {
     const pushQuestion = () => {
       // Case 1: Standard options with labels (A, B)
       if (currentPrompt.length > 0 && currentOptions.A && currentOptions.B) {
-        let promptText = currentPrompt.join(' ').trim();
-        promptText = promptText
+        let rawPrompt = currentPrompt.join('\n').trim();
+        rawPrompt = rawPrompt
           .replace(/^(?:PYTHON\s+MCQ\s+QUESTIONS?|TECHNICAL\s+QUIZ|MULTIPLE\s+CHOICE\s+QUESTIONS?|QUESTIONS?\s*BANK)\s*/i, '')
           .replace(/^(?:Q(?:uestion|ue)?\s*[:#.-]?\s*\d+[\s.:)-]*|\d+[\.:)-]\s+)/i, '')
           .trim();
+
+        const { question_text, image_url, code_snippet } = DocumentParserService.extractImageAndCode(rawPrompt);
 
         let finalAns = currentAnswer;
         if (!finalAns && currentQNum && answerKeyMap[currentQNum]) {
@@ -538,7 +597,10 @@ class DocumentParserService {
         if (!finalAns) finalAns = 'A';
 
         questions.push({
-          question_text: promptText,
+          question_text,
+          image_url,
+          image: image_url,
+          code_snippet,
           option_a: currentOptions.A,
           option_b: currentOptions.B,
           option_c: currentOptions.C || 'None of the above',
@@ -581,11 +643,13 @@ class DocumentParserService {
           }
         }
 
-        let promptText = currentPrompt.join(' ').trim();
-        promptText = promptText
+        let rawPrompt = currentPrompt.join('\n').trim();
+        rawPrompt = rawPrompt
           .replace(/^(?:PYTHON\s+MCQ\s+QUESTIONS?|TECHNICAL\s+QUIZ|MULTIPLE\s+CHOICE\s+QUESTIONS?|QUESTIONS?\s*BANK)\s*/i, '')
           .replace(/^(?:Q(?:uestion|ue)?\s*[:#.-]?\s*\d+[\s.:)-]*|\d+[\.:)-]\s+)/i, '')
           .trim();
+
+        const { question_text, image_url, code_snippet } = DocumentParserService.extractImageAndCode(rawPrompt);
 
         let finalAns = currentAnswer;
         if (!finalAns && currentQNum && answerKeyMap[currentQNum]) {
@@ -597,7 +661,10 @@ class DocumentParserService {
         if (!finalAns) finalAns = 'A';
 
         questions.push({
-          question_text: promptText,
+          question_text,
+          image_url,
+          image: image_url,
+          code_snippet,
           option_a: a,
           option_b: b,
           option_c: c || 'None of the above',

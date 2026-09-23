@@ -32,7 +32,7 @@ const TABLE_COLUMNS = {
   questions: [
     'id', 'question_text', 'option_a', 'option_b', 'option_c', 'option_d',
     'correct_answer', 'marks', 'negative_marks', 'explanation', 'category',
-    'difficulty', 'created_by', 'created_at', 'updated_at'
+    'difficulty', 'image_url', 'image', 'code_snippet', 'created_by', 'created_at', 'updated_at'
   ],
   quiz_questions: ['id', 'quiz_id', 'question_id', 'display_order', 'created_at'],
   quiz_assignments: ['id', 'quiz_id', 'participant_id', 'assigned_by', 'assigned_at', 'status'],

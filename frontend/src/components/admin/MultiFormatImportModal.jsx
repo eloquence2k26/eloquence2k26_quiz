@@ -18,6 +18,7 @@ import {
 } from 'lucide-react';
 import Modal from '../common/Modal';
 import Badge from '../common/Badge';
+import QuestionContent from '../common/QuestionContent';
 import { adminService } from '../../services/adminService';
 import { useToast } from '../../context/ToastContext';
 import { getRoundBadgeVariant } from '../../utils/formatters';
@@ -429,10 +430,10 @@ export default function MultiFormatImportModal({
                 <div key={idx} className="p-3 hover:bg-slate-50/70 dark:hover:bg-slate-800/50 transition-colors">
                   <div className="flex items-start justify-between gap-3">
                     <div className="flex-1">
-                      <p className="font-bold text-slate-900 dark:text-white text-xs">
-                        <span className="text-brand-600 mr-1.5">{idx + 1}.</span>
-                        {q.question_text}
-                      </p>
+                      <div className="flex items-start gap-1.5 font-bold text-slate-900 dark:text-white text-xs">
+                        <span className="text-brand-600 font-mono font-black">{idx + 1}.</span>
+                        <QuestionContent question={q} className="flex-1" textClassName="font-bold text-slate-900 dark:text-white text-xs" />
+                      </div>
 
                       <div className="grid grid-cols-2 gap-x-4 gap-y-1 mt-2 text-[11px] text-slate-600 dark:text-slate-400">
                         <span className={q.correct_answer === 'A' ? 'font-bold text-emerald-600 dark:text-emerald-400' : ''}>
