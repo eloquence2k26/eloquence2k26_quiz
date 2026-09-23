@@ -121,8 +121,21 @@ class QuestionController {
           ].filter((r) => !isNaN(r)))
         );
 
+        let timeLimit = Number(q.time_limit) || Number(q.time_limit_seconds) || 0;
+        let cleanExplanation = q.explanation || '';
+        if (cleanExplanation && cleanExplanation.includes('<!-- time_limit:')) {
+          const match = cleanExplanation.match(/<!-- time_limit:\s*(\d+)\s*-->/);
+          if (match) {
+            timeLimit = Number(match[1]);
+            cleanExplanation = cleanExplanation.replace(/\s*<!-- time_limit:\s*\d+\s*-->/, '').trim();
+          }
+        }
+
         return {
           ...q,
+          time_limit: timeLimit,
+          time_limit_seconds: timeLimit,
+          explanation: cleanExplanation,
           event_name: primaryEvent,
           events: [primaryEvent],
           round_numbers: roundNumbers.length > 0 ? roundNumbers : [1],
@@ -193,22 +206,30 @@ class QuestionController {
         return error(res, 'Correct answer must be A, B, C, or D', 400);
       }
 
-      const newQ = await db.insertAsync('questions', {
-        question_text: question_text.trim(),
-        option_a: option_a.trim(),
-        option_b: option_b.trim(),
-        option_c: option_c.trim(),
-        option_d: option_d.trim(),
-        correct_answer: correct_answer.toUpperCase().trim(),
-        marks: Number(marks),
-        negative_marks: Number(negative_marks),
-        explanation: explanation ? explanation.trim() : '',
-        category: category.trim(),
-        difficulty: ['Easy', 'Medium', 'Hard'].includes(difficulty) ? difficulty : 'Medium',
-        event_name: event_name ? event_name.trim() : 'Technical Quiz',
-        round_number: Number(round_number) || 1,
-        created_by: req.user.id
-      });
+        const qTimeLimit = req.body.time_limit !== undefined ? Number(req.body.time_limit) : (req.body.time_limit_seconds !== undefined ? Number(req.body.time_limit_seconds) : 0);
+        let qExplanation = explanation ? explanation.trim() : '';
+        if (qTimeLimit > 0 && !qExplanation.includes('<!-- time_limit:')) {
+          qExplanation = qExplanation ? `${qExplanation}\n<!-- time_limit: ${qTimeLimit} -->` : `<!-- time_limit: ${qTimeLimit} -->`;
+        }
+
+        const newQ = await db.insertAsync('questions', {
+          question_text: question_text.trim(),
+          option_a: option_a.trim(),
+          option_b: option_b.trim(),
+          option_c: option_c.trim(),
+          option_d: option_d.trim(),
+          correct_answer: correct_answer.toUpperCase().trim(),
+          marks: Number(marks),
+          negative_marks: Number(negative_marks),
+          explanation: qExplanation,
+          category: category.trim(),
+          difficulty: ['Easy', 'Medium', 'Hard'].includes(difficulty) ? difficulty : 'Medium',
+          event_name: event_name ? event_name.trim() : 'Technical Quiz',
+          round_number: Number(round_number) || 1,
+          time_limit: qTimeLimit,
+          time_limit_seconds: qTimeLimit,
+          created_by: req.user.id
+        });
 
       // Link to matching/auto-created live quiz in quiz_questions
       await QuestionController.ensureQuizAndLink(newQ, event_name, round_number, req.body.quiz_id);
@@ -310,6 +331,12 @@ class QuestionController {
         }
 
         if (qText && optA && optB) {
+          const timeLimit = q.time_limit !== undefined ? Number(q.time_limit) : (q.time_limit_seconds !== undefined ? Number(q.time_limit_seconds) : 0);
+          let rawExplanation = q.explanation ? String(q.explanation).trim() : '';
+          if (timeLimit > 0 && !rawExplanation.includes('<!-- time_limit:')) {
+            rawExplanation = rawExplanation ? `${rawExplanation}\n<!-- time_limit: ${timeLimit} -->` : `<!-- time_limit: ${timeLimit} -->`;
+          }
+
           const item = await db.insertAsync('questions', {
             question_text: qText,
             option_a: optA,
@@ -319,11 +346,13 @@ class QuestionController {
             correct_answer: corrAns,
             marks: q.marks !== undefined && q.marks !== null && !isNaN(Number(q.marks)) ? Number(q.marks) : 1.0,
             negative_marks: q.negative_marks !== undefined && q.negative_marks !== null && !isNaN(Number(q.negative_marks)) ? Number(q.negative_marks) : 0.0,
-            explanation: q.explanation ? String(q.explanation).trim() : '',
+            explanation: rawExplanation,
             category: q.category ? String(q.category).trim() : 'General',
             difficulty: ['Easy', 'Medium', 'Hard'].includes(q.difficulty) ? q.difficulty : 'Medium',
             event_name: q.event_name ? String(q.event_name).trim() : 'Technical Quiz',
             round_number: Number(q.round_number) || 1,
+            time_limit: timeLimit,
+            time_limit_seconds: timeLimit,
             created_by: req.user ? req.user.id : 'a0000000-0000-0000-0000-000000000001'
           });
           inserted.push(item);
@@ -350,13 +379,14 @@ class QuestionController {
         return error(res, 'No file uploaded', 400);
       }
 
-      const { event_name = 'Eloquence 2026', round_number = 1, preview_only = 'false', quiz_id } = req.body;
+      const { event_name = 'Eloquence 2026', round_number = 1, preview_only = 'false', quiz_id, time_limit = 0 } = req.body;
       const originalFilename = req.file.originalname;
       const fileBuffer = req.file.buffer;
 
       const parsedQuestions = await DocumentParserService.parseDocument(fileBuffer, originalFilename, {
         event_name,
-        round_number: Number(round_number) || 1
+        round_number: Number(round_number) || 1,
+        time_limit: Number(time_limit) || 0
       });
 
       if (!parsedQuestions || parsedQuestions.length === 0) {

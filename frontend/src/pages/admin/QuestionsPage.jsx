@@ -17,7 +17,8 @@ import {
   Tag,
   Check,
   ChevronDown,
-  ChevronUp
+  ChevronUp,
+  Clock
 } from 'lucide-react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { adminService } from '../../services/adminService';
@@ -708,6 +709,22 @@ export default function QuestionsPage() {
                                         <span className="text-[10px] text-slate-500 dark:text-slate-400 font-semibold bg-slate-100 dark:bg-slate-800 px-2 py-0.5 rounded-md">
                                           +{q.marks} / -{q.negative_marks} pts
                                         </span>
+
+                                        {((q.time_limit && Number(q.time_limit) > 0) || (q.time_limit_seconds && Number(q.time_limit_seconds) > 0)) && (
+                                          <span className="inline-flex items-center gap-1 text-[10px] font-bold text-amber-700 dark:text-amber-400 bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-800/80 px-2 py-0.5 rounded-md">
+                                            <Clock className="w-3 h-3 text-amber-500" />
+                                            <span>
+                                              {(() => {
+                                                const secs = Number(q.time_limit || q.time_limit_seconds || 0);
+                                                const m = Math.floor(secs / 60);
+                                                const s = secs % 60;
+                                                if (m > 0 && s > 0) return `${m}m ${s}s`;
+                                                if (m > 0) return `${m}m`;
+                                                return `${s}s`;
+                                              })()}
+                                            </span>
+                                          </span>
+                                        )}
                                       </div>
 
                                       <h4 className="text-xs sm:text-sm font-bold text-slate-900 dark:text-white leading-snug">

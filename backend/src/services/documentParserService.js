@@ -18,7 +18,8 @@ class DocumentParserService {
       round_number: Number(metadata.round_number) || 1,
       category: metadata.category || 'General',
       marks: Number(metadata.marks) || 1.0,
-      negative_marks: Number(metadata.negative_marks) || 0.0
+      negative_marks: Number(metadata.negative_marks) || 0.0,
+      time_limit: Number(metadata.time_limit) || Number(metadata.time_limit_seconds) || 0
     };
 
     let questions = [];
@@ -326,7 +327,9 @@ class DocumentParserService {
           difficulty: this.normalizeDifficulty(findCol(row, ['difficulty', 'level'])),
           explanation: findCol(row, ['explanation', 'exp', 'reason', 'solution', 'notes']),
           event_name: findCol(row, ['event', 'event_name']) || defaultMeta.event_name,
-          round_number: parseInt(findCol(row, ['round', 'round_number'])) || defaultMeta.round_number
+          round_number: parseInt(findCol(row, ['round', 'round_number'])) || defaultMeta.round_number,
+          time_limit: parseInt(findCol(row, ['time_limit', 'timelimit', 'time_limit_seconds', 'duration', 'time']), 10) || defaultMeta.time_limit,
+          time_limit_seconds: parseInt(findCol(row, ['time_limit', 'timelimit', 'time_limit_seconds', 'duration', 'time']), 10) || defaultMeta.time_limit
         });
       }
     });
@@ -360,7 +363,9 @@ class DocumentParserService {
           difficulty: this.normalizeDifficulty(q.difficulty),
           explanation: q.explanation || '',
           event_name: q.event_name || defaultMeta.event_name,
-          round_number: parseInt(q.round_number) || defaultMeta.round_number
+          round_number: parseInt(q.round_number) || defaultMeta.round_number,
+          time_limit: q.time_limit !== undefined ? Number(q.time_limit) : defaultMeta.time_limit,
+          time_limit_seconds: q.time_limit !== undefined ? Number(q.time_limit) : defaultMeta.time_limit
         }))
         .filter((q) => q.question_text && q.option_a && q.option_b);
     } catch (err) {
@@ -380,7 +385,8 @@ class DocumentParserService {
       round_number: Number(defaultMeta.round_number) || 1,
       category: defaultMeta.category || 'General',
       marks: Number(defaultMeta.marks) || 2.0,
-      negative_marks: Number(defaultMeta.negative_marks) || 0.5
+      negative_marks: Number(defaultMeta.negative_marks) || 0.5,
+      time_limit: Number(defaultMeta.time_limit) || Number(defaultMeta.time_limit_seconds) || 0
     };
 
     // Step 1: Normalize line endings, quotes, spaces, dashes
@@ -550,7 +556,9 @@ class DocumentParserService {
           difficulty: 'Medium',
           explanation: currentExp,
           event_name: meta.event_name,
-          round_number: meta.round_number
+          round_number: meta.round_number,
+          time_limit: meta.time_limit,
+          time_limit_seconds: meta.time_limit
         });
       } else if (currentPrompt.length >= 3 && (currentAnswer || currentQNum)) {
         // Case 2: Unlabeled options (e.g. DOCX table rows without A/B/C/D prefixes)
@@ -609,7 +617,9 @@ class DocumentParserService {
           difficulty: 'Medium',
           explanation: currentExp,
           event_name: meta.event_name,
-          round_number: meta.round_number
+          round_number: meta.round_number,
+          time_limit: meta.time_limit,
+          time_limit_seconds: meta.time_limit
         });
       }
     };
