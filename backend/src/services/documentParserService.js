@@ -472,24 +472,18 @@ class DocumentParserService {
       : String(rawInput || '').split('\n');
 
     const isAnsLine = (l) =>
-      /^\s*(?:Correct\s*(?:Answer|Option)|Right\s*Answer|Answer\s*Key|Answer|Ans|Key|Solution)\s*[:=-]+/i.test(l);
+      /^\s*(?:Correct\s*(?:Answer|Option|Choice)?|Right\s*(?:Answer|Option)|Answer\s*(?:Key|Option|Choice)?|Ans\b|Key\b|Solution\b)\s*[:=.-]+/i.test(l);
 
-    // Matches whitespace preceding:
-    // (A), (B), (C), (D) or [A], [B]...
-    // (a), (b), (c), (d) or [a], [b]...
-    // A), B), C), D) or A., B., C., D.
-    // a), b), c), d) or a., b., c., d.
-    // (1), (2), (3), (4) or [1], [2]... or 1), 2), 3), 4)
-    // Option A, Choice A, Option B...
-    // (i), (ii), (iii), (iv)
-    const inlineRegex = /(?<=\S)[ \t]+(?=(?:\([A-Da-d1-4]\)|\[[A-Da-d1-4]\]|[A-Da-d][\.:\)\-]\s+|(?:Option|Choice)\s*\(?[A-Da-d1-4]\)?[\s.:\)\-]*|\(?(?:iv|iii|ii|i)\)?[\s.:\)\-]+|[1-4]\)\s+))/;
+    // Negative lookbehind ensures we never split "Option A: ..." or "Choice A: ..."
+    // Matches whitespace separating inline options: (B), (C), [B], B., B), B -, 2), (2)
+    const inlineRegex = /(?<=\S)(?<!\b(?:Option|Choice))\s{2,}(?=(?:\([B-Db-d2-4]\)|\[[B-Db-d2-4]\]|(?:Option|Choice)\s*\(?[B-Db-d2-4]\)?[\s.:\)\-]*|[B-Db-d][\.:\)\-\u2013\u2014]\s+|[2-4]\)\s+))/gi;
 
     const expanded = [];
     for (const l of rawLines) {
       if (isAnsLine(l)) {
         expanded.push(l);
       } else {
-        const splitLines = l.replace(new RegExp(inlineRegex.source, 'g'), '\n').split('\n');
+        const splitLines = l.replace(inlineRegex, '\n').split('\n');
         for (const sub of splitLines) {
           const s = sub.trim();
           if (s) expanded.push(s);
@@ -504,15 +498,17 @@ class DocumentParserService {
    * Robustly parses numbered and unnumbered MCQs, multi-line questions and options
    */
   static parseMCQsSequential(cleanLines, answerKeyMap = {}, meta = {}) {
-    // Matches letter options: (A), [A], A), A., A:, a), a., (a), [a], Option A, Choice A
-    const letterOptRegex = /^\s*(?:(?:\(([A-Da-d])\)[\s.:\)\-]*)|(?:\[([A-Da-d])\][\s.:\)\-]*)|(?:(?:Option|Choice)\s*\(?([A-Da-d])\)?[\s.:\)\-]*)|(?:([A-Da-d])[\.:\)\-]\s*))\s*(.*)/i;
+    // Matches letter options: (A), [A], A), A., A:, A -, a), a., (a), [a], a -, Option A, Choice A
+    const letterOptRegex = /^\s*(?:(?:\(([A-Da-d])\)[\s.:\)\-]*)|(?:\[([A-Da-d])\][\s.:\)\-]*)|(?:(?:Option|Choice)\s*\(?([A-Da-d])\)?[\s.:\)\-]*)|(?:([A-Da-d])(?:\s*[\.:\)\-\u2013\u2014]|\s+)\s*))\s*(.*)/i;
     
     // Matches numeric options: (1), [1], 1), (i), (ii)
     const numOptRegex = /^\s*(?:(?:\(([1-4])\)[\s.:\)\-]*)|(?:\[([1-4])\][\s.:\)\-]*)|(?:([1-4])\)\s*)|(?:\(?((?:iv|iii|ii|i))\)?[\s.:\)\-]+))\s*(.*)/i;
     
-    // Matches question markers: 1. , Q1. , Question 1:
-    const qMarkerRegex = /^\s*(?:(?:Q(?:uestion|ue)?|Prob(?:lem)?)\s*[:#.-]?\s*(\d+)[\s.:)-]*|(\d+)[\.:)-]\s+)(.*)/i;
-    const ansRegex = /^\s*(?:Correct\s*(?:Answer|Option)|Right\s*Answer|Answer\s*Key|Answer|Ans|Key|Correct)\s*[:=-]+\s*(.*)/i;
+    // Matches question markers: 1. , Q1. , Question 1: , 1 - , [1] , (1) Question Text
+    const qMarkerRegex = /^\s*(?:(?:Q(?:uestion|ue)?|Prob(?:lem)?)\s*[:#.-]?\s*(\d+)[\s.:)-]*|(\d+)\s*[\.:)-]\s*|\[(\d+)\]\s*|\((\d+)\)\s+)(.*)/i;
+    
+    // Matches answer markers: Answer: A, Ans. A, Ans - A, Answer is A, Key: A, Correct Answer: A
+    const ansRegex = /^\s*(?:Correct\s*(?:Answer|Option|Choice)?|Right\s*(?:Answer|Option)|Answer\s*(?:Key|Option|Choice)?|Ans\b|Key\b|Solution\b)\s*(?:[:=.-]+|\bis\b|\bwas\b|\b=\b)\s*(.*)/i;
     const expRegex = /^\s*(?:Explanation|Exp|Reason|Solution|Note)\s*[:=-]+\s*(.*)/i;
 
     const questions = [];
@@ -531,7 +527,7 @@ class DocumentParserService {
         let promptText = currentPrompt.join(' ').trim();
         promptText = promptText
           .replace(/^(?:PYTHON\s+MCQ\s+QUESTIONS?|TECHNICAL\s+QUIZ|MULTIPLE\s+CHOICE\s+QUESTIONS?|QUESTIONS?\s*BANK)\s*/i, '')
-          .replace(/^(?:Q(?:uestion|ue)?\s*[:#.-]?\s*\d+[\s.:)-]*|\d+[\.:)-]\s+)/i, '')
+          .replace(/^(?:Q(?:uestion|ue)?\s*[:#.-]?\s*\d+[\s.:)-]*|\d+\s*[\.:)-]\s*|\[\d+\]\s*|\(\d+\)\s+)/i, '')
           .trim();
 
         let finalAns = currentAnswer;
@@ -592,7 +588,7 @@ class DocumentParserService {
         let promptText = currentPrompt.join(' ').trim();
         promptText = promptText
           .replace(/^(?:PYTHON\s+MCQ\s+QUESTIONS?|TECHNICAL\s+QUIZ|MULTIPLE\s+CHOICE\s+QUESTIONS?|QUESTIONS?\s*BANK)\s*/i, '')
-          .replace(/^(?:Q(?:uestion|ue)?\s*[:#.-]?\s*\d+[\s.:)-]*|\d+[\.:)-]\s+)/i, '')
+          .replace(/^(?:Q(?:uestion|ue)?\s*[:#.-]?\s*\d+[\s.:)-]*|\d+\s*[\.:)-]\s*|\[\d+\]\s*|\(\d+\)\s+)/i, '')
           .trim();
 
         let finalAns = currentAnswer;
@@ -658,19 +654,31 @@ class DocumentParserService {
 
       // 3. Option line (A, B, C, D or (1), (2)...)
       const letterOptMatch = line.match(letterOptRegex);
-      const numOptMatch = currentPrompt.length > 0 ? line.match(numOptRegex) : null;
+      
+      // Numeric option check: only valid if we already have a prompt and it follows sequence
+      let numOptMatch = null;
+      if (currentPrompt.length > 0 && !letterOptMatch) {
+        const candidateNum = line.match(numOptRegex);
+        if (candidateNum) {
+          const rawN = candidateNum[1] || candidateNum[2] || candidateNum[3] || candidateNum[4];
+          const mappedKey = this.normalizeAnswerKey(rawN);
+          const isSequential =
+            (mappedKey === 'A' && !currentOptions.A) ||
+            (mappedKey === 'B' && currentOptions.A && !currentOptions.B) ||
+            (mappedKey === 'C' && currentOptions.B && !currentOptions.C) ||
+            (mappedKey === 'D' && currentOptions.C && !currentOptions.D);
+          if (isSequential) {
+            numOptMatch = candidateNum;
+          }
+        }
+      }
+
       const optMatch = letterOptMatch || numOptMatch;
 
       if (optMatch) {
         const rawKey = optMatch[1] || optMatch[2] || optMatch[3] || optMatch[4] || optMatch[5];
         const optKey = this.normalizeAnswerKey(rawKey);
-        let optVal = '';
-
-        if (letterOptMatch) {
-          optVal = line.replace(/^\s*(?:(?:\(([A-Da-d])\)[\s.:\)\-]*)|(?:\[([A-Da-d])\][\s.:\)\-]*)|(?:(?:Option|Choice)\s*\(?([A-Da-d])\)?[\s.:\)\-]*)|(?:([A-Da-d])[\.:\)\-]\s*))/i, '').trim();
-        } else if (numOptMatch) {
-          optVal = line.replace(/^\s*(?:(?:\(([1-4])\)[\s.:\)\-]*)|(?:\[([1-4])\][\s.:\)\-]*)|(?:([1-4])\)\s*)|(?:\(?((?:iv|iii|ii|i))\)?[\s.:\)\-]+))/i, '').trim();
-        }
+        let optVal = optMatch[optMatch.length - 1] ? optMatch[optMatch.length - 1].trim() : '';
 
         // Detect asterisk / [x] marking correct answer
         if (optVal.startsWith('*') || optVal.endsWith('*') || /^\([xX]\)/.test(optVal)) {
@@ -694,7 +702,7 @@ class DocumentParserService {
         continue;
       }
 
-      // 4. Question marker line (e.g. 1. , Q1. )
+      // 4. Question marker line (e.g. 1. , Q1. , 1 - , [1])
       const qMatch = line.match(qMarkerRegex);
       if (qMatch && !letterOptRegex.test(line)) {
         if ((currentPrompt.length > 0 && currentOptions.A && currentOptions.B) || (currentPrompt.length >= 3 && currentAnswer)) {
@@ -705,14 +713,14 @@ class DocumentParserService {
           currentExp = '';
           currentOptKey = null;
         }
-        currentQNum = parseInt(qMatch[1] || qMatch[2], 10);
-        const rest = (qMatch[3] || '').trim();
+        currentQNum = parseInt(qMatch[1] || qMatch[2] || qMatch[3] || qMatch[4], 10);
+        const rest = (qMatch[5] || '').trim();
         currentPrompt = rest ? [rest] : [];
         state = 'PROMPT';
         continue;
       }
 
-      // 5. General text line
+      // 5. General text line / Continuation line
       if (state === 'ANSWER' || state === 'EXPLANATION') {
         pushQuestion();
         currentOptions = {};
@@ -723,11 +731,8 @@ class DocumentParserService {
         currentPrompt = [line];
         state = 'PROMPT';
       } else if (state === 'OPTIONS') {
-        const nextLine = i + 1 < cleanLines.length ? cleanLines[i + 1] : '';
-        const nextOptMatch = nextLine.match(letterOptRegex);
-        const isNextOptA = nextOptMatch && this.normalizeAnswerKey(nextOptMatch[1]||nextOptMatch[2]||nextOptMatch[3]||nextOptMatch[4]||'') === 'A';
-
-        if (isNextOptA) {
+        // If option D is already populated, any subsequent non-answer line is the start of the next question
+        if (currentOptions.D) {
           pushQuestion();
           currentOptions = {};
           currentAnswer = null;
@@ -736,8 +741,23 @@ class DocumentParserService {
           currentOptKey = null;
           currentPrompt = [line];
           state = 'PROMPT';
-        } else if (currentOptKey) {
-          currentOptions[currentOptKey] = (currentOptions[currentOptKey] + ' ' + line).trim();
+        } else {
+          const nextLine = i + 1 < cleanLines.length ? cleanLines[i + 1] : '';
+          const nextOptMatch = nextLine.match(letterOptRegex);
+          const isNextOptA = nextOptMatch && this.normalizeAnswerKey(nextOptMatch[1]||nextOptMatch[2]||nextOptMatch[3]||nextOptMatch[4]||'') === 'A';
+
+          if (isNextOptA) {
+            pushQuestion();
+            currentOptions = {};
+            currentAnswer = null;
+            currentAnswerText = '';
+            currentExp = '';
+            currentOptKey = null;
+            currentPrompt = [line];
+            state = 'PROMPT';
+          } else if (currentOptKey) {
+            currentOptions[currentOptKey] = (currentOptions[currentOptKey] + ' ' + line).trim();
+          }
         }
       } else {
         currentPrompt.push(line);

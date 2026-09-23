@@ -40,7 +40,6 @@ export default function QuestionsPage() {
   // Search & Filter state
   const [searchTerm, setSearchTerm] = useState('');
   const [filterDifficulty, setFilterDifficulty] = useState('ALL');
-  const [filterCategory, setFilterCategory] = useState('ALL');
 
   // Modals state
   const [questionModalOpen, setQuestionModalOpen] = useState(false);
@@ -283,25 +282,14 @@ export default function QuestionsPage() {
     fetchData();
   };
 
-  // Derive distinct categories across all questions
-  const allCategories = useMemo(() => {
-    const cats = new Set();
-    questions.forEach((q) => {
-      if (q.category) cats.add(q.category);
-    });
-    return Array.from(cats).sort();
-  }, [questions]);
-
   // Reset search and filter toolbar
   const handleResetFilters = () => {
     setSearchTerm('');
     setFilterDifficulty('ALL');
-    setFilterCategory('ALL');
   };
 
   const isFiltered =
     filterDifficulty !== 'ALL' ||
-    filterCategory !== 'ALL' ||
     searchTerm.trim() !== '';
 
   if (loading) return <Loading text="Loading question repository, events & rounds..." />;
@@ -319,7 +307,7 @@ export default function QuestionsPage() {
             Question Management
           </h1>
           <p className="text-xs text-slate-500 dark:text-slate-400">
-            Author, configure, categorize, and bulk import examination questions organized by tournament tracks and rounds
+            Author, configure, and bulk import examination questions organized by tournament tracks and rounds
           </p>
         </div>
 
@@ -336,7 +324,7 @@ export default function QuestionsPage() {
       </div>
 
       {/* KPI Overview Cards */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
         <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-4 shadow-sm">
           <span className="text-[11px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider block">
             Competition Events
@@ -351,24 +339,6 @@ export default function QuestionsPage() {
           </span>
           <p className="text-2xl font-black text-brand-600 dark:text-brand-400 mt-1">{rounds.length}</p>
           <span className="text-[10px] text-slate-500 mt-1 block">Configured tournament stages</span>
-        </div>
-
-        <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-4 shadow-sm">
-          <span className="text-[11px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider block">
-            Total Questions
-          </span>
-          <p className="text-2xl font-black text-emerald-600 dark:text-emerald-400 mt-1">{questions.length}</p>
-          <span className="text-[10px] text-slate-500 mt-1 block">Repository total questions</span>
-        </div>
-
-        <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-4 shadow-sm">
-          <span className="text-[11px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider block">
-            Categories
-          </span>
-          <p className="text-2xl font-black text-purple-600 dark:text-purple-400 mt-1">
-            {allCategories.length > 0 ? allCategories.length : 1}
-          </p>
-          <span className="text-[10px] text-slate-500 mt-1 block">Knowledge classifications</span>
         </div>
       </div>
 
@@ -400,25 +370,6 @@ export default function QuestionsPage() {
             <option value="Hard">Hard</option>
           </select>
         </div>
-
-        {/* Category Filter */}
-        {allCategories.length > 0 && (
-          <div className="flex items-center gap-1.5 text-xs">
-            <span className="text-slate-400 font-semibold text-[11px]">Category:</span>
-            <select
-              value={filterCategory}
-              onChange={(e) => setFilterCategory(e.target.value)}
-              className="px-3 py-2 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50/70 dark:bg-slate-800/70 text-xs font-semibold text-slate-800 dark:text-slate-200 focus:outline-none max-w-[160px] truncate"
-            >
-              <option value="ALL">All Categories</option>
-              {allCategories.map((cat) => (
-                <option key={cat} value={cat}>
-                  {cat}
-                </option>
-              ))}
-            </select>
-          </div>
-        )}
 
         {/* Reset Filter Button */}
         {isFiltered && (
@@ -532,11 +483,6 @@ export default function QuestionsPage() {
                         if (q.difficulty?.toLowerCase() !== filterDifficulty.toLowerCase()) return false;
                       }
 
-                      // Category match
-                      if (filterCategory !== 'ALL') {
-                        if (q.category?.toLowerCase() !== filterCategory.toLowerCase()) return false;
-                      }
-
                       // Keyword search match
                       if (searchTerm.trim()) {
                         const term = searchTerm.toLowerCase();
@@ -555,7 +501,6 @@ export default function QuestionsPage() {
                     });
 
                     // Round-specific metrics
-                    const roundCategories = new Set(roundQuestions.map((q) => q.category).filter(Boolean));
                     const roundTotalMarks = roundQuestions.reduce((acc, q) => acc + (Number(q.marks) || 0), 0);
 
                     return (
@@ -614,18 +559,11 @@ export default function QuestionsPage() {
                           </div>
 
                           {/* Round Metrics Strip */}
-                          <div className="grid grid-cols-3 gap-2 my-3 p-2.5 rounded-xl bg-white dark:bg-slate-900 border border-slate-100 dark:border-slate-800 text-xs">
+                          <div className="grid grid-cols-2 gap-2 my-3 p-2.5 rounded-xl bg-white dark:bg-slate-900 border border-slate-100 dark:border-slate-800 text-xs">
                             <div className="flex items-center gap-1.5">
                               <BookOpen className="w-3.5 h-3.5 text-brand-500 shrink-0" />
                               <span className="text-slate-600 dark:text-slate-400 truncate">
                                 Questions: <strong className="text-slate-900 dark:text-white">{roundQuestions.length}</strong>
-                              </span>
-                            </div>
-
-                            <div className="flex items-center gap-1.5">
-                              <Tag className="w-3.5 h-3.5 text-purple-500 shrink-0" />
-                              <span className="text-slate-600 dark:text-slate-400 truncate">
-                                Categories: <strong className="text-slate-900 dark:text-white">{roundCategories.size}</strong>
                               </span>
                             </div>
 
@@ -700,10 +638,6 @@ export default function QuestionsPage() {
                                           size="sm"
                                         >
                                           {q.difficulty || 'Medium'}
-                                        </Badge>
-
-                                        <Badge variant="default" size="sm">
-                                          {q.category || 'General'}
                                         </Badge>
 
                                         <span className="text-[10px] text-slate-500 dark:text-slate-400 font-semibold bg-slate-100 dark:bg-slate-800 px-2 py-0.5 rounded-md">
