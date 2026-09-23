@@ -22,13 +22,15 @@ class QuizController {
       if (events.length > 0) {
         events.forEach((ev) => {
           const hasQuiz = quizzes.some(
-            (q) => q.event_id === ev.id || (q.event_name && q.event_name.toLowerCase() === ev.title.toLowerCase())
+            (q) => (q.event_id === ev.id || (q.event_name && q.event_name.toLowerCase() === ev.title.toLowerCase())) &&
+                   Number(q.round_number) === 1
           );
           if (!hasQuiz) {
             const evRound = rounds.find(
-              (r) => r.event_id === ev.id || (r.event_name && r.event_name.toLowerCase() === ev.title.toLowerCase())
+              (r) => (r.event_id === ev.id || (r.event_name && r.event_name.toLowerCase() === ev.title.toLowerCase())) &&
+                     Number(r.round_number) === 1
             );
-            const newQ = db.insert('quizzes', {
+            db.insert('quizzes', {
               event_id: ev.id,
               round_id: evRound ? evRound.id : null,
               title: `${ev.title} - Examination`,
@@ -55,10 +57,30 @@ class QuizController {
               shuffle_options: true,
               show_detailed_results: true
             });
-            quizzes.push(newQ);
+            // db.insert already pushed to this.data.quizzes
           }
         });
       }
+
+      // Deduplicate quizzes: keep at most 1 quiz per (event_id, round_number)
+      const seenKey = new Set();
+      const deduplicated = [];
+      for (const q of quizzes) {
+        if (!q.id) continue;
+        const key = `${q.event_id || q.event_name?.toLowerCase() || 'default'}-round-${q.round_number || 1}`;
+        if (seenKey.has(key)) {
+          const existingIdx = deduplicated.findIndex((x) => 
+            `${x.event_id || x.event_name?.toLowerCase() || 'default'}-round-${x.round_number || 1}` === key
+          );
+          if (existingIdx !== -1 && ['Scheduled', 'Live', 'Published'].includes(q.status) && deduplicated[existingIdx].status === 'Draft') {
+            deduplicated[existingIdx] = q;
+          }
+          continue;
+        }
+        seenKey.add(key);
+        deduplicated.push(q);
+      }
+      quizzes = deduplicated;
 
       if (user.role === 'PARTICIPANT') {
         const participant = db.find('participants', (p) =>
@@ -175,8 +197,10 @@ class QuizController {
         const qCount = db.filter('quiz_questions', (qq) => qq.quiz_id === q.id).length || roundQuestions.length;
         const assignedCount = db.filter('quiz_assignments', (qa) => qa.quiz_id === q.id).length;
         const attemptsCount = db.filter('exam_attempts', (ea) => ea.quiz_id === q.id).length;
+        const parentEvent = events.find(e => e.id === q.event_id || (q.event_name && e.title.toLowerCase() === q.event_name.toLowerCase()));
         return {
           ...q,
+          event_code: q.event_code || parentEvent?.code || 'ELQ26',
           entry_window_status: ScheduleService.getEntryWindowStatus(q),
           total_questions: qCount || q.total_questions || 0,
           assigned_participants_count: assignedCount,
@@ -320,12 +344,64 @@ class QuizController {
         resolvedQuestionIds = matchingQuestions.map((q) => q.id);
       }
 
+      // Check if a quiz already exists for this event and round number
+      const existingQuiz = db.find(
+        'quizzes',
+        (q) =>
+          (q.event_id === eventRecord.id || (q.event_name && q.event_name.toLowerCase() === eventRecord.title.toLowerCase())) &&
+          Number(q.round_number) === numRound
+      );
+
+      if (existingQuiz) {
+        // Update existing examination rather than creating a duplicate
+        const updatedQuiz = db.update('quizzes', (q) => q.id === existingQuiz.id, {
+          title: title || existingQuiz.title,
+          description: description !== undefined ? description : existingQuiz.description,
+          event_id: eventRecord.id,
+          event_name: eventRecord.title,
+          round_id: roundRecord.id,
+          round_number: numRound,
+          duration_minutes: Number(duration_minutes) || existingQuiz.duration_minutes || 30,
+          start_date: start_date || existingQuiz.start_date,
+          start_time: start_time || existingQuiz.start_time,
+          end_date: end_date || existingQuiz.end_date,
+          end_time: end_time || existingQuiz.end_time,
+          max_marks: Number(max_marks) || existingQuiz.max_marks || 100,
+          pass_percentage: Number(pass_percentage) || existingQuiz.pass_percentage || 40,
+          negative_marking: Boolean(negative_marking),
+          negative_mark_value: Number(negative_mark_value) || 0,
+          max_attempts: Number(max_attempts) || 1,
+          status: status || existingQuiz.status,
+          desktop_only: Boolean(desktop_only),
+          fullscreen_required: Boolean(fullscreen_required),
+          max_violations: Number(max_violations) || 1,
+          shuffle_questions: Boolean(shuffle_questions),
+          shuffle_options: Boolean(shuffle_options),
+          total_questions: resolvedQuestionIds.length > 0 ? resolvedQuestionIds.length : (existingQuiz.total_questions || 0)
+        });
+
+        if (resolvedQuestionIds.length > 0) {
+          db.remove('quiz_questions', (qq) => qq.quiz_id === existingQuiz.id);
+          resolvedQuestionIds.forEach((qId, index) => {
+            db.insert('quiz_questions', {
+              quiz_id: existingQuiz.id,
+              question_id: qId,
+              display_order: index + 1
+            });
+          });
+        }
+
+        AuditService.log(req.user.id, 'UPDATE_QUIZ_SCHEDULE', 'QUIZ', existingQuiz.id, { title: updatedQuiz.title });
+        SocketService.notifyQuizUpdate({ quiz_id: existingQuiz.id, status: updatedQuiz.status, event_id: eventRecord.id });
+
+        return success(res, updatedQuiz, 'Examination schedule updated successfully');
+      }
+
       const newQuiz = db.insert('quizzes', {
         title,
         description,
         event_id: eventRecord.id,
         event_name: eventRecord.title,
-        event_code: eventRecord.code,
         round_id: roundRecord.id,
         round_number: numRound,
         total_questions: resolvedQuestionIds.length,
@@ -345,8 +421,6 @@ class QuizController {
         max_violations: Number(max_violations),
         shuffle_questions: Boolean(shuffle_questions),
         shuffle_options: Boolean(shuffle_options),
-        entry_window_minutes: Number(entry_window_minutes) || 5,
-        allow_late_entry: Boolean(allow_late_entry),
         created_by: req.user.id
       });
 
@@ -362,6 +436,7 @@ class QuizController {
       }
 
       AuditService.log(req.user.id, 'CREATE_QUIZ', 'QUIZ', newQuiz.id, { title: newQuiz.title, event_code: eventRecord.code });
+      SocketService.notifyQuizUpdate({ quiz_id: newQuiz.id, status: newQuiz.status, event_id: eventRecord.id });
 
       return success(res, newQuiz, 'Event & Quiz created successfully', 201);
     } catch (err) {
@@ -427,6 +502,7 @@ class QuizController {
       }
 
       AuditService.log(req.user.id, 'UPDATE_QUIZ', 'QUIZ', id, { updates });
+      SocketService.notifyQuizUpdate({ quiz_id: id, status: updated.status, event_id: updated.event_id });
 
       return success(res, updated, 'Event updated successfully');
     } catch (err) {
@@ -456,6 +532,7 @@ class QuizController {
       }
 
       AuditService.log(req.user.id, 'DELETE_QUIZ', 'QUIZ', id, { title: existing.title });
+      SocketService.notifyQuizUpdate({ quiz_id: id, deleted: true, event_id: existing.event_id });
 
       return success(res, {}, 'Event and Quiz deleted successfully');
     } catch (err) {

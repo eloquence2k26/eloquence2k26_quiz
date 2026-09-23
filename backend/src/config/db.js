@@ -9,33 +9,30 @@ const TABLE_COLUMNS = {
   participants: [
     'id', 'participant_id', 'full_name', 'email', 'mobile', 'college',
     'department', 'year', 'event', 'registration_number', 'photo_url',
-    'assigned_quiz_ids', 'round_1_selected', 'round_2_selected',
-    'round_1_attempted', 'round_1_result', 'round_1_published',
+    'round_1_selected', 'round_2_selected',
     'is_disabled', 'created_at', 'updated_at'
   ],
   admins: ['id', 'full_name', 'email', 'admin_level', 'created_at'],
   events: ['id', 'title', 'code', 'description', 'is_active', 'created_at', 'updated_at'],
   rounds: [
     'id', 'event_id', 'round_number', 'round_name', 'description',
-    'is_active', 'is_published', 'round_1_published', 'round_2_published',
+    'is_active', 'is_published',
     'created_at', 'updated_at'
   ],
   quizzes: [
-    'id', 'event_id', 'round_id', 'title', 'description', 'event_name', 'event_code',
+    'id', 'event_id', 'round_id', 'title', 'description', 'event_name',
     'round_number', 'total_questions', 'duration_minutes', 'start_date',
     'start_time', 'end_date', 'end_time', 'start_datetime', 'end_datetime',
     'max_marks', 'pass_percentage', 'negative_marking', 'negative_mark_value',
     'max_attempts', 'status', 'desktop_only', 'fullscreen_required',
     'max_violations', 'shuffle_questions', 'shuffle_options',
-    'entry_window_minutes', 'allow_late_entry', 'show_detailed_results',
-    'is_results_published', 'published_participant_ids', 'created_by',
+    'show_detailed_results', 'created_by',
     'created_at', 'updated_at'
   ],
   questions: [
     'id', 'question_text', 'option_a', 'option_b', 'option_c', 'option_d',
     'correct_answer', 'marks', 'negative_marks', 'explanation', 'category',
-    'difficulty', 'round_number', 'event_name', 'rounds', 'events',
-    'created_by', 'created_at', 'updated_at'
+    'difficulty', 'created_by', 'created_at', 'updated_at'
   ],
   quiz_questions: ['id', 'quiz_id', 'question_id', 'display_order', 'created_at'],
   quiz_assignments: ['id', 'quiz_id', 'participant_id', 'assigned_by', 'assigned_at', 'status'],
@@ -269,7 +266,11 @@ class DBStore {
 
       const results = await Promise.all(loadPromises);
       for (const res of results) {
-        this.data[res.table] = res.data;
+        if (res.data && res.data.length > 0) {
+          this.data[res.table] = res.data;
+        } else if (!this.data[res.table]) {
+          this.data[res.table] = [];
+        }
       }
 
       // Fetch system settings
@@ -596,6 +597,55 @@ class DBStore {
             logger.warn(`[DB] Notice seeding questions: ${qErr.message}`);
           }
         })();
+      }
+
+      // Ensure default event and round have a canonical quiz in quizzes table
+      if (
+        (!this.data.quizzes || this.data.quizzes.length === 0) &&
+        this.data.events &&
+        this.data.events.length > 0
+      ) {
+        const ev = this.data.events[0];
+        const r1 = (this.data.rounds || []).find(
+          (r) => Number(r.round_number) === 1 && (r.event_id === ev.id || !r.event_id)
+        );
+        const defaultQuiz = {
+          id: 'b0000000-0000-0000-0000-000000000001',
+          event_id: ev.id,
+          round_id: r1 ? r1.id : null,
+          title: `${ev.title} - Examination`,
+          description: ev.description || `${ev.title} symposium event`,
+          event_name: ev.title,
+          round_number: 1,
+          total_questions: (this.data.questions || []).length,
+          duration_minutes: 30,
+          start_date: new Date().toISOString().split('T')[0],
+          start_time: '09:00:00',
+          end_date: new Date(Date.now() + 86400000 * 7).toISOString().split('T')[0],
+          end_time: '23:59:59',
+          max_marks: 100,
+          pass_percentage: 40,
+          negative_marking: false,
+          negative_mark_value: 0,
+          max_attempts: 1,
+          status: 'Draft',
+          desktop_only: false,
+          fullscreen_required: true,
+          max_violations: 1,
+          shuffle_questions: true,
+          shuffle_options: true,
+          show_detailed_results: true,
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString()
+        };
+        this.data.quizzes = [defaultQuiz];
+        try {
+          const cleanQ = this.sanitize('quizzes', defaultQuiz);
+          await supabase.from('quizzes').upsert([cleanQ]);
+          logger.info('[DB] Seeded canonical Round 1 quiz into Supabase database');
+        } catch (qErr) {
+          logger.warn(`[DB] Notice seeding canonical quiz: ${qErr.message}`);
+        }
       }
 
       // Auto-link questions to default Round 1 quiz if quiz_questions is empty

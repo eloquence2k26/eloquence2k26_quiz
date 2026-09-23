@@ -1,5 +1,5 @@
-import React, { useState, useEffect, useMemo } from 'react';
-import { Link } from 'react-router-dom';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
+import { Link, useLocation, useNavigate } from 'react-router-dom';
 import {
   Calendar,
   Clock,
@@ -23,12 +23,16 @@ import {
   Unlock,
   BookOpen,
   Award,
-  Users
+  Users,
+  ExternalLink,
+  Activity,
+  ArrowRight
 } from 'lucide-react';
 import { quizService } from '../../services/quizService';
 import { adminService } from '../../services/adminService';
 import { useToast } from '../../context/ToastContext';
 import { formatDate, getRoundBadgeVariant } from '../../utils/formatters';
+import { getSocket } from '../../services/socket';
 import Badge from '../../components/common/Badge';
 import Loading from '../../components/common/Loading';
 import ModifyScheduleModal from '../../components/admin/ModifyScheduleModal';
@@ -49,25 +53,39 @@ export default function QuizSchedulePage() {
   const [modifyModalOpen, setModifyModalOpen] = useState(false);
   const [selectedQuizForSchedule, setSelectedQuizForSchedule] = useState(null);
 
+  const location = useLocation();
+  const navigate = useNavigate();
+  const handledStateRef = useRef(false);
+
   useEffect(() => {
     fetchData();
 
-    // Live background polling every 30s to keep schedule & auto-publishing in sync
+    // Real-time WebSocket synchronization across tabs & components
+    const socket = getSocket();
+    const handleSync = () => {
+      fetchData(false);
+    };
+
+    socket.on('QUIZ_UPDATED', handleSync);
+    socket.on('ROUND_STATUS_UPDATED', handleSync);
+    socket.on('REFRESH_DASHBOARD', handleSync);
+
+    // Background safety polling (every 30s)
     const interval = setInterval(() => {
       if (document.hidden) return;
-      quizService
-        .getAllQuizzes()
-        .then((res) => {
-          if (res.success && res.data) setQuizzes(res.data);
-        })
-        .catch(() => {});
+      fetchData(false);
     }, 30000);
 
-    return () => clearInterval(interval);
+    return () => {
+      socket.off('QUIZ_UPDATED', handleSync);
+      socket.off('ROUND_STATUS_UPDATED', handleSync);
+      socket.off('REFRESH_DASHBOARD', handleSync);
+      clearInterval(interval);
+    };
   }, []);
 
-  const fetchData = async () => {
-    setLoading(true);
+  const fetchData = async (showLoading = true) => {
+    if (showLoading) setLoading(true);
     try {
       const [quizRes, eventsRes, roundsRes] = await Promise.all([
         quizService.getAllQuizzes(),
@@ -125,25 +143,48 @@ export default function QuizSchedulePage() {
       }
 
       setEvents(Array.from(eventMap.values()));
+
+      // Handle passed location state from RoundsPage or QuizzesPage
+      if (!handledStateRef.current && location.state) {
+        if (location.state.quizId && loadedQuizzes.length > 0) {
+          const targetQuiz = loadedQuizzes.find((q) => q.id === location.state.quizId);
+          if (targetQuiz && location.state.openSchedule) {
+            setSelectedQuizForSchedule(targetQuiz);
+            setModifyModalOpen(true);
+            handledStateRef.current = true;
+          }
+        }
+      }
     } catch (e) {
       toast.error('Failed to load examination schedules');
     } finally {
-      setLoading(false);
+      if (showLoading) setLoading(false);
     }
   };
 
   // --- Handlers ---
 
-  // Create New Schedule (dedicated to timing and schedule parameters)
-  const handleCreateSchedule = (event = null) => {
+  // Create or Configure Schedule (reuses existing examination for the round to avoid duplicates)
+  const handleCreateSchedule = (event = null, roundNum = 1) => {
     const targetEvent = event || events[0];
+    const existing = quizzes.find(
+      (q) =>
+        (q.event_id === targetEvent?.id || (q.event_name && q.event_name.toLowerCase() === targetEvent?.title?.toLowerCase())) &&
+        Number(q.round_number) === Number(roundNum)
+    );
+    if (existing) {
+      setSelectedQuizForSchedule(existing);
+      setModifyModalOpen(true);
+      return;
+    }
+
     setSelectedQuizForSchedule({
       id: null,
       event_id: targetEvent?.id,
       event_name: targetEvent?.title || 'Technical Quiz',
       event_code: targetEvent?.code || 'ELQ26',
-      title: `${targetEvent?.title || 'Symposium'} - Examination`,
-      round_number: 1,
+      title: `${targetEvent?.title || 'Symposium'} - Round ${roundNum}`,
+      round_number: roundNum,
       duration_minutes: 30,
       start_date: new Date().toISOString().split('T')[0],
       start_time: '09:00',
@@ -162,17 +203,30 @@ export default function QuizSchedulePage() {
     setModifyModalOpen(true);
   };
 
-  // Save Schedule Modification (Create or Update)
+  // Save Schedule Modification (Create or Update with deduplication check)
   const handleSaveScheduleModification = async (updatedQuizData) => {
     try {
       let res;
-      if (updatedQuizData.id) {
-        res = await quizService.updateQuiz(updatedQuizData.id, updatedQuizData);
+      let targetId = updatedQuizData.id;
+      if (!targetId) {
+        const existing = quizzes.find(
+          (q) =>
+            (q.event_id === updatedQuizData.event_id ||
+              (q.event_name && q.event_name.toLowerCase() === updatedQuizData.event_name?.toLowerCase())) &&
+            Number(q.round_number) === Number(updatedQuizData.round_number || 1)
+        );
+        if (existing) {
+          targetId = existing.id;
+        }
+      }
+
+      if (targetId) {
+        res = await quizService.updateQuiz(targetId, { ...updatedQuizData, id: targetId });
       } else {
         res = await quizService.createQuiz(updatedQuizData);
       }
       if (res.success) {
-        toast.success(updatedQuizData.id ? 'Schedule parameters updated successfully' : 'Schedule created successfully');
+        toast.success(targetId ? 'Schedule parameters updated successfully' : 'Schedule created successfully');
         setModifyModalOpen(false);
         setSelectedQuizForSchedule(null);
         fetchData();
@@ -657,6 +711,39 @@ export default function QuizSchedulePage() {
                                 <Users className="w-3.5 h-3.5 text-brand-600 dark:text-brand-400" />
                                 <span>{q.assigned_participants_count || 0} Assigned Scholars</span>
                               </Link>
+                            </div>
+                          </div>
+
+                          {/* Connected Sub-Sections Quick Jump Links */}
+                          <div className="pt-2.5 pb-1 border-t border-slate-100 dark:border-slate-800/80 flex items-center justify-between text-xs">
+                            <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Linked Sections:</span>
+                            <div className="flex items-center gap-2">
+                              <button
+                                onClick={() => navigate('/admin/rounds', { state: { eventId: event.id, roundNumber: q.round_number } })}
+                                className="inline-flex items-center gap-1 text-[11px] font-semibold text-slate-600 dark:text-slate-300 hover:text-brand-600 dark:hover:text-brand-400 transition-colors"
+                                title="View in Rounds Setup"
+                              >
+                                <Layers className="w-3 h-3 text-brand-500" />
+                                <span>Rounds Setup</span>
+                              </button>
+                              <span className="text-slate-300 dark:text-slate-700">•</span>
+                              <button
+                                onClick={() => navigate('/admin/questions', { state: { eventId: event.id, eventTitle: event.title, roundNumber: q.round_number, quizId: q.id } })}
+                                className="inline-flex items-center gap-1 text-[11px] font-semibold text-slate-600 dark:text-slate-300 hover:text-brand-600 dark:hover:text-brand-400 transition-colors"
+                                title="View Questions for this round"
+                              >
+                                <HelpCircle className="w-3 h-3 text-purple-500" />
+                                <span>Question Bank</span>
+                              </button>
+                              <span className="text-slate-300 dark:text-slate-700">•</span>
+                              <button
+                                onClick={() => navigate('/admin/assign-participants', { state: { quizId: q.id, eventId: event.id } })}
+                                className="inline-flex items-center gap-1 text-[11px] font-semibold text-slate-600 dark:text-slate-300 hover:text-brand-600 dark:hover:text-brand-400 transition-colors"
+                                title="Assign participants to this quiz"
+                              >
+                                <Users className="w-3 h-3 text-emerald-500" />
+                                <span>Assign</span>
+                              </button>
                             </div>
                           </div>
 

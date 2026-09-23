@@ -97,6 +97,11 @@ class SocketService {
   static notifyAnnouncement(data = {}) {
     this.broadcast('ANNOUNCEMENT_CREATED', data);
   }
+
+  static notifyParticipantsUpdated(data = {}) {
+    this.broadcast('PARTICIPANTS_UPDATED', data);
+    this.broadcast('REFRESH_DASHBOARD', data);
+  }
 }
 
 module.exports = SocketService;

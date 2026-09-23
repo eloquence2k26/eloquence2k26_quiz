@@ -24,6 +24,7 @@ import EventModal from '../../components/admin/EventModal';
 import Badge from '../../components/common/Badge';
 import Loading from '../../components/common/Loading';
 import { formatDate } from '../../utils/formatters';
+import { getSocket } from '../../services/socket';
 
 export default function QuizzesPage() {
   const toast = useToast();
@@ -37,10 +38,26 @@ export default function QuizzesPage() {
 
   useEffect(() => {
     fetchData();
+
+    // Real-time WebSocket synchronization across tabs & components
+    const socket = getSocket();
+    const handleSync = () => {
+      fetchData(false);
+    };
+
+    socket.on('QUIZ_UPDATED', handleSync);
+    socket.on('ROUND_STATUS_UPDATED', handleSync);
+    socket.on('REFRESH_DASHBOARD', handleSync);
+
+    return () => {
+      socket.off('QUIZ_UPDATED', handleSync);
+      socket.off('ROUND_STATUS_UPDATED', handleSync);
+      socket.off('REFRESH_DASHBOARD', handleSync);
+    };
   }, []);
 
-  const fetchData = async () => {
-    setLoading(true);
+  const fetchData = async (showLoading = true) => {
+    if (showLoading) setLoading(true);
     try {
       const res = await adminService.getEvents();
       if (res.success && res.data) {
@@ -49,7 +66,7 @@ export default function QuizzesPage() {
     } catch (err) {
       toast.error('Failed to load events list');
     } finally {
-      setLoading(false);
+      if (showLoading) setLoading(false);
     }
   };
 
@@ -341,7 +358,7 @@ export default function QuizzesPage() {
                   <div className="grid grid-cols-3 gap-2">
                     {/* Rounds Link */}
                     <button
-                      onClick={() => navigate('/admin/rounds')}
+                      onClick={() => navigate('/admin/rounds', { state: { eventId: ev.id, eventTitle: ev.title } })}
                       className="p-2 rounded-xl bg-slate-50 dark:bg-slate-800/70 hover:bg-brand-50 dark:hover:bg-brand-950/40 border border-slate-200 dark:border-slate-700 hover:border-brand-300 dark:hover:border-brand-800 transition-all text-left flex flex-col justify-between"
                       title="Configure Rounds in Rounds section"
                     >
@@ -352,14 +369,14 @@ export default function QuizzesPage() {
                       <div className="mt-1">
                         <span className="text-[10px] text-slate-400 block leading-tight">Rounds</span>
                         <span className="text-xs font-bold text-slate-900 dark:text-white">
-                          {ev.rounds_count || 2} Rounds
+                          {ev.rounds_count || 1} Rounds
                         </span>
                       </div>
                     </button>
 
                     {/* Schedule Link */}
                     <button
-                      onClick={() => navigate('/admin/schedule')}
+                      onClick={() => navigate('/admin/schedule', { state: { eventId: ev.id, eventTitle: ev.title } })}
                       className="p-2 rounded-xl bg-slate-50 dark:bg-slate-800/70 hover:bg-brand-50 dark:hover:bg-brand-950/40 border border-slate-200 dark:border-slate-700 hover:border-brand-300 dark:hover:border-brand-800 transition-all text-left flex flex-col justify-between"
                       title="Configure Schedule in Quiz Schedule section"
                     >
@@ -377,7 +394,7 @@ export default function QuizzesPage() {
 
                     {/* Questions Link */}
                     <button
-                      onClick={() => navigate('/admin/questions')}
+                      onClick={() => navigate('/admin/questions', { state: { eventId: ev.id, eventTitle: ev.title } })}
                       className="p-2 rounded-xl bg-slate-50 dark:bg-slate-800/70 hover:bg-brand-50 dark:hover:bg-brand-950/40 border border-slate-200 dark:border-slate-700 hover:border-brand-300 dark:hover:border-brand-800 transition-all text-left flex flex-col justify-between"
                       title="Manage Questions in Questions section"
                     >

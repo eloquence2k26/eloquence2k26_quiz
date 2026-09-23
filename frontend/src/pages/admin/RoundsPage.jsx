@@ -23,15 +23,17 @@ import {
 import { adminService } from '../../services/adminService';
 import { quizService } from '../../services/quizService';
 import { useToast } from '../../context/ToastContext';
-import { formatDate, getRoundBadgeVariant } from '../../utils/formatters';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useLocation } from 'react-router-dom';
+import { getSocket } from '../../services/socket';
 import Badge from '../../components/common/Badge';
 import Modal from '../../components/common/Modal';
 import Loading from '../../components/common/Loading';
+import { getRoundBadgeVariant } from '../../utils/formatters';
 
 export default function RoundsPage() {
   const toast = useToast();
   const navigate = useNavigate();
+  const location = useLocation();
   const [rounds, setRounds] = useState([]);
   const [events, setEvents] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -56,10 +58,26 @@ export default function RoundsPage() {
 
   useEffect(() => {
     fetchData();
+
+    // Real-time WebSocket synchronization across tabs & components
+    const socket = getSocket();
+    const handleSync = () => {
+      fetchData(false);
+    };
+
+    socket.on('QUIZ_UPDATED', handleSync);
+    socket.on('ROUND_STATUS_UPDATED', handleSync);
+    socket.on('REFRESH_DASHBOARD', handleSync);
+
+    return () => {
+      socket.off('QUIZ_UPDATED', handleSync);
+      socket.off('ROUND_STATUS_UPDATED', handleSync);
+      socket.off('REFRESH_DASHBOARD', handleSync);
+    };
   }, []);
 
-  const fetchData = async () => {
-    setLoading(true);
+  const fetchData = async (showLoading = true) => {
+    if (showLoading) setLoading(true);
     try {
       const [roundsRes, eventsRes] = await Promise.all([
         adminService.getRounds().catch((err) => {
@@ -118,7 +136,7 @@ export default function RoundsPage() {
       console.error('RoundsPage fetchData error:', err);
       toast.error('Failed to load tournament rounds & events');
     } finally {
-      setLoading(false);
+      if (showLoading) setLoading(false);
     }
   };
 
@@ -447,7 +465,16 @@ export default function RoundsPage() {
                               </button>
 
                               <button
-                                onClick={() => navigate('/admin/schedule')}
+                                onClick={() =>
+                                  navigate('/admin/schedule', {
+                                    state: {
+                                      quizId: r.quizzes?.[0]?.id,
+                                      eventId: event.id,
+                                      roundNumber: r.round_number,
+                                      openSchedule: true
+                                    }
+                                  })
+                                }
                                 className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-brand-50 dark:bg-brand-950/60 hover:bg-brand-100 dark:hover:bg-brand-900/60 border border-brand-200 dark:border-brand-800/60 text-brand-700 dark:text-brand-300 text-xs font-bold transition-colors"
                                 title="Schedule examination in Quiz Schedule section"
                               >
@@ -500,7 +527,7 @@ export default function RoundsPage() {
                               </div>
                             ) : (
                               <div className="grid grid-cols-1 gap-3">
-                                {r.quizzes.map((q) => (
+                                {Array.from(new Map((r.quizzes || []).map((q) => [q.id, q])).values()).map((q) => (
                                   <div
                                     key={q.id}
                                     className="p-3.5 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 flex flex-col justify-between hover:border-brand-200 dark:hover:border-brand-900 transition-colors shadow-2xs"
@@ -560,13 +587,55 @@ export default function RoundsPage() {
                                         )}
                                       </button>
 
-                                      <button
-                                        onClick={() => navigate('/admin/schedule')}
-                                        className="text-[11px] font-bold text-brand-600 dark:text-brand-400 hover:underline flex items-center gap-1"
-                                      >
-                                        <Calendar className="w-3 h-3" />
-                                        <span>Manage Schedule</span>
-                                      </button>
+                                      {/* Quick Section Links: Questions, Participants, Schedule */}
+                                      <div className="flex items-center gap-2">
+                                        <button
+                                          onClick={() =>
+                                            navigate('/admin/questions', {
+                                              state: {
+                                                quizId: q.id,
+                                                eventId: event.id,
+                                                eventTitle: event.title,
+                                                roundNumber: r.round_number
+                                              }
+                                            })
+                                          }
+                                          className="p-1 rounded-lg text-slate-400 hover:text-purple-600 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
+                                          title="Configure Questions in Question Bank"
+                                        >
+                                          <HelpCircle className="w-3.5 h-3.5" />
+                                        </button>
+                                        <button
+                                          onClick={() =>
+                                            navigate('/admin/assign-participants', {
+                                              state: {
+                                                quizId: q.id,
+                                                eventId: event.id
+                                              }
+                                            })
+                                          }
+                                          className="p-1 rounded-lg text-slate-400 hover:text-emerald-600 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
+                                          title="Assign Participants"
+                                        >
+                                          <Users className="w-3.5 h-3.5" />
+                                        </button>
+                                        <button
+                                          onClick={() =>
+                                            navigate('/admin/schedule', {
+                                              state: {
+                                                quizId: q.id,
+                                                eventId: event.id,
+                                                roundNumber: r.round_number,
+                                                openSchedule: true
+                                              }
+                                            })
+                                          }
+                                          className="text-[11px] font-bold text-brand-600 dark:text-brand-400 hover:underline flex items-center gap-1"
+                                        >
+                                          <Calendar className="w-3 h-3" />
+                                          <span>Manage Schedule</span>
+                                        </button>
+                                      </div>
                                     </div>
                                   </div>
                                 ))}

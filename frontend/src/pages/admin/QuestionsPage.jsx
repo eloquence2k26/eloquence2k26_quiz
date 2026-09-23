@@ -19,8 +19,10 @@ import {
   ChevronDown,
   ChevronUp
 } from 'lucide-react';
+import { useLocation, useNavigate } from 'react-router-dom';
 import { adminService } from '../../services/adminService';
 import { useToast } from '../../context/ToastContext';
+import { getSocket } from '../../services/socket';
 import QuestionModal from '../../components/admin/QuestionModal';
 import MultiFormatImportModal from '../../components/admin/MultiFormatImportModal';
 import Badge from '../../components/common/Badge';
@@ -46,12 +48,31 @@ export default function QuestionsPage() {
   const [targetEvent, setTargetEvent] = useState('Technical Quiz');
   const [targetRound, setTargetRound] = useState(1);
 
+  const location = useLocation();
+  const navigate = useNavigate();
+
   useEffect(() => {
     fetchData();
+
+    // Real-time WebSocket synchronization across tabs & components
+    const socket = getSocket();
+    const handleSync = () => {
+      fetchData(false);
+    };
+
+    socket.on('QUIZ_UPDATED', handleSync);
+    socket.on('ROUND_STATUS_UPDATED', handleSync);
+    socket.on('REFRESH_DASHBOARD', handleSync);
+
+    return () => {
+      socket.off('QUIZ_UPDATED', handleSync);
+      socket.off('ROUND_STATUS_UPDATED', handleSync);
+      socket.off('REFRESH_DASHBOARD', handleSync);
+    };
   }, []);
 
-  const fetchData = async () => {
-    setLoading(true);
+  const fetchData = async (showLoading = true) => {
+    if (showLoading) setLoading(true);
     try {
       const [roundsRes, eventsRes, questRes] = await Promise.all([
         adminService.getRounds().catch(() => ({ success: false, data: [] })),
@@ -114,10 +135,20 @@ export default function QuestionsPage() {
         return q;
       });
       setQuestions(alignedQuestions);
+
+      // Handle passed location state from RoundsPage or QuizzesPage
+      if (location.state?.eventTitle) {
+        setTargetEvent(location.state.eventTitle);
+      } else if (finalEvents.length > 0) {
+        setTargetEvent(finalEvents[0].title);
+      }
+      if (location.state?.roundNumber) {
+        setTargetRound(Number(location.state.roundNumber));
+      }
     } catch (err) {
       toast.error('Failed to load question repository');
     } finally {
-      setLoading(false);
+      if (showLoading) setLoading(false);
     }
   };
 
