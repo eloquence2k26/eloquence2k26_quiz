@@ -89,10 +89,9 @@ export default function QuizCard({ quiz, participant }) {
     return `${String(minutes).padStart(2, '0')}m : ${String(seconds).padStart(2, '0')}s`;
   };
 
-  const isDirectLive = quiz.status === 'Live' || quiz.status === 'Published' || Boolean(quiz.allow_late_entry);
-  const isBeforeStart = !isDirectLive && quiz.status === 'Scheduled' && (secondsUntilStart > 0);
-  const isAfterEnd = quiz.status !== 'Live' && (Boolean(entryStatus?.isAfterEnd) || (quiz.end_date && quiz.end_time && secondsUntilEnd === 0 && !isBeforeStart));
-  const isLive = isDirectLive || (!isBeforeStart && !isAfterEnd);
+  const isBeforeStart = Boolean(secondsUntilStart > 0);
+  const isAfterEnd = quiz.status === 'Completed' || quiz.status === 'Closed' || Boolean(entryStatus?.isAfterEnd);
+  const isLive = !isBeforeStart && !isAfterEnd && (quiz.status === 'Live' || quiz.status === 'Published' || quiz.status === 'Scheduled');
 
   const handleAction = () => {
     if (isCompleted || isTerminated) {

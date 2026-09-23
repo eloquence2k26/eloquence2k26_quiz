@@ -87,7 +87,13 @@ class QuizController {
         }
 
         quizzes = quizzes.filter((q) => {
-          return assignedQuizIds.has(q.id);
+          const isDirectlyAssigned = assignedQuizIds.has(q.id);
+          const isEventMatched = participant?.event && (
+            (q.event_name && q.event_name.trim().toLowerCase() === participant.event.trim().toLowerCase()) ||
+            (q.title && q.title.trim().toLowerCase() === participant.event.trim().toLowerCase()) ||
+            (q.title && q.title.trim().toLowerCase().startsWith(participant.event.trim().toLowerCase()))
+          );
+          return isDirectlyAssigned || isEventMatched;
         });
 
         // Attach participant's attempt status and results
@@ -427,6 +433,7 @@ class QuizController {
       }
 
       AuditService.log(req.user.id, 'UPDATE_QUIZ', 'QUIZ', id, { updates });
+      SocketService.notifyQuizUpdate(updated);
 
       return success(res, updated, 'Event updated successfully');
     } catch (err) {

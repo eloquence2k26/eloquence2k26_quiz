@@ -47,6 +47,11 @@ export const adminService = {
     return res.data;
   },
 
+  deleteAllQuestions: async (params = {}) => {
+    const res = await api.post('/questions/delete-all', params);
+    return res.data;
+  },
+
   bulkUploadQuestions: async (questions) => {
     const res = await api.post('/questions/bulk', { questions });
     return res.data;

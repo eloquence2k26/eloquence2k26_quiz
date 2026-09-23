@@ -16,36 +16,23 @@ class QuestionController {
       const registeredEvents = db.get('events') || [];
       const defaultEventTitle = registeredEvents[0]?.title || quizzes[0]?.event_name || quizzes[0]?.title || 'Test run';
 
-      // Enrich questions with associated event and rounds
+      // Enrich questions with associated event and rounds strictly without cross-round bleeding
       let questions = rawQuestions.map((q) => {
-        const junctions = quizQuestions.filter((qq) => qq.question_id === q.id);
-        const relatedQuizzes = junctions
-          .map((qq) => quizzes.find((qz) => qz.id === qq.quiz_id))
-          .filter(Boolean);
-
-        const eventNames = Array.from(
-          new Set([
-            q.event_name,
-            ...relatedQuizzes.map((qz) => qz.event_name || defaultEventTitle)
-          ].filter(Boolean))
-        );
-        if (eventNames.length === 0) eventNames.push(defaultEventTitle);
-
+        const primaryEvent = q.event_name || defaultEventTitle;
+        const roundNum = Number(q.round_number) || 1;
         const roundNumbers = Array.from(
           new Set([
-            q.round_number,
-            ...(Array.isArray(q.rounds) ? q.rounds : []),
-            ...relatedQuizzes.map((qz) => qz.round_number)
-          ].filter((r) => r !== undefined && r !== null))
+            roundNum,
+            ...(Array.isArray(q.rounds) ? q.rounds.map(Number) : [])
+          ].filter((r) => !isNaN(r)))
         );
-        if (roundNumbers.length === 0) roundNumbers.push(1);
 
         return {
           ...q,
-          event_name: q.event_name || eventNames[0] || defaultEventTitle,
-          events: eventNames,
-          round_numbers: roundNumbers,
-          round_number: q.round_number || roundNumbers[0] || 1
+          event_name: primaryEvent,
+          events: [primaryEvent],
+          round_numbers: roundNumbers.length > 0 ? roundNumbers : [1],
+          round_number: roundNum
         };
       });
 
@@ -258,8 +245,8 @@ class QuestionController {
             option_c: optC,
             option_d: optD,
             correct_answer: corrAns,
-            marks: Number(q.marks) || 2.0,
-            negative_marks: Number(q.negative_marks) || 0.5,
+            marks: q.marks !== undefined && q.marks !== null && !isNaN(Number(q.marks)) ? Number(q.marks) : 1.0,
+            negative_marks: q.negative_marks !== undefined && q.negative_marks !== null && !isNaN(Number(q.negative_marks)) ? Number(q.negative_marks) : 0.0,
             explanation: q.explanation ? String(q.explanation).trim() : '',
             category: q.category ? String(q.category).trim() : 'General',
             difficulty: ['Easy', 'Medium', 'Hard'].includes(q.difficulty) ? q.difficulty : 'Medium',
@@ -269,7 +256,7 @@ class QuestionController {
           });
           inserted.push(item);
 
-          // Link to matching quiz in quiz_questions
+          // Link to matching quiz strictly by event AND round
           const numRound = Number(q.round_number) || 1;
           const targetEvent = (q.event_name || '').trim().toLowerCase();
           const matchingQuiz = req.body.quiz_id
@@ -278,7 +265,7 @@ class QuestionController {
                 const matchesRound = Number(qz.round_number) === numRound;
                 const matchesEvent = !qz.event_name || qz.event_name.toLowerCase() === targetEvent || qz.title.toLowerCase() === targetEvent;
                 return matchesRound && matchesEvent;
-              }) || db.find('quizzes', (qz) => Number(qz.round_number) === numRound);
+              });
 
           if (matchingQuiz) {
             const existingLink = db.find('quiz_questions', (qq) => qq.quiz_id === matchingQuiz.id && qq.question_id === item.id);
@@ -351,7 +338,7 @@ class QuestionController {
             const matchesRound = Number(qz.round_number) === numRound;
             const matchesEvent = !qz.event_name || qz.event_name.toLowerCase() === targetEvent || qz.title.toLowerCase() === targetEvent;
             return matchesRound && matchesEvent;
-          }) || db.find('quizzes', (qz) => Number(qz.round_number) === numRound);
+          });
 
       parsedQuestions.forEach((q) => {
         const item = db.insert('questions', {
@@ -361,8 +348,8 @@ class QuestionController {
           option_c: q.option_c,
           option_d: q.option_d,
           correct_answer: q.correct_answer || 'A',
-          marks: Number(q.marks) || 2.0,
-          negative_marks: Number(q.negative_marks) || 0.5,
+          marks: q.marks !== undefined && q.marks !== null && !isNaN(Number(q.marks)) ? Number(q.marks) : 1.0,
+          negative_marks: q.negative_marks !== undefined && q.negative_marks !== null && !isNaN(Number(q.negative_marks)) ? Number(q.negative_marks) : 0.0,
           explanation: q.explanation || '',
           category: q.category || 'General',
           difficulty: q.difficulty || 'Medium',
@@ -400,6 +387,45 @@ class QuestionController {
         `Successfully imported ${inserted.length} questions from ${originalFilename}`,
         201
       );
+    } catch (err) {
+      return error(res, err.message, 500);
+    }
+  }
+
+  /**
+   * Delete All Questions (Bulk delete with optional event & round filters)
+   */
+  static async deleteAllQuestions(req, res) {
+    try {
+      const event = req.body?.event !== undefined ? req.body.event : req.query?.event;
+      const round = req.body?.round !== undefined ? req.body.round : req.query?.round;
+      let count = 0;
+
+      if ((event && event !== 'ALL') || (round && round !== 'ALL')) {
+        const targetEvent = event ? String(event).trim().toLowerCase() : '';
+        const targetRound = round !== undefined && round !== null && round !== 'ALL' ? Number(round) : null;
+
+        const toDelete = db.filter('questions', (q) => {
+          const qEvt = (q.event_name || '').trim().toLowerCase();
+          const matchEvent = !targetEvent || targetEvent === 'all' || qEvt === targetEvent || (Array.isArray(q.events) && q.events.some((e) => e && e.toLowerCase() === targetEvent));
+          const matchRound = !targetRound || Number(q.round_number) === targetRound || (Array.isArray(q.round_numbers) && q.round_numbers.includes(targetRound));
+          return matchEvent && matchRound;
+        });
+
+        const deleteIds = new Set(toDelete.map((q) => q.id));
+        db.remove('questions', (q) => deleteIds.has(q.id));
+        db.remove('quiz_questions', (qq) => deleteIds.has(qq.question_id));
+        count = toDelete.length;
+      } else {
+        const allQuestions = db.get('questions') || [];
+        count = allQuestions.length;
+        db.set('questions', []);
+        db.set('quiz_questions', []);
+      }
+
+      AuditService.log(req.user ? req.user.id : 'system', 'DELETE_ALL_QUESTIONS', 'QUESTION', 'BATCH', { count, event, round });
+
+      return success(res, { count }, `Successfully deleted ${count} questions`);
     } catch (err) {
       return error(res, err.message, 500);
     }

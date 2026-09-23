@@ -16,8 +16,13 @@ router.get('/', QuestionController.getAllQuestions);
 router.post('/', QuestionController.createQuestion);
 router.post('/bulk', QuestionController.bulkUploadQuestions);
 router.post('/import-file', upload.single('file'), QuestionController.importQuestionsFile);
+router.post('/delete-all', QuestionController.deleteAllQuestions);
+router.post('/bulk-delete', QuestionController.deleteAllQuestions);
 router.post('/:id/duplicate', QuestionController.duplicateQuestion);
 router.put('/:id', QuestionController.updateQuestion);
+router.delete('/all', QuestionController.deleteAllQuestions);
+router.delete('/delete-all', QuestionController.deleteAllQuestions);
+router.delete('/', QuestionController.deleteAllQuestions);
 router.delete('/:id', QuestionController.deleteQuestion);
 
 module.exports = router;

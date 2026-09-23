@@ -17,8 +17,8 @@ class DocumentParserService {
       event_name: metadata.event_name || 'Eloquence 2026',
       round_number: Number(metadata.round_number) || 1,
       category: metadata.category || 'General',
-      marks: Number(metadata.marks) || 2.0,
-      negative_marks: Number(metadata.negative_marks) || 0.5
+      marks: Number(metadata.marks) || 1.0,
+      negative_marks: Number(metadata.negative_marks) || 0.0
     };
 
     let questions = [];

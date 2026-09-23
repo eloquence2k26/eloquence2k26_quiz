@@ -764,6 +764,7 @@ class ParticipantController {
         quiz_title: quiz.title,
         event_name: quiz.event_name
       });
+      SocketService.notifyQuizUpdate({ quiz_id, count: assignedCount });
 
       return success(
         res,
