@@ -1,6 +1,6 @@
 import React from 'react';
 import { Outlet } from 'react-router-dom';
-import { Sparkles, ShieldCheck } from 'lucide-react';
+import { ShieldCheck } from 'lucide-react';
 import ThemeToggle from '../components/common/ThemeToggle';
 
 export default function AuthLayout() {
@@ -11,8 +11,12 @@ export default function AuthLayout() {
       </div>
 
       <div className="sm:mx-auto sm:w-full sm:max-w-md text-center">
-        <div className="inline-flex items-center justify-center w-14 h-14 rounded-2xl bg-gradient-to-tr from-brand-600 to-indigo-600 text-white shadow-lg shadow-brand-500/25 mb-4">
-          <Sparkles className="w-8 h-8" />
+        <div className="inline-flex items-center justify-center mb-3">
+          <img
+            src="/eloquence-logo.png"
+            alt="Eloquence '26 Logo"
+            className="w-20 h-20 object-contain drop-shadow-[0_4px_16px_rgba(34,197,94,0.4)] transition-transform hover:scale-105"
+          />
         </div>
         <h2 className="text-2xl sm:text-3xl font-black tracking-tight text-slate-900 dark:text-white uppercase">
           Eloquence <span className="text-brand-600 dark:text-brand-400">'26</span>
