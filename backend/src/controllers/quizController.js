@@ -109,7 +109,19 @@ class QuizController {
         }
 
         quizzes = quizzes.filter((q) => {
-          return assignedQuizIds.has(q.id);
+          const isDirectlyAssigned = assignedQuizIds.has(q.id);
+          const pEvent = participant?.event ? participant.event.trim().toLowerCase() : '';
+          const qEvent = q.event_name ? q.event_name.trim().toLowerCase() : '';
+          const qTitle = q.title ? q.title.trim().toLowerCase() : '';
+          const isEventMatched = Boolean(
+            pEvent &&
+            (qEvent === pEvent ||
+             qTitle === pEvent ||
+             qTitle.startsWith(pEvent) ||
+             (qEvent && pEvent.includes(qEvent)) ||
+             (qEvent && qEvent.includes(pEvent)))
+          );
+          return isDirectlyAssigned || isEventMatched;
         });
 
         // Attach participant's attempt status and results
@@ -123,6 +135,15 @@ class QuizController {
           const attempt = participantAttempts.find((a) => a.quiz_id === q.id);
           const result = participantResults.find((r) => r.quiz_id === q.id);
           const windowStatus = ScheduleService.getEntryWindowStatus(q);
+
+          // Calculate accurate total question count for participant card
+          const qCount = db.filter('quiz_questions', (qq) => qq.quiz_id === q.id).length;
+          const fallbackCount = db.filter('questions', (quest) => {
+            const matchesRound = Number(quest.round_number) === Number(q.round_number);
+            const matchesEvent = !quest.event_name || quest.event_name.toLowerCase() === (q.event_name || '').toLowerCase();
+            return matchesRound && matchesEvent;
+          }).length;
+          const totalQ = qCount > 0 ? qCount : (fallbackCount > 0 ? fallbackCount : (q.total_questions || 0));
 
           // Determine accurate attempt status
           let resolvedAttemptStatus = 'NOT_STARTED';
@@ -169,6 +190,7 @@ class QuizController {
           return {
             ...q,
             status: effectiveStatus,
+            total_questions: totalQ,
             entry_window_status: windowStatus,
             attempt_status: resolvedAttemptStatus,
             attempt_id: attempt ? attempt.id : null,
@@ -502,7 +524,7 @@ class QuizController {
       }
 
       AuditService.log(req.user.id, 'UPDATE_QUIZ', 'QUIZ', id, { updates });
-      SocketService.notifyQuizUpdate({ quiz_id: id, status: updated.status, event_id: updated.event_id });
+      SocketService.notifyQuizUpdate({ quiz_id: id, status: updated.status, event_id: updated.event_id, ...updated });
 
       return success(res, updated, 'Event updated successfully');
     } catch (err) {

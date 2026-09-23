@@ -59,14 +59,15 @@ class RoundController {
         }];
       }
 
-      // Ensure every registered event has at least a Round 1
+      // Ensure every registered event has at least Round 1
       events.forEach((ev) => {
-        const hasRound = rounds.some(
-          (r) => r.event_id === ev.id || (r.event_name && r.event_name.toLowerCase() === ev.title.toLowerCase())
+        const hasRound1 = rounds.some(
+          (r) =>
+            (r.event_id === ev.id || (r.event_name && r.event_name.toLowerCase() === ev.title.toLowerCase())) &&
+            Number(r.round_number) === 1
         );
-        if (!hasRound) {
-          const newR = {
-            id: `rnd-1-${ev.id || 'default'}`,
+        if (!hasRound1) {
+          const newR = db.insert('rounds', {
             event_id: ev.id || 'c0000000-0000-0000-0000-000000000001',
             event_name: ev.title,
             round_number: 1,
@@ -74,8 +75,43 @@ class RoundController {
             description: `${ev.title} Examination Round 1`,
             is_active: true,
             is_published: false
-          };
+          });
           rounds.push(newR);
+
+          // If there is an existing quiz for this event with round_number 1, link round_id
+          const r1Quiz = quizzes.find(
+            (q) =>
+              (q.event_id === ev.id || (q.event_name && q.event_name.toLowerCase() === ev.title.toLowerCase())) &&
+              Number(q.round_number) === 1
+          );
+          if (r1Quiz) {
+            db.update('quizzes', (item) => item.id === r1Quiz.id, { round_id: newR.id });
+          }
+        }
+      });
+
+      // Ensure any round referenced by existing quizzes exists in rounds table
+      quizzes.forEach((q) => {
+        const qRoundNum = Number(q.round_number) || 1;
+        const qEventId = q.event_id;
+        const qEventName = q.event_name || q.title;
+        const hasRound = rounds.some(
+          (r) =>
+            (r.event_id === qEventId || (r.event_name && qEventName && r.event_name.toLowerCase() === qEventName.toLowerCase())) &&
+            Number(r.round_number) === qRoundNum
+        );
+        if (!hasRound && (qEventId || qEventName)) {
+          const newR = db.insert('rounds', {
+            event_id: qEventId || 'c0000000-0000-0000-0000-000000000001',
+            event_name: qEventName,
+            round_number: qRoundNum,
+            round_name: `Round ${qRoundNum}`,
+            description: `${qEventName} Examination Round ${qRoundNum}`,
+            is_active: true,
+            is_published: false
+          });
+          rounds.push(newR);
+          db.update('quizzes', (item) => item.id === q.id, { round_id: newR.id });
         }
       });
 

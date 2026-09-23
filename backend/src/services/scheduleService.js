@@ -28,39 +28,41 @@ class ScheduleService {
    * Check all quizzes and auto-publish scheduled ones whose start time has arrived.
    * Also auto-complete quizzes whose end time has passed.
    */
+  /**
+   * Check all quizzes and auto-publish scheduled ones whose start time has arrived.
+   * Also auto-complete quizzes whose end time has passed.
+   */
   static checkAndPublishScheduledQuizzes() {
     try {
       const quizzes = db.get('quizzes') || [];
       const now = new Date();
 
       quizzes.forEach((quiz) => {
-        // 1. Auto-publish / activate quizzes in 'Scheduled' status when start time is reached
+        if (!quiz.start_date || !quiz.start_time) return;
+        const startDateTime = parseScheduleDate(quiz.start_date, quiz.start_time);
+        const endDateTime = quiz.end_date && quiz.end_time ? parseScheduleDate(quiz.end_date, quiz.end_time) : null;
+
+        // 1. Auto-publish / activate quizzes when start time is reached
         if (quiz.status === 'Scheduled') {
-          if (quiz.start_date && quiz.start_time) {
-            const startDateTime = parseScheduleDate(quiz.start_date, quiz.start_time);
-            if (startDateTime && !isNaN(startDateTime.getTime()) && now >= startDateTime) {
-              db.update('quizzes', (q) => q.id === quiz.id, { status: 'Live' });
-              AuditService.log('SYSTEM', 'AUTO_PUBLISH_QUIZ', 'QUIZ', quiz.id, {
-                title: quiz.title,
-                scheduled_start: `${quiz.start_date} ${quiz.start_time}`
-              });
-              logger.info(`[ScheduleService] Auto-started scheduled exam: "${quiz.title}" (${quiz.id})`);
-            }
+          if (startDateTime && !isNaN(startDateTime.getTime()) && now >= startDateTime) {
+            db.update('quizzes', (q) => q.id === quiz.id, { status: 'Live' });
+            AuditService.log('SYSTEM', 'AUTO_PUBLISH_QUIZ', 'QUIZ', quiz.id, {
+              title: quiz.title,
+              scheduled_start: `${quiz.start_date} ${quiz.start_time}`
+            });
+            logger.info(`[ScheduleService] Auto-started scheduled exam: "${quiz.title}" (${quiz.id})`);
           }
         }
 
         // 2. Auto-complete quizzes in 'Live' or 'Published' when end time has passed
         if (quiz.status === 'Live' || quiz.status === 'Published') {
-          if (quiz.end_date && quiz.end_time) {
-            const endDateTime = parseScheduleDate(quiz.end_date, quiz.end_time);
-            if (endDateTime && !isNaN(endDateTime.getTime()) && now > endDateTime) {
-              db.update('quizzes', (q) => q.id === quiz.id, { status: 'Completed' });
-              AuditService.log('SYSTEM', 'AUTO_COMPLETE_QUIZ', 'QUIZ', quiz.id, {
-                title: quiz.title,
-                scheduled_end: `${quiz.end_date} ${quiz.end_time}`
-              });
-              logger.info(`[ScheduleService] Auto-completed concluded exam: "${quiz.title}" (${quiz.id})`);
-            }
+          if (endDateTime && !isNaN(endDateTime.getTime()) && now > endDateTime) {
+            db.update('quizzes', (q) => q.id === quiz.id, { status: 'Completed' });
+            AuditService.log('SYSTEM', 'AUTO_COMPLETE_QUIZ', 'QUIZ', quiz.id, {
+              title: quiz.title,
+              scheduled_end: `${quiz.end_date} ${quiz.end_time}`
+            });
+            logger.info(`[ScheduleService] Auto-completed concluded exam: "${quiz.title}" (${quiz.id})`);
           }
         }
       });
@@ -89,13 +91,12 @@ class ScheduleService {
       };
     }
 
-    const isLiveOrPublished = quiz.status === 'Live' || quiz.status === 'Published' || Boolean(quiz.allow_late_entry);
     const startDateTime = parseScheduleDate(quiz.start_date, quiz.start_time);
     const endDateTime = quiz.end_date && quiz.end_time ? parseScheduleDate(quiz.end_date, quiz.end_time) : null;
     const now = new Date();
 
-    const isBeforeStart = isLiveOrPublished ? false : (startDateTime && !isNaN(startDateTime.getTime()) && now < startDateTime);
-    const isAfterEnd = quiz.status === 'Completed' || quiz.status === 'Closed' || (quiz.status !== 'Live' && endDateTime && !isNaN(endDateTime.getTime()) && now > endDateTime);
+    const isBeforeStart = Boolean(startDateTime && !isNaN(startDateTime.getTime()) && now < startDateTime);
+    const isAfterEnd = Boolean(quiz.status === 'Completed' || quiz.status === 'Closed' || (endDateTime && !isNaN(endDateTime.getTime()) && now > endDateTime));
     const isEntryOpen = !isBeforeStart && !isAfterEnd;
     const isEntryClosed = isAfterEnd;
 
@@ -108,10 +109,10 @@ class ScheduleService {
       hasSchedule: true,
       startDateTime,
       endDateTime,
-      isBeforeStart: Boolean(isBeforeStart),
-      isAfterEnd: Boolean(isAfterEnd),
-      isEntryOpen: Boolean(isEntryOpen),
-      isEntryClosed: Boolean(isEntryClosed),
+      isBeforeStart,
+      isAfterEnd,
+      isEntryOpen,
+      isEntryClosed,
       isLateAllowed: Boolean(quiz.allow_late_entry ?? true),
       secondsUntilStart,
       secondsUntilEnd,

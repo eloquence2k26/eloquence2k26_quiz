@@ -94,7 +94,7 @@ export default function QuestionsPage() {
         setQuestions(questRes.data || []);
       }
 
-      // Strictly use the actual events registered in Event Management
+      // Strictly use the actual events registered in Event Management plus any custom events from questions
       const eventMap = new Map();
       if (loadedEvents.length > 0) {
         loadedEvents.forEach((ev) => {
@@ -108,10 +108,26 @@ export default function QuestionsPage() {
             });
           }
         });
-      } else {
-        eventMap.set('test run', {
-          id: 'c0000000-0000-0000-0000-000000000001',
-          title: 'Test run',
+      }
+
+      // Also ensure any event names present on questions are represented in eventMap
+      const rawQuestionsList = questRes.data || [];
+      rawQuestionsList.forEach((q) => {
+        const qTitle = (q.event_name || '').trim();
+        if (qTitle && !eventMap.has(qTitle.toLowerCase())) {
+          eventMap.set(qTitle.toLowerCase(), {
+            id: `ev-${qTitle.toLowerCase().replace(/\s+/g, '-')}`,
+            title: qTitle,
+            code: 'ELQ26',
+            description: `${qTitle} tournament track`
+          });
+        }
+      });
+
+      if (eventMap.size === 0) {
+        eventMap.set('technical quiz', {
+          id: '55468583-a500-4aae-b342-c7664c52f784',
+          title: 'Technical Quiz',
           code: 'ELQ26',
           description: 'Official symposium tournament track'
         });
@@ -119,9 +135,8 @@ export default function QuestionsPage() {
 
       const finalEvents = Array.from(eventMap.values());
       setEvents(finalEvents);
-
       // Align questions to existing event
-      const primaryEventTitle = finalEvents[0]?.title || 'Test run';
+      const primaryEventTitle = finalEvents[0]?.title || 'Technical Quiz';
       const alignedQuestions = (questRes.data || []).map((q) => {
         const qEvts = Array.isArray(q.events) && q.events.length > 0 ? q.events : (q.event_name ? [q.event_name] : []);
         const matchesAny = qEvts.some((e) => finalEvents.some((fe) => fe.title.toLowerCase() === e.toLowerCase()));
@@ -202,6 +217,38 @@ export default function QuestionsPage() {
     }
   };
 
+  // Delete All Questions in Bank
+  const handleDeleteAllQuestions = async () => {
+    if (!window.confirm('⚠️ ARE YOU SURE? This will permanently delete ALL questions from the question bank!')) return;
+    try {
+      const res = await adminService.deleteAllQuestions();
+      if (res && res.success !== false) {
+        toast.success(res.message || 'All questions deleted successfully');
+        fetchData();
+      } else {
+        toast.error(res?.message || 'Failed to delete questions');
+      }
+    } catch (err) {
+      toast.error(err.response?.data?.message || err.message || 'Failed to delete questions');
+    }
+  };
+
+  // Delete All Questions for a Specific Round & Event
+  const handleDeleteRoundQuestions = async (eventTitle, roundNum) => {
+    if (!window.confirm(`Are you sure you want to delete all questions for ${eventTitle} Round ${roundNum}?`)) return;
+    try {
+      const res = await adminService.deleteAllQuestions({ event: eventTitle, round: roundNum });
+      if (res && res.success !== false) {
+        toast.success(res.message || `Deleted all questions for ${eventTitle} Round ${roundNum}`);
+        fetchData();
+      } else {
+        toast.error(res?.message || 'Failed to clear round questions');
+      }
+    } catch (err) {
+      toast.error(err.response?.data?.message || err.message || 'Failed to clear round questions');
+    }
+  };
+
   // Save / Create Question handler
   const handleSaveQuestion = async (formData) => {
     try {
@@ -274,6 +321,17 @@ export default function QuestionsPage() {
             Author, configure, categorize, and bulk import examination questions organized by tournament tracks and rounds
           </p>
         </div>
+
+        {questions.length > 0 && (
+          <button
+            onClick={handleDeleteAllQuestions}
+            className="flex items-center gap-2 px-4 py-2 rounded-xl bg-rose-600 hover:bg-rose-700 text-white text-xs font-bold transition-all shadow-sm hover:shadow-md active:scale-95 self-start sm:self-auto"
+            title="Delete all questions in the bank"
+          >
+            <Trash2 className="w-4 h-4" />
+            <span>Delete All Questions</span>
+          </button>
+        )}
       </div>
 
       {/* KPI Overview Cards */}
@@ -393,29 +451,32 @@ export default function QuestionsPage() {
                 (r.event_name && event.title && r.event_name.toLowerCase() === event.title.toLowerCase())
             );
 
-            // If no rounds exist yet for this event, provide default Round 1 & Round 2
-            if (eventRounds.length === 0) {
-              eventRounds = [
-                {
-                  id: `rnd-${event.id || event.title}-1`,
-                  event_id: event.id,
-                  event_name: event.title,
-                  round_number: 1,
-                  round_name: 'Round 1',
-                  description: `${event.title} Examination Round 1`
-                },
-                {
-                  id: `rnd-${event.id || event.title}-2`,
-                  event_id: event.id,
-                  event_name: event.title,
-                  round_number: 2,
-                  round_name: 'Round 2',
-                  description: `${event.title} Examination Round 2`
-                }
-              ];
+            // Ensure Round 1 is ALWAYS present in the questions repository for every event
+            const hasRound1 = eventRounds.some((r) => Number(r.round_number) === 1);
+            if (!hasRound1) {
+              eventRounds.unshift({
+                id: `rnd-${event.id || event.title}-1`,
+                event_id: event.id,
+                event_name: event.title,
+                round_number: 1,
+                round_name: 'Round 1',
+                description: `${event.title} Examination Round 1`
+              });
             }
 
-            // Sort rounds ascending by round_number
+            // If no Round 2 exists and event has 0 other rounds, also provide Round 2 slot
+            if (eventRounds.length === 1 && Number(eventRounds[0].round_number) === 1) {
+              eventRounds.push({
+                id: `rnd-${event.id || event.title}-2`,
+                event_id: event.id,
+                event_name: event.title,
+                round_number: 2,
+                round_name: 'Round 2',
+                description: `${event.title} Examination Round 2`
+              });
+            }
+
+            // Sort rounds ascending by round_number (Round 1, Round 2, ...)
             eventRounds.sort((a, b) => (Number(a.round_number) || 0) - (Number(b.round_number) || 0));
 
             // Questions in this event
@@ -518,8 +579,19 @@ export default function QuestionsPage() {
                               </div>
                             </div>
 
-                            {/* Round Action Controls: Import & Add Question */}
+                            {/* Round Action Controls: Import, Add Question & Clear Round */}
                             <div className="flex items-center gap-2 self-end sm:self-auto">
+                              {roundQuestions.length > 0 && (
+                                <button
+                                  onClick={() => handleDeleteRoundQuestions(event.title, r.round_number)}
+                                  className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl bg-rose-50 dark:bg-rose-950/60 hover:bg-rose-100 dark:hover:bg-rose-900/60 border border-rose-200 dark:border-rose-800 text-rose-700 dark:text-rose-300 text-xs font-bold transition-colors shadow-xs"
+                                  title={`Delete all questions in Round ${r.round_number}`}
+                                >
+                                  <Trash2 className="w-3.5 h-3.5" />
+                                  <span>Clear Round</span>
+                                </button>
+                              )}
+
                               <button
                                 onClick={() => handleOpenImportForRound(event.title, r.round_number)}
                                 className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl bg-white dark:bg-slate-900 hover:bg-slate-100 dark:hover:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200 text-xs font-bold transition-colors shadow-xs"

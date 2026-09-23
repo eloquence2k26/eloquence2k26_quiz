@@ -767,7 +767,7 @@ class DBStore {
 
     // Save directly to Supabase DB table
     const cleanItem = this.sanitize(tbl, item);
-    (async () => {
+    const savePromise = (async () => {
       try {
         let upsertOptions = {};
         if (tbl === 'quiz_questions') {
@@ -791,7 +791,19 @@ class DBStore {
       }
     })();
 
+    item._savePromise = savePromise;
     return item;
+  }
+
+  /**
+   * Insert record and await live Supabase persistence
+   */
+  async insertAsync(collection, item) {
+    const record = this.insert(collection, item);
+    if (record._savePromise) {
+      await record._savePromise;
+    }
+    return record;
   }
 
   /**
@@ -860,6 +872,89 @@ class DBStore {
     }
 
     return wasRemoved;
+  }
+
+  /**
+   * Permanently delete questions and cascade dependencies from memory and live Supabase
+   * @param {string[]|null} ids - Array of question IDs to delete, or null to delete all
+   */
+  async deleteQuestions(ids = null) {
+    try {
+      const isDeleteAll = !ids || !Array.isArray(ids) || ids.length === 0;
+      let targetIds = [];
+
+      if (isDeleteAll) {
+        const currentInMemory = (this.data.questions || []).map((q) => q.id).filter(Boolean);
+        this.data.questions = [];
+        this.data.quiz_questions = [];
+        this.data.question_orders = [];
+        this.data.attempt_answers = [];
+
+        // Purge completely from Supabase tables
+        try {
+          await supabase.from('attempt_answers').delete().neq('id', '00000000-0000-0000-0000-000000000000');
+          await supabase.from('question_orders').delete().neq('id', '00000000-0000-0000-0000-000000000000');
+          await supabase.from('quiz_questions').delete().neq('id', '00000000-0000-0000-0000-000000000000');
+          const { data } = await supabase.from('questions').delete().neq('id', '00000000-0000-0000-0000-000000000000').select('id');
+          targetIds = data && data.length > 0 ? data.map((r) => r.id) : currentInMemory;
+        } catch (sbErr) {
+          logger.warn(`[DB Live] Notice purging Supabase questions: ${sbErr.message}`);
+          targetIds = currentInMemory;
+        }
+
+        // Reset quiz question counts
+        (this.data.quizzes || []).forEach((qz) => {
+          qz.total_questions = 0;
+        });
+        try {
+          await supabase.from('quizzes').update({ total_questions: 0 }).neq('id', '00000000-0000-0000-0000-000000000000');
+        } catch (qErr) {
+          logger.warn(`[DB Live] Notice resetting quizzes total_questions: ${qErr.message}`);
+        }
+
+        logger.info(`[DB Live] Purged all questions and dependencies permanently from Supabase`);
+        return targetIds.length;
+      }
+
+      // Filtered deletion
+      targetIds = ids.filter(Boolean);
+      const idSet = new Set(targetIds);
+
+      this.data.questions = (this.data.questions || []).filter((q) => !idSet.has(q.id));
+      this.data.quiz_questions = (this.data.quiz_questions || []).filter((qq) => !idSet.has(qq.question_id));
+      this.data.question_orders = (this.data.question_orders || []).filter((qo) => !idSet.has(qo.question_id));
+      this.data.attempt_answers = (this.data.attempt_answers || []).filter((aa) => !idSet.has(aa.question_id));
+
+      // Batch delete in chunks of 50 to avoid URL query string limits
+      for (let i = 0; i < targetIds.length; i += 50) {
+        const chunk = targetIds.slice(i, i + 50);
+        try {
+          await supabase.from('attempt_answers').delete().in('question_id', chunk);
+          await supabase.from('question_orders').delete().in('question_id', chunk);
+          await supabase.from('quiz_questions').delete().in('question_id', chunk);
+          await supabase.from('questions').delete().in('id', chunk);
+        } catch (chunkErr) {
+          logger.warn(`[DB Live] Notice batch deleting questions chunk: ${chunkErr.message}`);
+        }
+      }
+
+      // Recalculate total_questions for all quizzes
+      for (const qz of (this.data.quizzes || [])) {
+        const count = (this.data.quiz_questions || []).filter((qq) => qq.quiz_id === qz.id).length;
+        qz.total_questions = count;
+        try {
+          await supabase.from('quizzes').update({ total_questions: count }).eq('id', qz.id);
+        } catch (qzErr) {
+          logger.warn(`[DB Live] Notice updating quiz total_questions: ${qzErr.message}`);
+        }
+      }
+
+      logger.info(`[DB Live] Deleted ${targetIds.length} question(s) and dependencies permanently from Supabase`);
+      return targetIds.length;
+    } catch (err) {
+      logger.error(`[DB Live] Error in deleteQuestions: ${err.message}`);
+      throw err;
+    }
   }
 }
 
