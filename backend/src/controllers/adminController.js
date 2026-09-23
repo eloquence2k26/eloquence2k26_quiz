@@ -240,23 +240,13 @@ class AdminController {
         is_active: Boolean(is_active)
       });
 
-      // Auto-provision standard Round 1 & Round 2 in rounds table
+      // Auto-provision standard Round 1 in rounds table
       const r1 = db.insert('rounds', {
         event_id: newEvent.id,
         event_name: cleanTitle,
         round_number: 1,
         round_name: 'Round 1',
         description: `${cleanTitle} Examination Round 1`,
-        is_active: true,
-        is_published: false
-      });
-
-      const r2 = db.insert('rounds', {
-        event_id: newEvent.id,
-        event_name: cleanTitle,
-        round_number: 2,
-        round_name: 'Round 2',
-        description: `${cleanTitle} Examination Round 2`,
         is_active: true,
         is_published: false
       });

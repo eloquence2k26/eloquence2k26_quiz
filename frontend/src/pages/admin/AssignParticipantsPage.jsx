@@ -120,7 +120,7 @@ export default function AssignParticipantsPage() {
 
   // List of participants currently assigned to the selected quiz
   const assignedParticipants = useMemo(() => {
-    if (!selectedQuiz) return [];
+    if (!selectedQuiz) return participants;
     return participants.filter((p) => {
       return Array.isArray(p.assigned_quiz_ids) && p.assigned_quiz_ids.includes(selectedQuiz.id);
     });
@@ -128,11 +128,10 @@ export default function AssignParticipantsPage() {
 
   // Filtered participants for manual selection
   const filteredParticipants = useMemo(() => {
-    if (!selectedQuiz) return [];
     const term = searchQuery.toLowerCase().trim();
 
     return participants.filter((p) => {
-      const isAssigned = Array.isArray(p.assigned_quiz_ids) && p.assigned_quiz_ids.includes(selectedQuiz.id);
+      const isAssigned = selectedQuiz && Array.isArray(p.assigned_quiz_ids) && p.assigned_quiz_ids.includes(selectedQuiz.id);
 
       if (assignFilter === 'ASSIGNED' && !isAssigned) return false;
       if (assignFilter === 'UNASSIGNED' && isAssigned) return false;
@@ -416,8 +415,8 @@ export default function AssignParticipantsPage() {
               }}
               className="w-full px-4 py-2.5 rounded-xl border border-brand-300 dark:border-brand-800 bg-brand-50/50 dark:bg-brand-950/40 text-xs font-bold text-slate-900 dark:text-white focus:ring-2 focus:ring-brand-500 focus:outline-none"
             >
-              {quizzes.map((q) => (
-                <option key={q.id} value={q.id}>
+              {quizzes.map((q, idx) => (
+                <option key={`${q.id}-${idx}`} value={q.id}>
                   {q.title} (Round {q.round_number || 1}) - [{q.status}]
                 </option>
               ))}

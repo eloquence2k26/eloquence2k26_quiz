@@ -9,28 +9,33 @@ const TABLE_COLUMNS = {
   participants: [
     'id', 'participant_id', 'full_name', 'email', 'mobile', 'college',
     'department', 'year', 'event', 'registration_number', 'photo_url',
-    'round_1_selected', 'round_2_selected', 'is_disabled', 'created_at', 'updated_at'
+    'assigned_quiz_ids', 'round_1_selected', 'round_2_selected',
+    'round_1_attempted', 'round_1_result', 'round_1_published',
+    'is_disabled', 'created_at', 'updated_at'
   ],
   admins: ['id', 'full_name', 'email', 'admin_level', 'created_at'],
   events: ['id', 'title', 'code', 'description', 'is_active', 'created_at', 'updated_at'],
   rounds: [
     'id', 'event_id', 'round_number', 'round_name', 'description',
-    'is_active', 'is_published', 'created_at', 'updated_at'
+    'is_active', 'is_published', 'round_1_published', 'round_2_published',
+    'created_at', 'updated_at'
   ],
   quizzes: [
-    'id', 'event_id', 'round_id', 'title', 'description', 'event_name',
+    'id', 'event_id', 'round_id', 'title', 'description', 'event_name', 'event_code',
     'round_number', 'total_questions', 'duration_minutes', 'start_date',
     'start_time', 'end_date', 'end_time', 'start_datetime', 'end_datetime',
     'max_marks', 'pass_percentage', 'negative_marking', 'negative_mark_value',
     'max_attempts', 'status', 'desktop_only', 'fullscreen_required',
     'max_violations', 'shuffle_questions', 'shuffle_options',
-    'show_detailed_results', 'published_participant_ids', 'created_by',
+    'entry_window_minutes', 'allow_late_entry', 'show_detailed_results',
+    'is_results_published', 'published_participant_ids', 'created_by',
     'created_at', 'updated_at'
   ],
   questions: [
     'id', 'question_text', 'option_a', 'option_b', 'option_c', 'option_d',
     'correct_answer', 'marks', 'negative_marks', 'explanation', 'category',
-    'difficulty', 'created_by', 'created_at', 'updated_at'
+    'difficulty', 'round_number', 'event_name', 'rounds', 'events',
+    'created_by', 'created_at', 'updated_at'
   ],
   quiz_questions: ['id', 'quiz_id', 'question_id', 'display_order', 'created_at'],
   quiz_assignments: ['id', 'quiz_id', 'participant_id', 'assigned_by', 'assigned_at', 'status'],

@@ -17,7 +17,9 @@ export default function ModifyScheduleModal({ isOpen, onClose, onSave, quiz }) {
     end_date: '',
     end_time: '23:59',
     duration_minutes: 30,
-    status: 'Scheduled'
+    status: 'Scheduled',
+    entry_window_minutes: 5,
+    allow_late_entry: false
   });
   const [validationError, setValidationError] = useState('');
 

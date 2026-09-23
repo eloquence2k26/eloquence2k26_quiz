@@ -15,6 +15,50 @@ class QuizController {
 
       const user = req.user;
       let quizzes = db.get('quizzes') || [];
+      const events = db.get('events') || [];
+      const rounds = db.get('rounds') || [];
+
+      // Ensure every registered event has at least one active quiz record in quizzes table
+      if (events.length > 0) {
+        events.forEach((ev) => {
+          const hasQuiz = quizzes.some(
+            (q) => q.event_id === ev.id || (q.event_name && q.event_name.toLowerCase() === ev.title.toLowerCase())
+          );
+          if (!hasQuiz) {
+            const evRound = rounds.find(
+              (r) => r.event_id === ev.id || (r.event_name && r.event_name.toLowerCase() === ev.title.toLowerCase())
+            );
+            const newQ = db.insert('quizzes', {
+              event_id: ev.id,
+              round_id: evRound ? evRound.id : null,
+              title: `${ev.title} - Examination`,
+              event_name: ev.title,
+              event_code: ev.code || 'ELQ26',
+              description: ev.description || `${ev.title} Examination`,
+              round_number: 1,
+              total_questions: 0,
+              duration_minutes: 30,
+              start_date: new Date().toISOString().split('T')[0],
+              start_time: '09:00:00',
+              end_date: new Date(Date.now() + 86400000 * 7).toISOString().split('T')[0],
+              end_time: '23:59:59',
+              max_marks: 100,
+              pass_percentage: 40,
+              negative_marking: false,
+              negative_mark_value: 0,
+              max_attempts: 1,
+              status: 'Draft',
+              desktop_only: false,
+              fullscreen_required: true,
+              max_violations: 1,
+              shuffle_questions: true,
+              shuffle_options: true,
+              show_detailed_results: true
+            });
+            quizzes.push(newQ);
+          }
+        });
+      }
 
       if (user.role === 'PARTICIPANT') {
         const participant = db.find('participants', (p) =>
@@ -140,7 +184,15 @@ class QuizController {
         };
       });
 
-      return success(res, enrichedAdmin);
+      // Deduplicate by unique quiz ID
+      const uniqueAdminMap = new Map();
+      enrichedAdmin.forEach((q) => {
+        if (q.id && !uniqueAdminMap.has(q.id)) {
+          uniqueAdminMap.set(q.id, q);
+        }
+      });
+
+      return success(res, Array.from(uniqueAdminMap.values()));
     } catch (err) {
       return error(res, err.message, 500);
     }

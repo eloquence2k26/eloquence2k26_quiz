@@ -421,7 +421,7 @@ export default function QuizSchedulePage() {
             </p>
           </div>
         ) : (
-          events.map((event) => {
+          events.map((event, eventIdx) => {
             // Find all quizzes belonging to this event
             const eventQuizzes = filteredQuizzes.filter((q) => {
               const matchName = q.event_name && q.event_name.toLowerCase() === event.title.toLowerCase();
@@ -435,7 +435,7 @@ export default function QuizSchedulePage() {
 
             return (
               <div
-                key={event.id || event.title}
+                key={`${event.id || event.title}-${eventIdx}`}
                 className="bg-white dark:bg-slate-900 border-2 border-slate-200 dark:border-slate-800 rounded-3xl p-6 sm:p-7 shadow-sm transition-all hover:border-slate-300 dark:hover:border-slate-700 space-y-6"
               >
                 {/* EVENT CONTAINER HEADER */}
@@ -486,13 +486,13 @@ export default function QuizSchedulePage() {
                   </div>
                 ) : (
                   <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
-                    {eventQuizzes.map((q) => {
+                    {eventQuizzes.map((q, qIdx) => {
                       const winStatus = getWindowStatus(q);
                       const entryStatus = q.entry_window_status;
 
                       return (
                         <div
-                          key={q.id}
+                          key={`${q.id}-${qIdx}`}
                           className="bg-slate-50/70 dark:bg-slate-950/50 border border-slate-200/90 dark:border-slate-800 rounded-2xl p-5 shadow-xs transition-all hover:border-brand-300 dark:hover:border-brand-900/60 flex flex-col justify-between space-y-4"
                         >
                           {/* Round Header Bar */}

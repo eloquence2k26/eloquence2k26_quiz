@@ -335,7 +335,7 @@ export default function RoundsPage() {
             </p>
           </div>
         ) : (
-          events.map((event) => {
+          events.map((event, eventIdx) => {
             // Find all rounds belonging to this event
             const eventRounds = rounds.filter(
               (r) =>
@@ -353,7 +353,7 @@ export default function RoundsPage() {
 
             return (
               <div
-                key={event.id || event.title}
+                key={`${event.id || event.title}-${eventIdx}`}
                 className="bg-white dark:bg-slate-900 border-2 border-slate-200 dark:border-slate-800 rounded-3xl p-6 sm:p-7 shadow-sm transition-all hover:border-slate-300 dark:hover:border-slate-700 space-y-6"
               >
                 {/* EVENT CONTAINER HEADER */}
@@ -404,11 +404,11 @@ export default function RoundsPage() {
                     </div>
                   ) : (
                     <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
-                      {eventRounds.map((r) => {
+                      {eventRounds.map((r, rIdx) => {
                         const hasQuizzes = r.quizzes && r.quizzes.length > 0;
                         return (
                           <div
-                            key={r.id || `${r.event_name}-${r.round_number}`}
+                            key={`${r.id || r.round_number}-${rIdx}`}
                             className="bg-slate-50/70 dark:bg-slate-950/50 border border-slate-200/90 dark:border-slate-800 rounded-2xl p-5 shadow-xs transition-all hover:border-brand-300 dark:hover:border-brand-900/60 flex flex-col justify-between"
                           >
                           {/* Round Header Bar */}
