@@ -88,10 +88,16 @@ class QuizController {
 
         quizzes = quizzes.filter((q) => {
           const isDirectlyAssigned = assignedQuizIds.has(q.id);
-          const isEventMatched = participant?.event && (
-            (q.event_name && q.event_name.trim().toLowerCase() === participant.event.trim().toLowerCase()) ||
-            (q.title && q.title.trim().toLowerCase() === participant.event.trim().toLowerCase()) ||
-            (q.title && q.title.trim().toLowerCase().startsWith(participant.event.trim().toLowerCase()))
+          const pEvent = participant?.event ? participant.event.trim().toLowerCase() : '';
+          const qEvent = q.event_name ? q.event_name.trim().toLowerCase() : '';
+          const qTitle = q.title ? q.title.trim().toLowerCase() : '';
+          const isEventMatched = Boolean(
+            pEvent &&
+            (qEvent === pEvent ||
+             qTitle === pEvent ||
+             qTitle.startsWith(pEvent) ||
+             (qEvent && pEvent.includes(qEvent)) ||
+             (qEvent && qEvent.includes(pEvent)))
           );
           return isDirectlyAssigned || isEventMatched;
         });
@@ -107,6 +113,15 @@ class QuizController {
           const attempt = participantAttempts.find((a) => a.quiz_id === q.id);
           const result = participantResults.find((r) => r.quiz_id === q.id);
           const windowStatus = ScheduleService.getEntryWindowStatus(q);
+
+          // Calculate accurate total question count for participant card
+          const qCount = db.filter('quiz_questions', (qq) => qq.quiz_id === q.id).length;
+          const fallbackCount = db.filter('questions', (quest) => {
+            const matchesRound = Number(quest.round_number) === Number(q.round_number);
+            const matchesEvent = !quest.event_name || quest.event_name.toLowerCase() === (q.event_name || '').toLowerCase();
+            return matchesRound && matchesEvent;
+          }).length;
+          const totalQ = qCount > 0 ? qCount : (fallbackCount > 0 ? fallbackCount : (q.total_questions || 0));
 
           // Determine accurate attempt status
           let resolvedAttemptStatus = 'NOT_STARTED';
@@ -153,6 +168,7 @@ class QuizController {
           return {
             ...q,
             status: effectiveStatus,
+            total_questions: totalQ,
             entry_window_status: windowStatus,
             attempt_status: resolvedAttemptStatus,
             attempt_id: attempt ? attempt.id : null,

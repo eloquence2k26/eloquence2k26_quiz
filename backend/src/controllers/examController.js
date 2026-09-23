@@ -170,19 +170,34 @@ class ExamController {
         user_agent: userAgent
       });
 
-      // Prepare Randomized Question and Option Orders
+      // Prepare Randomized Question and Option Orders strictly matching this quiz & event
       const quizQuestions = db.filter('quiz_questions', (qq) => qq.quiz_id === quizId);
-      let questionList = quizQuestions.map((qq) => db.find('questions', (q) => q.id === qq.question_id)).filter(Boolean);
+      const linkedQuestionIds = new Set(quizQuestions.map((qq) => qq.question_id));
+      let questionList = quizQuestions
+        .map((qq) => db.find('questions', (q) => q.id === qq.question_id))
+        .filter(Boolean);
 
-      if (questionList.length === 0) {
-        questionList = db.filter('questions', (q) => {
-          const matchesRound = Number(q.round_number) === Number(quiz.round_number);
-          const matchesEvent = !q.event_name || q.event_name === quiz.event_name || q.event_name === quiz.title;
-          return matchesRound && matchesEvent;
+      // Also gather any questions authored for this event and round that aren't linked yet
+      const targetEventLower = (quiz.event_name || quiz.title || '').trim().toLowerCase();
+      const numRound = Number(quiz.round_number) || 1;
+      const unlinkedMatching = db.filter('questions', (q) => {
+        if (linkedQuestionIds.has(q.id)) return false;
+        const matchesRound = Number(q.round_number) === numRound || (Array.isArray(q.round_numbers) && q.round_numbers.includes(numRound));
+        const qEvt = (q.event_name || '').trim().toLowerCase();
+        const matchesEvent = qEvt === targetEventLower || (Array.isArray(q.events) && q.events.some((e) => e && e.toLowerCase() === targetEventLower));
+        return matchesRound && matchesEvent;
+      });
+
+      if (unlinkedMatching.length > 0) {
+        unlinkedMatching.forEach((q, idx) => {
+          db.insert('quiz_questions', {
+            quiz_id: quiz.id,
+            question_id: q.id,
+            display_order: questionList.length + idx + 1
+          });
+          questionList.push(q);
         });
-        if (questionList.length === 0) {
-          questionList = db.filter('questions', (q) => Number(q.round_number) === Number(quiz.round_number));
-        }
+        db.update('quizzes', (qz) => qz.id === quiz.id, { total_questions: questionList.length });
       }
 
       if (quiz.shuffle_questions) {

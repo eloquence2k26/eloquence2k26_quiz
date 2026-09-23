@@ -5,6 +5,100 @@ const DocumentParserService = require('../services/documentParserService');
 
 class QuestionController {
   /**
+   * Helper to ensure an event, round, and live quiz exist and link question in quiz_questions
+   */
+  static async ensureQuizAndLink(questionItem, eventName, roundNumber, explicitQuizId = null) {
+    const targetEvent = (eventName || questionItem.event_name || 'Technical Quiz').trim();
+    const targetEventLower = targetEvent.toLowerCase();
+    const numRound = Number(roundNumber) || Number(questionItem.round_number) || 1;
+
+    let matchingQuiz = explicitQuizId
+      ? db.find('quizzes', (qz) => qz.id === explicitQuizId)
+      : db.find('quizzes', (qz) => {
+          const matchesRound = Number(qz.round_number) === numRound;
+          const matchesEvent = qz.event_name && qz.event_name.trim().toLowerCase() === targetEventLower;
+          const matchesTitle = qz.title && (qz.title.trim().toLowerCase() === targetEventLower || qz.title.trim().toLowerCase().startsWith(targetEventLower));
+          return matchesRound && (matchesEvent || matchesTitle);
+        });
+
+    if (!matchingQuiz) {
+      // Ensure Event exists in events table
+      let ev = db.find('events', (e) => e.title && e.title.trim().toLowerCase() === targetEventLower);
+      if (!ev) {
+        ev = db.insert('events', {
+          title: targetEvent,
+          code: targetEvent.replace(/[^a-zA-Z0-9]/g, '').substring(0, 6).toUpperCase() || 'ELQ26',
+          description: `${targetEvent} symposium event`,
+          is_active: true
+        });
+      }
+
+      // Ensure Round exists in rounds table
+      let rnd = db.find('rounds', (r) => Number(r.round_number) === numRound && (r.event_id === ev.id || !r.event_id));
+      if (!rnd) {
+        rnd = db.insert('rounds', {
+          event_id: ev.id,
+          round_number: numRound,
+          round_name: `Round ${numRound}`,
+          description: `${targetEvent} Examination Round ${numRound}`,
+          is_active: true,
+          is_published: true
+        });
+      }
+
+      // Create Live quiz for this event and round so participants can see and attempt it
+      matchingQuiz = db.insert('quizzes', {
+        event_id: ev.id,
+        round_id: rnd.id,
+        title: `${targetEvent} - Examination`,
+        event_name: targetEvent,
+        event_code: ev.code || 'ELQ26',
+        description: `${targetEvent} Examination Round ${numRound}`,
+        round_number: numRound,
+        total_questions: 1,
+        duration_minutes: 30,
+        start_date: new Date().toISOString().split('T')[0],
+        start_time: '09:00:00',
+        end_date: new Date(Date.now() + 86400000 * 30).toISOString().split('T')[0],
+        end_time: '23:59:59',
+        max_marks: 100,
+        pass_percentage: 40,
+        negative_marking: false,
+        negative_mark_value: 0,
+        max_attempts: 1,
+        status: 'Live',
+        desktop_only: false,
+        fullscreen_required: true,
+        max_violations: 3,
+        shuffle_questions: true,
+        shuffle_options: true,
+        show_detailed_results: true
+      });
+    }
+
+    if (matchingQuiz) {
+      const existingLink = db.find(
+        'quiz_questions',
+        (qq) => qq.quiz_id === matchingQuiz.id && qq.question_id === questionItem.id
+      );
+      if (!existingLink) {
+        const count = db.filter('quiz_questions', (qq) => qq.quiz_id === matchingQuiz.id).length;
+        await db.insertAsync('quiz_questions', {
+          quiz_id: matchingQuiz.id,
+          question_id: questionItem.id,
+          display_order: count + 1
+        });
+      }
+
+      // Update quiz question count
+      const updatedCount = db.filter('quiz_questions', (qq) => qq.quiz_id === matchingQuiz.id).length;
+      db.update('quizzes', (qz) => qz.id === matchingQuiz.id, { total_questions: updatedCount });
+    }
+
+    return matchingQuiz;
+  }
+
+  /**
    * Get all questions (Admin only)
    */
   static async getAllQuestions(req, res) {
@@ -99,7 +193,7 @@ class QuestionController {
         return error(res, 'Correct answer must be A, B, C, or D', 400);
       }
 
-      const newQ = db.insert('questions', {
+      const newQ = await db.insertAsync('questions', {
         question_text: question_text.trim(),
         option_a: option_a.trim(),
         option_b: option_b.trim(),
@@ -111,33 +205,13 @@ class QuestionController {
         explanation: explanation ? explanation.trim() : '',
         category: category.trim(),
         difficulty: ['Easy', 'Medium', 'Hard'].includes(difficulty) ? difficulty : 'Medium',
-        event_name: event_name ? event_name.trim() : 'Eloquence 2026',
+        event_name: event_name ? event_name.trim() : 'Technical Quiz',
         round_number: Number(round_number) || 1,
         created_by: req.user.id
       });
 
-      // Link to matching quiz in quiz_questions
-      const numRound = Number(round_number) || 1;
-      const targetEventName = (event_name || '').trim().toLowerCase();
-      const matchingQuiz = req.body.quiz_id
-        ? db.find('quizzes', (qz) => qz.id === req.body.quiz_id)
-        : db.find('quizzes', (qz) => {
-            const matchesRound = Number(qz.round_number) === numRound;
-            const matchesEvent = !qz.event_name || qz.event_name.toLowerCase() === targetEventName || qz.title.toLowerCase() === targetEventName;
-            return matchesRound && matchesEvent;
-          }) || db.find('quizzes', (qz) => Number(qz.round_number) === numRound);
-
-      if (matchingQuiz) {
-        const existingLink = db.find('quiz_questions', (qq) => qq.quiz_id === matchingQuiz.id && qq.question_id === newQ.id);
-        if (!existingLink) {
-          const count = db.filter('quiz_questions', (qq) => qq.quiz_id === matchingQuiz.id).length;
-          db.insert('quiz_questions', {
-            quiz_id: matchingQuiz.id,
-            question_id: newQ.id,
-            display_order: count + 1
-          });
-        }
-      }
+      // Link to matching/auto-created live quiz in quiz_questions
+      await QuestionController.ensureQuizAndLink(newQ, event_name, round_number, req.body.quiz_id);
 
       AuditService.log(req.user.id, 'CREATE_QUESTION', 'QUESTION', newQ.id, { category: newQ.category });
 
@@ -201,12 +275,10 @@ class QuestionController {
   static async deleteQuestion(req, res) {
     try {
       const { id } = req.params;
-      const removed = db.remove('questions', (q) => q.id === id);
-      if (!removed) return error(res, 'Question not found', 404);
+      const exists = db.find('questions', (q) => q.id === id);
+      if (!exists) return error(res, 'Question not found', 404);
 
-      // Remove from any quiz junctions
-      db.remove('quiz_questions', (qq) => qq.question_id === id);
-
+      await db.deleteQuestions([id]);
       AuditService.log(req.user.id, 'DELETE_QUESTION', 'QUESTION', id);
 
       return success(res, {}, 'Question deleted successfully');
@@ -226,7 +298,7 @@ class QuestionController {
       }
 
       const inserted = [];
-      questions.forEach((q) => {
+      for (const q of questions) {
         const qText = q.question_text ? String(q.question_text).trim() : '';
         const optA = q.option_a ? String(q.option_a).trim() : '';
         const optB = q.option_b ? String(q.option_b).trim() : '';
@@ -238,7 +310,7 @@ class QuestionController {
         }
 
         if (qText && optA && optB) {
-          const item = db.insert('questions', {
+          const item = await db.insertAsync('questions', {
             question_text: qText,
             option_a: optA,
             option_b: optB,
@@ -250,36 +322,16 @@ class QuestionController {
             explanation: q.explanation ? String(q.explanation).trim() : '',
             category: q.category ? String(q.category).trim() : 'General',
             difficulty: ['Easy', 'Medium', 'Hard'].includes(q.difficulty) ? q.difficulty : 'Medium',
-            event_name: q.event_name ? String(q.event_name).trim() : 'Eloquence 2026',
+            event_name: q.event_name ? String(q.event_name).trim() : 'Technical Quiz',
             round_number: Number(q.round_number) || 1,
             created_by: req.user ? req.user.id : 'a0000000-0000-0000-0000-000000000001'
           });
           inserted.push(item);
 
-          // Link to matching quiz strictly by event AND round
-          const numRound = Number(q.round_number) || 1;
-          const targetEvent = (q.event_name || '').trim().toLowerCase();
-          const matchingQuiz = req.body.quiz_id
-            ? db.find('quizzes', (qz) => qz.id === req.body.quiz_id)
-            : db.find('quizzes', (qz) => {
-                const matchesRound = Number(qz.round_number) === numRound;
-                const matchesEvent = !qz.event_name || qz.event_name.toLowerCase() === targetEvent || qz.title.toLowerCase() === targetEvent;
-                return matchesRound && matchesEvent;
-              });
-
-          if (matchingQuiz) {
-            const existingLink = db.find('quiz_questions', (qq) => qq.quiz_id === matchingQuiz.id && qq.question_id === item.id);
-            if (!existingLink) {
-              const currentCount = db.filter('quiz_questions', (qq) => qq.quiz_id === matchingQuiz.id).length;
-              db.insert('quiz_questions', {
-                quiz_id: matchingQuiz.id,
-                question_id: item.id,
-                display_order: currentCount + 1
-              });
-            }
-          }
+          // Link to matching/auto-created live quiz in quiz_questions
+          await QuestionController.ensureQuizAndLink(item, q.event_name, q.round_number, req.body.quiz_id);
         }
-      });
+      }
 
       AuditService.log(req.user ? req.user.id : 'system', 'BULK_UPLOAD_QUESTIONS', 'QUESTION', 'BATCH', { count: inserted.length });
 
@@ -331,17 +383,10 @@ class QuestionController {
       // Insert into DB
       const inserted = [];
       const numRound = Number(round_number) || 1;
-      const targetEvent = (event_name || '').trim().toLowerCase();
-      const matchingQuiz = quiz_id
-        ? db.find('quizzes', (qz) => qz.id === quiz_id)
-        : db.find('quizzes', (qz) => {
-            const matchesRound = Number(qz.round_number) === numRound;
-            const matchesEvent = !qz.event_name || qz.event_name.toLowerCase() === targetEvent || qz.title.toLowerCase() === targetEvent;
-            return matchesRound && matchesEvent;
-          });
+      const targetEvent = event_name || 'Technical Quiz';
 
-      parsedQuestions.forEach((q) => {
-        const item = db.insert('questions', {
+      for (const q of parsedQuestions) {
+        const item = await db.insertAsync('questions', {
           question_text: q.question_text,
           option_a: q.option_a,
           option_b: q.option_b,
@@ -353,24 +398,15 @@ class QuestionController {
           explanation: q.explanation || '',
           category: q.category || 'General',
           difficulty: q.difficulty || 'Medium',
-          event_name: q.event_name || event_name,
+          event_name: q.event_name || targetEvent,
           round_number: Number(q.round_number) || numRound,
           created_by: req.user ? req.user.id : 'a0000000-0000-0000-0000-000000000001'
         });
         inserted.push(item);
 
-        if (matchingQuiz) {
-          const existingLink = db.find('quiz_questions', (qq) => qq.quiz_id === matchingQuiz.id && qq.question_id === item.id);
-          if (!existingLink) {
-            const currentCount = db.filter('quiz_questions', (qq) => qq.quiz_id === matchingQuiz.id).length;
-            db.insert('quiz_questions', {
-              quiz_id: matchingQuiz.id,
-              question_id: item.id,
-              display_order: currentCount + 1
-            });
-          }
-        }
-      });
+        // Link to matching/auto-created live quiz in quiz_questions
+        await QuestionController.ensureQuizAndLink(item, q.event_name || targetEvent, q.round_number || numRound, quiz_id);
+      }
 
       AuditService.log(req.user ? req.user.id : 'system', 'IMPORT_FILE_QUESTIONS', 'QUESTION', 'BATCH', {
         filename: originalFilename,
@@ -412,15 +448,10 @@ class QuestionController {
           return matchEvent && matchRound;
         });
 
-        const deleteIds = new Set(toDelete.map((q) => q.id));
-        db.remove('questions', (q) => deleteIds.has(q.id));
-        db.remove('quiz_questions', (qq) => deleteIds.has(qq.question_id));
-        count = toDelete.length;
+        const deleteIds = toDelete.map((q) => q.id);
+        count = await db.deleteQuestions(deleteIds);
       } else {
-        const allQuestions = db.get('questions') || [];
-        count = allQuestions.length;
-        db.set('questions', []);
-        db.set('quiz_questions', []);
+        count = await db.deleteQuestions(null);
       }
 
       AuditService.log(req.user ? req.user.id : 'system', 'DELETE_ALL_QUESTIONS', 'QUESTION', 'BATCH', { count, event, round });

@@ -73,7 +73,7 @@ export default function QuestionsPage() {
         setQuestions(questRes.data || []);
       }
 
-      // Strictly use the actual events registered in Event Management
+      // Strictly use the actual events registered in Event Management plus any custom events from questions
       const eventMap = new Map();
       if (loadedEvents.length > 0) {
         loadedEvents.forEach((ev) => {
@@ -87,10 +87,26 @@ export default function QuestionsPage() {
             });
           }
         });
-      } else {
-        eventMap.set('test run', {
-          id: 'c0000000-0000-0000-0000-000000000001',
-          title: 'Test run',
+      }
+
+      // Also ensure any event names present on questions are represented in eventMap
+      const rawQuestionsList = questRes.data || [];
+      rawQuestionsList.forEach((q) => {
+        const qTitle = (q.event_name || '').trim();
+        if (qTitle && !eventMap.has(qTitle.toLowerCase())) {
+          eventMap.set(qTitle.toLowerCase(), {
+            id: `ev-${qTitle.toLowerCase().replace(/\s+/g, '-')}`,
+            title: qTitle,
+            code: 'ELQ26',
+            description: `${qTitle} tournament track`
+          });
+        }
+      });
+
+      if (eventMap.size === 0) {
+        eventMap.set('technical quiz', {
+          id: '55468583-a500-4aae-b342-c7664c52f784',
+          title: 'Technical Quiz',
           code: 'ELQ26',
           description: 'Official symposium tournament track'
         });
@@ -98,22 +114,7 @@ export default function QuestionsPage() {
 
       const finalEvents = Array.from(eventMap.values());
       setEvents(finalEvents);
-
-      // Align questions to existing event
-      const primaryEventTitle = finalEvents[0]?.title || 'Test run';
-      const alignedQuestions = (questRes.data || []).map((q) => {
-        const qEvts = Array.isArray(q.events) && q.events.length > 0 ? q.events : (q.event_name ? [q.event_name] : []);
-        const matchesAny = qEvts.some((e) => finalEvents.some((fe) => fe.title.toLowerCase() === e.toLowerCase()));
-        if (!matchesAny) {
-          return {
-            ...q,
-            event_name: primaryEventTitle,
-            events: [primaryEventTitle]
-          };
-        }
-        return q;
-      });
-      setQuestions(alignedQuestions);
+      setQuestions(rawQuestionsList);
     } catch (err) {
       toast.error('Failed to load question repository');
     } finally {
