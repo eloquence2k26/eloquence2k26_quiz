@@ -425,6 +425,12 @@ class ParticipantController {
         mobile: cleanMobile
       });
 
+      try {
+        SocketService.notifyParticipantsUpdated({ participant_id: newParticipant.id });
+      } catch (e) {
+        // ignore
+      }
+
       return success(res, {
         ...newParticipant,
         generated_password: finalPassword
@@ -573,6 +579,15 @@ class ParticipantController {
         assigned_quiz: targetDefaultQuiz ? targetDefaultQuiz.title : null
       });
 
+      try {
+        SocketService.notifyParticipantsUpdated({ importedCount: imported.length });
+        if (targetDefaultQuiz) {
+          SocketService.notifyQuizUpdate({ quiz_id: targetDefaultQuiz.id });
+        }
+      } catch (e) {
+        // ignore
+      }
+
       return success(res, {
         importedCount: imported.length,
         failedCount: errors.length,
@@ -595,31 +610,16 @@ class ParticipantController {
       let quiz = db.find('quizzes', (q) => q.id === quiz_id || q.id === String(quiz_id).trim());
 
       if (!quiz) {
-        // Fallback: trigger quiz list refresh/provisioning if quiz was created dynamically
         const quizzes = db.get('quizzes') || [];
-        quiz = quizzes.find((q) => q.id === quiz_id || (q.event_name && q.event_name.toLowerCase() === String(quiz_id).toLowerCase()));
-      }
-
-      if (!quiz) {
-        const events = db.get('events') || [];
-        if (events.length > 0) {
-          const ev = events[0];
-          const newQ = db.insert('quizzes', {
-            id: quiz_id,
-            event_id: ev.id,
-            title: `${ev.title} - Examination`,
-            event_name: ev.title,
-            event_code: ev.code || 'ELQ26',
-            round_number: 1,
-            total_questions: 0,
-            duration_minutes: 30,
-            start_date: new Date().toISOString().split('T')[0],
-            start_time: '09:00:00',
-            end_date: new Date(Date.now() + 86400000 * 7).toISOString().split('T')[0],
-            end_time: '23:59:59',
-            status: 'Draft'
-          });
-          quiz = newQ;
+        quiz = quizzes.find(
+          (q) =>
+            q.id === quiz_id ||
+            q.round_id === quiz_id ||
+            (q.event_id && q.event_id === quiz_id) ||
+            (q.event_name && q.event_name.toLowerCase() === String(quiz_id).toLowerCase())
+        );
+        if (!quiz && quizzes.length > 0) {
+          quiz = quizzes[0];
         }
       }
 
@@ -767,6 +767,13 @@ class ParticipantController {
       });
       SocketService.notifyQuizUpdate({ quiz_id, count: assignedCount });
 
+      try {
+        SocketService.notifyParticipantsUpdated({ quiz_id, count: assignedCount || targetIds.length });
+        SocketService.notifyQuizUpdate({ quiz_id });
+      } catch (e) {
+        // ignore
+      }
+
       return success(
         res,
         { assignedCount: assignedCount || targetIds.length },
@@ -872,6 +879,13 @@ class ParticipantController {
         count: unassignedCount,
         quiz_title: quiz.title
       });
+
+      try {
+        SocketService.notifyParticipantsUpdated({ quiz_id, count: unassignedCount });
+        SocketService.notifyQuizUpdate({ quiz_id });
+      } catch (e) {
+        // ignore
+      }
 
       return success(
         res,

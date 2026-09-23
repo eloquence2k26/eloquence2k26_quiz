@@ -19,8 +19,10 @@ import {
   ChevronDown,
   ChevronUp
 } from 'lucide-react';
+import { useLocation, useNavigate } from 'react-router-dom';
 import { adminService } from '../../services/adminService';
 import { useToast } from '../../context/ToastContext';
+import { getSocket } from '../../services/socket';
 import QuestionModal from '../../components/admin/QuestionModal';
 import MultiFormatImportModal from '../../components/admin/MultiFormatImportModal';
 import Badge from '../../components/common/Badge';
@@ -46,12 +48,31 @@ export default function QuestionsPage() {
   const [targetEvent, setTargetEvent] = useState('Technical Quiz');
   const [targetRound, setTargetRound] = useState(1);
 
+  const location = useLocation();
+  const navigate = useNavigate();
+
   useEffect(() => {
     fetchData();
+
+    // Real-time WebSocket synchronization across tabs & components
+    const socket = getSocket();
+    const handleSync = () => {
+      fetchData(false);
+    };
+
+    socket.on('QUIZ_UPDATED', handleSync);
+    socket.on('ROUND_STATUS_UPDATED', handleSync);
+    socket.on('REFRESH_DASHBOARD', handleSync);
+
+    return () => {
+      socket.off('QUIZ_UPDATED', handleSync);
+      socket.off('ROUND_STATUS_UPDATED', handleSync);
+      socket.off('REFRESH_DASHBOARD', handleSync);
+    };
   }, []);
 
-  const fetchData = async () => {
-    setLoading(true);
+  const fetchData = async (showLoading = true) => {
+    if (showLoading) setLoading(true);
     try {
       const [roundsRes, eventsRes, questRes] = await Promise.all([
         adminService.getRounds().catch(() => ({ success: false, data: [] })),
@@ -114,11 +135,35 @@ export default function QuestionsPage() {
 
       const finalEvents = Array.from(eventMap.values());
       setEvents(finalEvents);
-      setQuestions(rawQuestionsList);
+      // Align questions to existing event
+      const primaryEventTitle = finalEvents[0]?.title || 'Technical Quiz';
+      const alignedQuestions = (questRes.data || []).map((q) => {
+        const qEvts = Array.isArray(q.events) && q.events.length > 0 ? q.events : (q.event_name ? [q.event_name] : []);
+        const matchesAny = qEvts.some((e) => finalEvents.some((fe) => fe.title.toLowerCase() === e.toLowerCase()));
+        if (!matchesAny) {
+          return {
+            ...q,
+            event_name: primaryEventTitle,
+            events: [primaryEventTitle]
+          };
+        }
+        return q;
+      });
+      setQuestions(alignedQuestions);
+
+      // Handle passed location state from RoundsPage or QuizzesPage
+      if (location.state?.eventTitle) {
+        setTargetEvent(location.state.eventTitle);
+      } else if (finalEvents.length > 0) {
+        setTargetEvent(finalEvents[0].title);
+      }
+      if (location.state?.roundNumber) {
+        setTargetRound(Number(location.state.roundNumber));
+      }
     } catch (err) {
       toast.error('Failed to load question repository');
     } finally {
-      setLoading(false);
+      if (showLoading) setLoading(false);
     }
   };
 
@@ -406,29 +451,32 @@ export default function QuestionsPage() {
                 (r.event_name && event.title && r.event_name.toLowerCase() === event.title.toLowerCase())
             );
 
-            // If no rounds exist yet for this event, provide default Round 1 & Round 2
-            if (eventRounds.length === 0) {
-              eventRounds = [
-                {
-                  id: `rnd-${event.id || event.title}-1`,
-                  event_id: event.id,
-                  event_name: event.title,
-                  round_number: 1,
-                  round_name: 'Round 1',
-                  description: `${event.title} Examination Round 1`
-                },
-                {
-                  id: `rnd-${event.id || event.title}-2`,
-                  event_id: event.id,
-                  event_name: event.title,
-                  round_number: 2,
-                  round_name: 'Round 2',
-                  description: `${event.title} Examination Round 2`
-                }
-              ];
+            // Ensure Round 1 is ALWAYS present in the questions repository for every event
+            const hasRound1 = eventRounds.some((r) => Number(r.round_number) === 1);
+            if (!hasRound1) {
+              eventRounds.unshift({
+                id: `rnd-${event.id || event.title}-1`,
+                event_id: event.id,
+                event_name: event.title,
+                round_number: 1,
+                round_name: 'Round 1',
+                description: `${event.title} Examination Round 1`
+              });
             }
 
-            // Sort rounds ascending by round_number
+            // If no Round 2 exists and event has 0 other rounds, also provide Round 2 slot
+            if (eventRounds.length === 1 && Number(eventRounds[0].round_number) === 1) {
+              eventRounds.push({
+                id: `rnd-${event.id || event.title}-2`,
+                event_id: event.id,
+                event_name: event.title,
+                round_number: 2,
+                round_name: 'Round 2',
+                description: `${event.title} Examination Round 2`
+              });
+            }
+
+            // Sort rounds ascending by round_number (Round 1, Round 2, ...)
             eventRounds.sort((a, b) => (Number(a.round_number) || 0) - (Number(b.round_number) || 0));
 
             // Questions in this event

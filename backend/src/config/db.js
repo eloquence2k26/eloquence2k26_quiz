@@ -9,26 +9,24 @@ const TABLE_COLUMNS = {
   participants: [
     'id', 'participant_id', 'full_name', 'email', 'mobile', 'college',
     'department', 'year', 'event', 'registration_number', 'photo_url',
-    'assigned_quiz_ids', 'round_1_selected', 'round_2_selected',
-    'round_1_attempted', 'round_1_result', 'round_1_published',
+    'round_1_selected', 'round_2_selected',
     'is_disabled', 'created_at', 'updated_at'
   ],
   admins: ['id', 'full_name', 'email', 'admin_level', 'created_at'],
   events: ['id', 'title', 'code', 'description', 'is_active', 'created_at', 'updated_at'],
   rounds: [
     'id', 'event_id', 'round_number', 'round_name', 'description',
-    'is_active', 'is_published', 'round_1_published', 'round_2_published',
+    'is_active', 'is_published',
     'created_at', 'updated_at'
   ],
   quizzes: [
-    'id', 'event_id', 'round_id', 'title', 'description', 'event_name', 'event_code',
+    'id', 'event_id', 'round_id', 'title', 'description', 'event_name',
     'round_number', 'total_questions', 'duration_minutes', 'start_date',
     'start_time', 'end_date', 'end_time', 'start_datetime', 'end_datetime',
     'max_marks', 'pass_percentage', 'negative_marking', 'negative_mark_value',
     'max_attempts', 'status', 'desktop_only', 'fullscreen_required',
     'max_violations', 'shuffle_questions', 'shuffle_options',
-    'entry_window_minutes', 'allow_late_entry', 'show_detailed_results',
-    'is_results_published', 'published_participant_ids', 'created_by',
+    'show_detailed_results', 'created_by',
     'created_at', 'updated_at'
   ],
   questions: [
@@ -268,7 +266,11 @@ class DBStore {
 
       const results = await Promise.all(loadPromises);
       for (const res of results) {
-        this.data[res.table] = res.data;
+        if (res.data && res.data.length > 0) {
+          this.data[res.table] = res.data;
+        } else if (!this.data[res.table]) {
+          this.data[res.table] = [];
+        }
       }
 
       // Fetch system settings
@@ -452,27 +454,228 @@ class DBStore {
         }
       }
 
-      // Enrich questions with associated event and round strictly from linked quizzes in Supabase
-      const quizMap = new Map((this.data.quizzes || []).map((qz) => [qz.id, qz]));
-      const questionQuizLinks = this.data.quiz_questions || [];
+      // Auto-populate default symposium question bank if questions table is empty in Supabase
+      if (!this.data.questions || this.data.questions.length === 0) {
+        const defaultQuestions = [
+          {
+            id: 'e0000000-0000-0000-0000-000000000001',
+            question_text: 'What is the worst-case time complexity of QuickSort when using the standard Lomuto partition scheme with deterministic first-element pivot?',
+            option_a: 'O(n log n)',
+            option_b: 'O(n^2)',
+            option_c: 'O(n)',
+            option_d: 'O(log n)',
+            correct_answer: 'B',
+            marks: 2.0,
+            negative_marks: 0.5,
+            explanation: 'When the input is already sorted or reverse sorted, standard Lomuto partitioning produces unbalanced partitions of sizes 0 and n-1, leading to O(n^2) worst-case time.',
+            category: 'Data Structures & Algorithms',
+            difficulty: 'Easy',
+            event_name: 'Eloquence 2026',
+            round_number: 1
+          },
+          {
+            id: 'e0000000-0000-0000-0000-000000000002',
+            question_text: 'Which HTTP status code represents "429"?',
+            option_a: 'Service Unavailable',
+            option_b: 'Unauthorized Access',
+            option_c: 'Too Many Requests',
+            option_d: 'Precondition Failed',
+            correct_answer: 'C',
+            marks: 2.0,
+            negative_marks: 0.5,
+            explanation: 'HTTP 429 Too Many Requests indicates the user has sent too many requests in a given amount of time (rate limiting).',
+            category: 'Web Architecture',
+            difficulty: 'Easy',
+            event_name: 'Eloquence 2026',
+            round_number: 1
+          },
+          {
+            id: 'e0000000-0000-0000-0000-000000000003',
+            question_text: 'In JavaScript, what will `console.log([] + {})` output in standard ECMA specifications?',
+            option_a: '"[object Object]"',
+            option_b: '"undefined"',
+            option_c: 'NaN',
+            option_d: 'TypeError',
+            correct_answer: 'A',
+            marks: 2.0,
+            negative_marks: 0.5,
+            explanation: 'The empty array converts to empty string `""` and the object converts to `"[object Object]"`, resulting in concatenation to `"[object Object]"`.',
+            category: 'Programming Languages',
+            difficulty: 'Medium',
+            event_name: 'Eloquence 2026',
+            round_number: 1
+          },
+          {
+            id: 'e0000000-0000-0000-0000-000000000004',
+            question_text: 'Which of the following database isolation levels prevents phantom reads in standard ANSI SQL?',
+            option_a: 'Read Committed',
+            option_b: 'Repeatable Read',
+            option_c: 'Serializable',
+            option_d: 'Read Uncommitted',
+            correct_answer: 'C',
+            marks: 2.0,
+            negative_marks: 0.5,
+            explanation: 'Serializable is the highest isolation level and strictly prevents dirty reads, non-repeatable reads, and phantom reads.',
+            category: 'Database Management',
+            difficulty: 'Medium',
+            event_name: 'Eloquence 2026',
+            round_number: 1
+          },
+          {
+            id: 'e0000000-0000-0000-0000-000000000005',
+            question_text: 'What is the primary objective of the TLS 1.3 0-RTT Handshake resumption?',
+            option_a: 'To encrypt data with symmetric RSA keys',
+            option_b: 'To allow client data to be sent on the first flight without round-trip delay',
+            option_c: 'To bypass certificate verification',
+            option_d: 'To compress packet payloads',
+            correct_answer: 'B',
+            marks: 3.0,
+            negative_marks: 1.0,
+            explanation: '0-RTT resumption allows clients to send application data immediately in the ClientHello when reconnecting to a known server.',
+            category: 'Networking & Security',
+            difficulty: 'Hard',
+            event_name: 'Eloquence 2026',
+            round_number: 1
+          },
+          {
+            id: 'e0000000-0000-0000-0000-000000000006',
+            question_text: 'Which memory management concept handles the issue of external fragmentation in OS memory allocators?',
+            option_a: 'Paging',
+            option_b: 'Contiguous Partitioning',
+            option_c: 'Static Relocation',
+            option_d: 'Swapping only',
+            correct_answer: 'A',
+            marks: 2.0,
+            negative_marks: 0.5,
+            explanation: 'Paging divides virtual and physical memory into fixed-sized blocks (pages and frames), completely eliminating external fragmentation.',
+            category: 'Operating Systems',
+            difficulty: 'Medium',
+            event_name: 'Eloquence 2026',
+            round_number: 1
+          },
+          {
+            id: 'e0000000-0000-0000-0000-000000000007',
+            question_text: 'In React 18, what is the key advantage of the `useDeferredValue` hook?',
+            option_a: 'It converts synchronous state to Redux store',
+            option_b: 'It defers updating a part of the UI that is computationally heavy until critical updates render',
+            option_c: 'It enforces immediate DOM mutations',
+            option_d: 'It caches network requests automatically',
+            correct_answer: 'B',
+            marks: 2.0,
+            negative_marks: 0.5,
+            explanation: 'useDeferredValue lets you defer updating a non-urgent part of the UI to keep input and animations smooth.',
+            category: 'Frontend Frameworks',
+            difficulty: 'Medium',
+            event_name: 'Eloquence 2026',
+            round_number: 1
+          },
+          {
+            id: 'e0000000-0000-0000-0000-000000000008',
+            question_text: 'Which algorithm is commonly used for finding Strongly Connected Components (SCC) in a directed graph?',
+            option_a: 'Dijkstra Algorithm',
+            option_b: 'Tarjan or Kosaraju Algorithm',
+            option_c: 'Kruskal Algorithm',
+            option_d: 'Floyd-Warshall Algorithm',
+            correct_answer: 'B',
+            marks: 3.0,
+            negative_marks: 1.0,
+            explanation: 'Tarjan and Kosaraju algorithms both compute strongly connected components in linear O(V + E) time.',
+            category: 'Algorithms',
+            difficulty: 'Hard',
+            event_name: 'Eloquence 2026',
+            round_number: 1
+          }
+        ];
 
-      this.data.questions = (this.data.questions || []).map((q) => {
-        const links = questionQuizLinks.filter((qq) => qq.question_id === q.id);
-        const linkedQuizzes = links.map((l) => quizMap.get(l.quiz_id)).filter(Boolean);
-        const primaryQuiz = linkedQuizzes[0];
-        const eventName = primaryQuiz?.event_name || primaryQuiz?.title || q.event_name || 'Technical Quiz';
-        const roundNum = Number(primaryQuiz?.round_number) || Number(q.round_number) || 1;
-        const allEvents = Array.from(new Set(linkedQuizzes.map((qz) => qz.event_name || qz.title).filter(Boolean)));
-        const allRounds = Array.from(new Set(linkedQuizzes.map((qz) => Number(qz.round_number)).filter(Boolean)));
+        this.data.questions = defaultQuestions;
+        (async () => {
+          try {
+            const cleanQuestions = defaultQuestions.map((q) => this.sanitize('questions', q));
+            await supabase.from('questions').upsert(cleanQuestions);
+            logger.info('[DB] Seeded initial questions into Supabase database');
+          } catch (qErr) {
+            logger.warn(`[DB] Notice seeding questions: ${qErr.message}`);
+          }
+        })();
+      }
 
-        return {
-          ...q,
-          event_name: eventName,
-          round_number: roundNum,
-          events: allEvents.length > 0 ? allEvents : [eventName],
-          round_numbers: allRounds.length > 0 ? allRounds : [roundNum]
+      // Ensure default event and round have a canonical quiz in quizzes table
+      if (
+        (!this.data.quizzes || this.data.quizzes.length === 0) &&
+        this.data.events &&
+        this.data.events.length > 0
+      ) {
+        const ev = this.data.events[0];
+        const r1 = (this.data.rounds || []).find(
+          (r) => Number(r.round_number) === 1 && (r.event_id === ev.id || !r.event_id)
+        );
+        const defaultQuiz = {
+          id: 'b0000000-0000-0000-0000-000000000001',
+          event_id: ev.id,
+          round_id: r1 ? r1.id : null,
+          title: `${ev.title} - Examination`,
+          description: ev.description || `${ev.title} symposium event`,
+          event_name: ev.title,
+          round_number: 1,
+          total_questions: (this.data.questions || []).length,
+          duration_minutes: 30,
+          start_date: new Date().toISOString().split('T')[0],
+          start_time: '09:00:00',
+          end_date: new Date(Date.now() + 86400000 * 7).toISOString().split('T')[0],
+          end_time: '23:59:59',
+          max_marks: 100,
+          pass_percentage: 40,
+          negative_marking: false,
+          negative_mark_value: 0,
+          max_attempts: 1,
+          status: 'Draft',
+          desktop_only: false,
+          fullscreen_required: true,
+          max_violations: 1,
+          shuffle_questions: true,
+          shuffle_options: true,
+          show_detailed_results: true,
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString()
         };
-      });
+        this.data.quizzes = [defaultQuiz];
+        try {
+          const cleanQ = this.sanitize('quizzes', defaultQuiz);
+          await supabase.from('quizzes').upsert([cleanQ]);
+          logger.info('[DB] Seeded canonical Round 1 quiz into Supabase database');
+        } catch (qErr) {
+          logger.warn(`[DB] Notice seeding canonical quiz: ${qErr.message}`);
+        }
+      }
+
+      // Auto-link questions to default Round 1 quiz if quiz_questions is empty
+      if (
+        (!this.data.quiz_questions || this.data.quiz_questions.length === 0) &&
+        this.data.quizzes &&
+        this.data.quizzes.length > 0 &&
+        this.data.questions &&
+        this.data.questions.length > 0
+      ) {
+        const defaultQuiz = this.data.quizzes[0];
+        const defaultLinks = this.data.questions.map((q, idx) => ({
+          id: uuidv4(),
+          quiz_id: defaultQuiz.id,
+          question_id: q.id,
+          display_order: idx + 1,
+          created_at: new Date().toISOString()
+        }));
+
+        this.data.quiz_questions = defaultLinks;
+        (async () => {
+          try {
+            const cleanLinks = defaultLinks.map((l) => this.sanitize('quiz_questions', l));
+            await supabase.from('quiz_questions').upsert(cleanLinks);
+            logger.info('[DB] Linked questions to default quiz in Supabase');
+          } catch (lErr) {
+            logger.warn(`[DB] Notice linking quiz questions: ${lErr.message}`);
+          }
+        })();
+      }
 
       // Start automatic live background synchronization timer (every 60s)
       if (!this._bgSyncTimer) {

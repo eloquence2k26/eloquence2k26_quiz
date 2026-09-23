@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { useSearchParams } from 'react-router-dom';
+import { useLocation, useNavigate, useSearchParams } from 'react-router-dom';
 import {
   Users,
   UserCheck,
@@ -31,6 +31,7 @@ import {
 } from 'lucide-react';
 import { adminService } from '../../services/adminService';
 import { quizService } from '../../services/quizService';
+import { getSocket } from '../../services/socket';
 import { useToast } from '../../context/ToastContext';
 import { formatDate } from '../../utils/formatters';
 import Badge from '../../components/common/Badge';
@@ -39,22 +40,24 @@ import Modal from '../../components/common/Modal';
 
 export default function AssignParticipantsPage() {
   const toast = useToast();
+  const location = useLocation();
+  const navigate = useNavigate();
   const [searchParams] = useSearchParams();
-  const urlQuizId = searchParams.get('quizId') || searchParams.get('quiz_id');
+  const urlQuizId = searchParams.get('quizId') || searchParams.get('quiz_id') || location.state?.quizId;
   const urlEvent = searchParams.get('event');
 
   const [loading, setLoading] = useState(true);
   const [quizzes, setQuizzes] = useState([]);
-  const [selectedQuizId, setSelectedQuizId] = useState('');
+  const [selectedQuizId, setSelectedQuizId] = useState(location.state?.quizId || urlQuizId || '');
   const [participants, setParticipants] = useState([]);
   
   // UI Tabs: 'manual' or 'import'
-  const [activeTab, setActiveTab] = useState('manual');
+  const [activeTab, setActiveTab] = useState(location.state?.tab || 'manual');
 
   // Manual Selection State
   const [searchQuery, setSearchQuery] = useState('');
   const [deptFilter, setDeptFilter] = useState('ALL');
-  const [assignFilter, setAssignFilter] = useState(urlQuizId || urlEvent ? 'ASSIGNED' : 'ALL'); // 'ALL', 'ASSIGNED', 'UNASSIGNED'
+  const [assignFilter, setAssignFilter] = useState(urlQuizId || urlEvent || location.state?.quizId ? 'ASSIGNED' : 'ALL'); // 'ALL', 'ASSIGNED', 'UNASSIGNED'
   const [selectedParticipantIds, setSelectedParticipantIds] = useState(new Set());
   const [assigning, setAssigning] = useState(false);
 
@@ -79,7 +82,39 @@ export default function AssignParticipantsPage() {
 
   useEffect(() => {
     fetchInitialData();
+
+    const socket = getSocket();
+    const handleSocketUpdate = () => {
+      refreshData();
+    };
+
+    if (socket) {
+      socket.on('QUIZ_UPDATED', handleSocketUpdate);
+      socket.on('ROUND_STATUS_UPDATED', handleSocketUpdate);
+      socket.on('REFRESH_DASHBOARD', handleSocketUpdate);
+      socket.on('PARTICIPANT_REGISTERED', handleSocketUpdate);
+      socket.on('PARTICIPANTS_UPDATED', handleSocketUpdate);
+    }
+
+    return () => {
+      if (socket) {
+        socket.off('QUIZ_UPDATED', handleSocketUpdate);
+        socket.off('ROUND_STATUS_UPDATED', handleSocketUpdate);
+        socket.off('REFRESH_DASHBOARD', handleSocketUpdate);
+        socket.off('PARTICIPANT_REGISTERED', handleSocketUpdate);
+        socket.off('PARTICIPANTS_UPDATED', handleSocketUpdate);
+      }
+    };
   }, [urlQuizId, urlEvent]);
+
+  useEffect(() => {
+    if (location.state?.quizId) {
+      setSelectedQuizId(location.state.quizId);
+    }
+    if (location.state?.tab) {
+      setActiveTab(location.state.tab);
+    }
+  }, [location.state]);
 
   const fetchInitialData = async () => {
     setLoading(true);
@@ -91,8 +126,9 @@ export default function AssignParticipantsPage() {
 
       if (qRes.success && qRes.data) {
         setQuizzes(qRes.data);
-        const targetQuiz = urlQuizId
-          ? qRes.data.find((q) => q.id === urlQuizId || q.id === String(urlQuizId).trim())
+        const preferredId = urlQuizId || location.state?.quizId;
+        const targetQuiz = preferredId
+          ? qRes.data.find((q) => q.id === preferredId || q.id === String(preferredId).trim())
           : urlEvent
           ? qRes.data.find((q) => (q.event_name || q.title || '').toLowerCase() === urlEvent.toLowerCase())
           : null;
@@ -397,13 +433,36 @@ export default function AssignParticipantsPage() {
           </p>
         </div>
 
-        <button
-          onClick={refreshData}
-          className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-bold text-slate-700 dark:text-slate-200 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 hover:bg-slate-50 dark:hover:bg-slate-800 shadow-sm transition-all"
-        >
-          <RefreshCw className="w-3.5 h-3.5" />
-          <span>Refresh Data</span>
-        </button>
+        <div className="flex flex-wrap items-center gap-2">
+          <button
+            onClick={() => navigate('/admin/rounds')}
+            className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-bold text-brand-700 dark:text-brand-300 bg-brand-50 dark:bg-brand-950/60 border border-brand-200 dark:border-brand-800 hover:bg-brand-100 dark:hover:bg-brand-900/60 transition-all shadow-sm"
+          >
+            <Layers className="w-3.5 h-3.5" />
+            <span>Rounds Setup</span>
+          </button>
+          <button
+            onClick={() => navigate('/admin/schedule', { state: { quizId: selectedQuizId, openSchedule: true } })}
+            className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-bold text-amber-700 dark:text-amber-300 bg-amber-50 dark:bg-amber-950/60 border border-amber-200 dark:border-amber-800 hover:bg-amber-100 dark:hover:bg-amber-900/60 transition-all shadow-sm"
+          >
+            <Calendar className="w-3.5 h-3.5" />
+            <span>Quiz Schedule</span>
+          </button>
+          <button
+            onClick={() => navigate('/admin/questions', { state: { quizId: selectedQuizId, eventTitle: selectedQuiz?.title, roundNumber: selectedQuiz?.round_number } })}
+            className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-bold text-indigo-700 dark:text-indigo-300 bg-indigo-50 dark:bg-indigo-950/60 border border-indigo-200 dark:border-indigo-800 hover:bg-indigo-100 dark:hover:bg-indigo-900/60 transition-all shadow-sm"
+          >
+            <BookOpen className="w-3.5 h-3.5" />
+            <span>Question Bank</span>
+          </button>
+          <button
+            onClick={refreshData}
+            className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-bold text-slate-700 dark:text-slate-200 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 hover:bg-slate-50 dark:hover:bg-slate-800 shadow-sm transition-all"
+          >
+            <RefreshCw className="w-3.5 h-3.5" />
+            <span>Refresh Data</span>
+          </button>
+        </div>
       </div>
 
       {/* Target Quiz Selector Card */}

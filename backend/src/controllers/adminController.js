@@ -1,6 +1,7 @@
 const db = require('../config/db');
 const { success, error } = require('../utils/responseHelper');
 const AuditService = require('../services/auditService');
+const SocketService = require('../services/socketService');
 
 class AdminController {
   /**
@@ -257,7 +258,6 @@ class AdminController {
         round_id: r1.id,
         title: cleanTitle,
         event_name: cleanTitle,
-        event_code: cleanCode,
         description: description ? description.trim() : `${cleanTitle} Examination`,
         round_number: 1,
         total_questions: 0,
@@ -284,6 +284,9 @@ class AdminController {
         title: newEvent.title,
         code: newEvent.code
       });
+
+      SocketService.notifyQuizUpdate({ event_id: newEvent.id });
+      SocketService.notifyRoundPublished({ event_id: newEvent.id });
 
       return success(res, newEvent, 'Event created successfully', 201);
     } catch (err) {
@@ -340,6 +343,8 @@ class AdminController {
       }
 
       AuditService.log(req.user.id, 'UPDATE_EVENT', 'EVENT', id, updates);
+      SocketService.notifyQuizUpdate({ event_id: id });
+      SocketService.notifyRoundPublished({ event_id: id });
 
       return success(res, updatedEvent, 'Event updated successfully');
     } catch (err) {
@@ -363,6 +368,8 @@ class AdminController {
       AuditService.log(req.user.id, 'DELETE_EVENT', 'EVENT', id, {
         title: event ? event.title : id
       });
+      SocketService.notifyQuizUpdate({ event_id: id, deleted: true });
+      SocketService.notifyRoundPublished({ event_id: id, deleted: true });
 
       return success(res, {}, 'Event and linked configuration removed successfully');
     } catch (err) {
