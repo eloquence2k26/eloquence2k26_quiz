@@ -3,6 +3,7 @@ const db = require('../config/db');
 const { success, error } = require('../utils/responseHelper');
 const AuditService = require('../services/auditService');
 const DocumentParserService = require('../services/documentParserService');
+const SocketService = require('../services/socketService');
 
 class ParticipantController {
   /**

@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import {
   Users,
   UserCheck,
@@ -38,6 +39,10 @@ import Modal from '../../components/common/Modal';
 
 export default function AssignParticipantsPage() {
   const toast = useToast();
+  const [searchParams] = useSearchParams();
+  const urlQuizId = searchParams.get('quizId') || searchParams.get('quiz_id');
+  const urlEvent = searchParams.get('event');
+
   const [loading, setLoading] = useState(true);
   const [quizzes, setQuizzes] = useState([]);
   const [selectedQuizId, setSelectedQuizId] = useState('');
@@ -49,7 +54,7 @@ export default function AssignParticipantsPage() {
   // Manual Selection State
   const [searchQuery, setSearchQuery] = useState('');
   const [deptFilter, setDeptFilter] = useState('ALL');
-  const [assignFilter, setAssignFilter] = useState('ALL'); // 'ALL', 'ASSIGNED', 'UNASSIGNED'
+  const [assignFilter, setAssignFilter] = useState(urlQuizId || urlEvent ? 'ASSIGNED' : 'ALL'); // 'ALL', 'ASSIGNED', 'UNASSIGNED'
   const [selectedParticipantIds, setSelectedParticipantIds] = useState(new Set());
   const [assigning, setAssigning] = useState(false);
 
@@ -74,7 +79,7 @@ export default function AssignParticipantsPage() {
 
   useEffect(() => {
     fetchInitialData();
-  }, []);
+  }, [urlQuizId, urlEvent]);
 
   const fetchInitialData = async () => {
     setLoading(true);
@@ -86,7 +91,16 @@ export default function AssignParticipantsPage() {
 
       if (qRes.success && qRes.data) {
         setQuizzes(qRes.data);
-        if (qRes.data.length > 0 && !selectedQuizId) {
+        const targetQuiz = urlQuizId
+          ? qRes.data.find((q) => q.id === urlQuizId || q.id === String(urlQuizId).trim())
+          : urlEvent
+          ? qRes.data.find((q) => (q.event_name || q.title || '').toLowerCase() === urlEvent.toLowerCase())
+          : null;
+
+        if (targetQuiz) {
+          setSelectedQuizId(targetQuiz.id);
+          setAssignFilter('ASSIGNED');
+        } else if (qRes.data.length > 0 && !selectedQuizId) {
           setSelectedQuizId(qRes.data[0].id);
         }
       }

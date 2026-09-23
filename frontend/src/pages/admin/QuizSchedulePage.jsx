@@ -650,9 +650,9 @@ export default function QuizSchedulePage() {
 
                               {/* Assigned Participants Link */}
                               <Link
-                                to={`/admin/participants?event=${encodeURIComponent(q.event_name || q.title)}`}
-                                className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-bold bg-brand-50 dark:bg-brand-950/70 text-brand-700 dark:text-brand-300 hover:bg-brand-100 dark:hover:bg-brand-900/60 border border-brand-200/60 dark:border-brand-800/40 transition-all shadow-2xs"
-                                title="View assigned participants for this quiz"
+                                to={`/admin/assign-participants?quizId=${q.id}`}
+                                className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-bold bg-brand-50 dark:bg-brand-950/70 text-brand-700 dark:text-brand-300 hover:bg-brand-100 dark:hover:bg-brand-900/60 border border-brand-200/60 dark:border-brand-800/40 transition-all shadow-2xs cursor-pointer"
+                                title="Click to view and locate assigned scholars for this examination"
                               >
                                 <Users className="w-3.5 h-3.5 text-brand-600 dark:text-brand-400" />
                                 <span>{q.assigned_participants_count || 0} Assigned Scholars</span>
