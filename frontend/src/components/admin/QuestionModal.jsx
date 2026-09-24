@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import Modal from '../common/Modal';
-import { Image as ImageIcon, Code, Upload, Trash2 } from 'lucide-react';
+import { Image as ImageIcon, Code, Upload, Trash2, Clock, Plus, Minus } from 'lucide-react';
 
 export default function QuestionModal({
   isOpen,
@@ -27,11 +27,19 @@ export default function QuestionModal({
     code_snippet: '',
     event_name: 'Eloquence 2026',
     round_number: 1,
-    explanation: ''
+    explanation: '',
+    time_limit: 0
   });
+
+  const [timeMinutes, setTimeMinutes] = useState(0);
+  const [timeSeconds, setTimeSeconds] = useState(0);
 
   useEffect(() => {
     if (initialData) {
+      const rawLimit = Number(initialData.time_limit || initialData.time_limit_seconds || 0);
+      setTimeMinutes(Math.floor(rawLimit / 60));
+      setTimeSeconds(rawLimit % 60);
+
       setFormData({
         question_text: initialData.question_text || '',
         option_a: initialData.option_a || '',
@@ -47,9 +55,12 @@ export default function QuestionModal({
         code_snippet: initialData.code_snippet || '',
         event_name: initialData.event_name || 'Eloquence 2026',
         round_number: initialData.round_number || 1,
-        explanation: initialData.explanation || ''
+        explanation: initialData.explanation || '',
+        time_limit: rawLimit
       });
     } else {
+      setTimeMinutes(0);
+      setTimeSeconds(0);
       const defaultEvt = initialEvent || (eventsList[0] ? (typeof eventsList[0] === 'string' ? eventsList[0] : eventsList[0].title) : 'Eloquence 2026');
       const defaultRnd = initialRound ? Number(initialRound) : 1;
       setFormData({
@@ -67,7 +78,8 @@ export default function QuestionModal({
         code_snippet: '',
         event_name: defaultEvt,
         round_number: defaultRnd,
-        explanation: ''
+        explanation: '',
+        time_limit: 0
       });
     }
   }, [initialData, isOpen, initialEvent, initialRound, eventsList]);
@@ -82,9 +94,36 @@ export default function QuestionModal({
     reader.readAsDataURL(file);
   };
 
+  const handleAdjustTime = (dMin, dSec) => {
+    let curTotal = (parseInt(timeMinutes, 10) || 0) * 60 + (parseInt(timeSeconds, 10) || 0);
+    curTotal += dMin * 60 + dSec;
+    if (curTotal < 0) curTotal = 0;
+    const nextM = Math.floor(curTotal / 60);
+    const nextS = curTotal % 60;
+    setTimeMinutes(nextM);
+    setTimeSeconds(nextS);
+    setFormData((prev) => ({ ...prev, time_limit: curTotal, time_limit_seconds: curTotal }));
+  };
+
+  const totalTimeSeconds = (parseInt(timeMinutes, 10) || 0) * 60 + (parseInt(timeSeconds, 10) || 0);
+
+  const formatDisplayTime = (totalSec) => {
+    if (!totalSec || totalSec <= 0) return '0s (Untimed)';
+    const m = Math.floor(totalSec / 60);
+    const s = totalSec % 60;
+    if (m > 0 && s > 0) return `${m}m ${s}s`;
+    if (m > 0) return `${m}m`;
+    return `${s}s`;
+  };
+
   const handleSubmit = (e) => {
     e.preventDefault();
-    onSave(formData);
+    const finalTime = (parseInt(timeMinutes, 10) || 0) * 60 + (parseInt(timeSeconds, 10) || 0);
+    onSave({
+      ...formData,
+      time_limit: finalTime,
+      time_limit_seconds: finalTime
+    });
   };
 
   return (
@@ -285,6 +324,136 @@ export default function QuestionModal({
           </div>
         </div>
 
+        {/* Per-Question Time Limit */}
+        <div className="p-3 rounded-xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700/80 flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <div className="flex items-center gap-1.5">
+              <Clock className="w-3.5 h-3.5 text-brand-600 dark:text-brand-400" />
+              <span className="text-xs font-bold text-slate-800 dark:text-slate-200 uppercase tracking-wide">
+                Time Limit Per Question
+              </span>
+              <span
+                className={`text-[10px] px-2 py-0.5 rounded-full font-bold border transition-colors ${
+                  totalTimeSeconds === 0
+                    ? 'bg-slate-100 text-slate-600 border-slate-200 dark:bg-slate-800 dark:text-slate-400 dark:border-slate-700'
+                    : 'bg-brand-50 text-brand-700 border-brand-200 dark:bg-brand-950/60 dark:text-brand-300 dark:border-brand-800'
+                }`}
+              >
+                {formatDisplayTime(totalTimeSeconds)}
+              </span>
+            </div>
+            <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">
+              Individual timer for answering this question. Default is 0 (untimed).
+            </p>
+          </div>
+
+          <div className="flex items-center gap-2">
+            {/* Minutes */}
+            <div className="flex items-center bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg p-0.5 shadow-2xs">
+              <button
+                type="button"
+                onClick={() => handleAdjustTime(-1, 0)}
+                disabled={timeMinutes <= 0}
+                className="w-6 h-6 flex items-center justify-center rounded hover:bg-slate-100 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-300 disabled:opacity-30"
+              >
+                <Minus className="w-3 h-3" />
+              </button>
+              <div className="flex items-center px-1">
+                <input
+                  type="number"
+                  min="0"
+                  max="60"
+                  value={timeMinutes}
+                  onChange={(e) => {
+                    const m = Math.max(0, parseInt(e.target.value, 10) || 0);
+                    setTimeMinutes(m);
+                    const newTot = m * 60 + (parseInt(timeSeconds, 10) || 0);
+                    setFormData((prev) => ({ ...prev, time_limit: newTot, time_limit_seconds: newTot }));
+                  }}
+                  className="w-8 bg-transparent text-center text-xs font-bold text-slate-900 dark:text-white focus:outline-none"
+                />
+                <span className="text-[10px] font-semibold text-slate-400">m</span>
+              </div>
+              <button
+                type="button"
+                onClick={() => handleAdjustTime(1, 0)}
+                className="w-6 h-6 flex items-center justify-center rounded hover:bg-slate-100 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-300"
+              >
+                <Plus className="w-3 h-3" />
+              </button>
+            </div>
+
+            <span className="text-slate-400 font-bold text-xs">:</span>
+
+            {/* Seconds */}
+            <div className="flex items-center bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg p-0.5 shadow-2xs">
+              <button
+                type="button"
+                onClick={() => handleAdjustTime(0, -5)}
+                disabled={timeMinutes <= 0 && timeSeconds <= 0}
+                className="w-6 h-6 flex items-center justify-center rounded hover:bg-slate-100 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-300 disabled:opacity-30"
+              >
+                <Minus className="w-3 h-3" />
+              </button>
+              <div className="flex items-center px-1">
+                <input
+                  type="number"
+                  min="0"
+                  max="59"
+                  step="5"
+                  value={timeSeconds}
+                  onChange={(e) => {
+                    const s = Math.max(0, Math.min(59, parseInt(e.target.value, 10) || 0));
+                    setTimeSeconds(s);
+                    const newTot = (parseInt(timeMinutes, 10) || 0) * 60 + s;
+                    setFormData((prev) => ({ ...prev, time_limit: newTot, time_limit_seconds: newTot }));
+                  }}
+                  className="w-8 bg-transparent text-center text-xs font-bold text-slate-900 dark:text-white focus:outline-none"
+                />
+                <span className="text-[10px] font-semibold text-slate-400">s</span>
+              </div>
+              <button
+                type="button"
+                onClick={() => handleAdjustTime(0, 5)}
+                className="w-6 h-6 flex items-center justify-center rounded hover:bg-slate-100 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-300"
+              >
+                <Plus className="w-3 h-3" />
+              </button>
+            </div>
+
+            {/* Presets */}
+            <div className="flex items-center gap-1 pl-1">
+              <button
+                type="button"
+                onClick={() => handleAdjustTime(0, 30)}
+                className="px-1.5 py-1 text-[10px] font-bold rounded bg-slate-100 dark:bg-slate-700 hover:bg-brand-50 hover:text-brand-600 text-slate-600 dark:text-slate-300 transition-colors"
+              >
+                +30s
+              </button>
+              <button
+                type="button"
+                onClick={() => handleAdjustTime(1, 0)}
+                className="px-1.5 py-1 text-[10px] font-bold rounded bg-slate-100 dark:bg-slate-700 hover:bg-brand-50 hover:text-brand-600 text-slate-600 dark:text-slate-300 transition-colors"
+              >
+                +1m
+              </button>
+              {totalTimeSeconds > 0 && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setTimeMinutes(0);
+                    setTimeSeconds(0);
+                    setFormData((prev) => ({ ...prev, time_limit: 0, time_limit_seconds: 0 }));
+                  }}
+                  className="px-1.5 py-1 text-[10px] font-bold rounded bg-rose-50 text-rose-600 dark:bg-rose-950/40 dark:text-rose-400 hover:bg-rose-100 transition-colors"
+                >
+                  Reset
+                </button>
+              )}
+            </div>
+          </div>
+        </div>
+
         {/* Event & Round Assignment */}
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           <div>
@@ -327,11 +496,11 @@ export default function QuestionModal({
               className="w-full px-3.5 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-xs font-bold text-brand-600 dark:text-brand-400"
             >
               {roundsList && roundsList.length > 0 ? (
-                roundsList.map((r) => {
+                roundsList.map((r, idx) => {
                   const num = typeof r === 'object' ? r.round_number : r;
                   const name = typeof r === 'object' && r.round_name && r.round_name !== `Round ${num}` ? ` — ${r.round_name}` : '';
                   return (
-                    <option key={num} value={num}>
+                    <option key={`qmodal-rnd-${num}-${idx}`} value={num}>
                       Round {num}{name}
                     </option>
                   );

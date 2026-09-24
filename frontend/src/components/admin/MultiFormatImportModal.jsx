@@ -14,7 +14,11 @@ import {
   Layers,
   X,
   RefreshCw,
-  HelpCircle
+  HelpCircle,
+  Clock,
+  Timer,
+  Plus,
+  Minus
 } from 'lucide-react';
 import Modal from '../common/Modal';
 import Badge from '../common/Badge';
@@ -45,6 +49,38 @@ export default function MultiFormatImportModal({
     { round_number: 1, round_name: 'Round 1' },
     { round_number: 2, round_name: 'Round 2' }
   ]);
+
+  // Per-Question Time Limit state (default to 0)
+  const [timeLimitMinutes, setTimeLimitMinutes] = useState(0);
+  const [timeLimitSeconds, setTimeLimitSeconds] = useState(0);
+
+  const totalTimeLimitSeconds = (parseInt(timeLimitMinutes, 10) || 0) * 60 + (parseInt(timeLimitSeconds, 10) || 0);
+
+  const formatTimeLimit = (totalSec) => {
+    if (!totalSec || totalSec <= 0) return '0s (Untimed)';
+    const m = Math.floor(totalSec / 60);
+    const s = totalSec % 60;
+    if (m > 0 && s > 0) return `${m}m ${s}s (${totalSec}s)`;
+    if (m > 0) return `${m}m (${totalSec}s)`;
+    return `${s}s`;
+  };
+
+  const handleAdjustTimeLimit = (dMin, dSec) => {
+    let curTotal = (parseInt(timeLimitMinutes, 10) || 0) * 60 + (parseInt(timeLimitSeconds, 10) || 0);
+    curTotal = Math.max(0, curTotal + (dMin * 60) + dSec);
+    const newM = Math.floor(curTotal / 60);
+    const newS = curTotal % 60;
+    setTimeLimitMinutes(newM);
+    setTimeLimitSeconds(newS);
+
+    setPreviewQuestions((prev) =>
+      prev.map((q) => ({
+        ...q,
+        time_limit: curTotal,
+        time_limit_seconds: curTotal
+      }))
+    );
+  };
 
   const [pasteText, setPasteText] = useState('');
   const [parsing, setParsing] = useState(false);
@@ -86,6 +122,8 @@ export default function MultiFormatImportModal({
       setEventName(defaultEvt);
       setRoundNumber(initialRound ? Number(initialRound) : 1);
       setCustomEventInput(false);
+      setTimeLimitMinutes(0);
+      setTimeLimitSeconds(0);
     } else {
       // Reset state on modal close
       setFile(null);
@@ -93,6 +131,8 @@ export default function MultiFormatImportModal({
       setPasteText('');
       setParsing(false);
       setImporting(false);
+      setTimeLimitMinutes(0);
+      setTimeLimitSeconds(0);
     }
   }, [isOpen, initialEvent, initialRound, eventsList, propRoundsList]);
 
@@ -110,12 +150,18 @@ export default function MultiFormatImportModal({
       formData.append('file', targetFile);
       formData.append('event_name', currentEvent);
       formData.append('round_number', currentRound);
+      formData.append('time_limit', totalTimeLimitSeconds);
       formData.append('preview_only', 'true');
 
       const res = await adminService.importQuestionsFile(formData);
       if (res.success && res.data?.questions) {
-        setPreviewQuestions(res.data.questions);
-        toast.success(`Extracted ${res.data.questions.length} questions from ${targetFile.name}`);
+        const enriched = res.data.questions.map((q) => ({
+          ...q,
+          time_limit: q.time_limit !== undefined ? Number(q.time_limit) : totalTimeLimitSeconds,
+          time_limit_seconds: q.time_limit !== undefined ? Number(q.time_limit) : totalTimeLimitSeconds
+        }));
+        setPreviewQuestions(enriched);
+        toast.success(`Extracted ${enriched.length} questions from ${targetFile.name}`);
       } else {
         toast.error(res.message || 'No questions could be extracted.');
       }
@@ -158,11 +204,13 @@ export default function MultiFormatImportModal({
 
     setImporting(true);
     try {
-      // Send finalized preview list to bulk import endpoint with selected event and round
+      // Send finalized preview list to bulk import endpoint with selected event, round, and time limit
       const preparedList = previewQuestions.map((q) => ({
         ...q,
         event_name: eventName,
-        round_number: Number(roundNumber)
+        round_number: Number(roundNumber),
+        time_limit: q.time_limit !== undefined ? Number(q.time_limit) : totalTimeLimitSeconds,
+        time_limit_seconds: q.time_limit !== undefined ? Number(q.time_limit) : totalTimeLimitSeconds
       }));
 
       const res = await adminService.bulkUploadQuestions(preparedList);
@@ -228,75 +276,221 @@ export default function MultiFormatImportModal({
           </div>
         </div>
 
-        {/* Target Event and Round Selector */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 p-3.5 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800">
-          <div>
-            <div className="flex items-center justify-between mb-1">
-              <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 uppercase">
-                Target Event *
-              </label>
-              <button
-                type="button"
-                onClick={() => setCustomEventInput(!customEventInput)}
-                className="text-[10px] font-bold text-brand-600 dark:text-brand-400 hover:underline"
-              >
-                {customEventInput ? 'Choose from events' : '+ Custom event name'}
-              </button>
+        {/* Target Event, Round & Per-Question Time Limit Selector */}
+        <div className="p-4 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 space-y-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div>
+              <div className="flex items-center justify-between mb-1">
+                <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 uppercase">
+                  Target Event *
+                </label>
+                <button
+                  type="button"
+                  onClick={() => setCustomEventInput(!customEventInput)}
+                  className="text-[10px] font-bold text-brand-600 dark:text-brand-400 hover:underline"
+                >
+                  {customEventInput ? 'Choose from events' : '+ Custom event name'}
+                </button>
+              </div>
+              {customEventInput ? (
+                <input
+                  type="text"
+                  value={eventName}
+                  onChange={(e) => setEventName(e.target.value)}
+                  placeholder="Enter event title e.g. Technical Quiz"
+                  className="w-full px-3 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-xs font-semibold"
+                />
+              ) : (
+                <select
+                  value={eventName}
+                  onChange={(e) => {
+                    if (e.target.value === '__CUSTOM__') {
+                      setCustomEventInput(true);
+                    } else {
+                      setEventName(e.target.value);
+                    }
+                  }}
+                  className="w-full px-3 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-xs font-bold text-slate-800 dark:text-slate-200"
+                >
+                  {eventsOptions.map((evt) => {
+                    const val = typeof evt === 'string' ? evt : evt.title;
+                    return (
+                      <option key={val} value={val}>
+                        {val}
+                      </option>
+                    );
+                  })}
+                  <option value="__CUSTOM__">+ Enter New Custom Event Name...</option>
+                </select>
+              )}
             </div>
-            {customEventInput ? (
-              <input
-                type="text"
-                value={eventName}
-                onChange={(e) => setEventName(e.target.value)}
-                placeholder="Enter event title e.g. Technical Quiz"
-                className="w-full px-3 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-xs font-semibold"
-              />
-            ) : (
+
+            <div>
+              <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 uppercase mb-1">
+                Target Tournament Round *
+              </label>
               <select
-                value={eventName}
+                value={roundNumber}
                 onChange={(e) => {
-                  if (e.target.value === '__CUSTOM__') {
-                    setCustomEventInput(true);
-                  } else {
-                    setEventName(e.target.value);
+                  const newRound = parseInt(e.target.value);
+                  setRoundNumber(newRound);
+                  if (file) {
+                    processFileForPreview(file, eventName, newRound);
                   }
                 }}
-                className="w-full px-3 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-xs font-bold text-slate-800 dark:text-slate-200"
+                className="w-full px-3 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-xs font-bold text-brand-600 dark:text-brand-400"
               >
-                {eventsOptions.map((evt) => {
-                  const val = typeof evt === 'string' ? evt : evt.title;
+                {roundsOptions.map((r, idx) => {
+                  const rNum = typeof r === 'object' ? r.round_number : r;
+                  const rName = typeof r === 'object' && r.round_name && r.round_name !== `Round ${rNum}` ? `— ${r.round_name}` : '';
                   return (
-                    <option key={val} value={val}>
-                      {val}
+                    <option key={`import-rnd-${rNum}-${idx}`} value={rNum}>
+                      Round {rNum} {rName}
                     </option>
                   );
                 })}
-                <option value="__CUSTOM__">+ Enter New Custom Event Name...</option>
               </select>
-            )}
+            </div>
           </div>
 
-          <div>
-            <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 uppercase mb-1">
-              Target Tournament Round *
-            </label>
-            <select
-              value={roundNumber}
-              onChange={(e) => {
-                const newRound = parseInt(e.target.value);
-                setRoundNumber(newRound);
-                if (file) {
-                  processFileForPreview(file, eventName, newRound);
-                }
-              }}
-              className="w-full px-3 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-xs font-bold text-brand-600 dark:text-brand-400"
-            >
-              {roundsOptions.map((r) => (
-                <option key={r.round_number} value={r.round_number}>
-                  Round {r.round_number} {r.round_name ? `— ${r.round_name}` : ''}
-                </option>
-              ))}
-            </select>
+          {/* Time Limit Per Question Control */}
+          <div className="pt-3 border-t border-slate-100 dark:border-slate-800 flex flex-col md:flex-row md:items-center justify-between gap-3">
+            <div>
+              <div className="flex items-center gap-2">
+                <Clock className="w-4 h-4 text-brand-600 dark:text-brand-400" />
+                <label className="text-xs font-extrabold text-slate-800 dark:text-slate-200 uppercase tracking-wide">
+                  Time Limit Per Question
+                </label>
+                <span className={`text-[10px] px-2 py-0.5 rounded-full font-bold border transition-colors ${
+                  totalTimeLimitSeconds === 0
+                    ? 'bg-slate-100 text-slate-600 border-slate-200 dark:bg-slate-800 dark:text-slate-400 dark:border-slate-700'
+                    : 'bg-brand-50 text-brand-700 border-brand-200 dark:bg-brand-950/60 dark:text-brand-300 dark:border-brand-800'
+                }`}>
+                  {totalTimeLimitSeconds === 0 ? 'Default: 0s (Untimed)' : `${formatTimeLimit(totalTimeLimitSeconds)}`}
+                </span>
+              </div>
+              <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">
+                Set individual timer for each imported question. Leave at 0 for untimed examination.
+              </p>
+            </div>
+
+            {/* Minutes & Seconds Stepper / Inputs */}
+            <div className="flex flex-wrap items-center gap-2">
+              {/* Minutes Stepper */}
+              <div className="flex items-center bg-slate-50 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 rounded-xl p-0.5">
+                <button
+                  type="button"
+                  onClick={() => handleAdjustTimeLimit(-1, 0)}
+                  disabled={timeLimitMinutes <= 0}
+                  className="w-7 h-7 flex items-center justify-center rounded-lg hover:bg-white dark:hover:bg-slate-700 text-slate-600 dark:text-slate-300 disabled:opacity-30 transition-colors"
+                  title="Decrease 1 minute"
+                >
+                  <Minus className="w-3.5 h-3.5" />
+                </button>
+                <div className="flex items-center px-1.5">
+                  <input
+                    type="number"
+                    min="0"
+                    max="60"
+                    value={timeLimitMinutes}
+                    onChange={(e) => {
+                      const val = Math.max(0, parseInt(e.target.value, 10) || 0);
+                      setTimeLimitMinutes(val);
+                      const newTotal = val * 60 + (parseInt(timeLimitSeconds, 10) || 0);
+                      setPreviewQuestions((prev) =>
+                        prev.map((q) => ({ ...q, time_limit: newTotal, time_limit_seconds: newTotal }))
+                      );
+                    }}
+                    className="w-10 bg-transparent text-center text-xs font-black text-slate-900 dark:text-white focus:outline-none [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                  />
+                  <span className="text-[11px] font-bold text-slate-400 select-none">min</span>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => handleAdjustTimeLimit(1, 0)}
+                  className="w-7 h-7 flex items-center justify-center rounded-lg hover:bg-white dark:hover:bg-slate-700 text-slate-600 dark:text-slate-300 transition-colors"
+                  title="Increase 1 minute"
+                >
+                  <Plus className="w-3.5 h-3.5" />
+                </button>
+              </div>
+
+              <span className="text-slate-400 font-bold">:</span>
+
+              {/* Seconds Stepper */}
+              <div className="flex items-center bg-slate-50 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 rounded-xl p-0.5">
+                <button
+                  type="button"
+                  onClick={() => handleAdjustTimeLimit(0, -5)}
+                  disabled={timeLimitMinutes <= 0 && timeLimitSeconds <= 0}
+                  className="w-7 h-7 flex items-center justify-center rounded-lg hover:bg-white dark:hover:bg-slate-700 text-slate-600 dark:text-slate-300 disabled:opacity-30 transition-colors"
+                  title="Decrease 5 seconds"
+                >
+                  <Minus className="w-3.5 h-3.5" />
+                </button>
+                <div className="flex items-center px-1.5">
+                  <input
+                    type="number"
+                    min="0"
+                    max="59"
+                    step="5"
+                    value={timeLimitSeconds}
+                    onChange={(e) => {
+                      const val = Math.max(0, Math.min(59, parseInt(e.target.value, 10) || 0));
+                      setTimeLimitSeconds(val);
+                      const newTotal = (parseInt(timeLimitMinutes, 10) || 0) * 60 + val;
+                      setPreviewQuestions((prev) =>
+                        prev.map((q) => ({ ...q, time_limit: newTotal, time_limit_seconds: newTotal }))
+                      );
+                    }}
+                    className="w-10 bg-transparent text-center text-xs font-black text-slate-900 dark:text-white focus:outline-none [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                  />
+                  <span className="text-[11px] font-bold text-slate-400 select-none">sec</span>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => handleAdjustTimeLimit(0, 5)}
+                  className="w-7 h-7 flex items-center justify-center rounded-lg hover:bg-white dark:hover:bg-slate-700 text-slate-600 dark:text-slate-300 transition-colors"
+                  title="Increase 5 seconds"
+                >
+                  <Plus className="w-3.5 h-3.5" />
+                </button>
+              </div>
+
+              {/* Quick Presets */}
+              <div className="flex items-center gap-1">
+                <button
+                  type="button"
+                  onClick={() => handleAdjustTimeLimit(0, 30)}
+                  className="px-2 py-1 rounded-lg text-[10px] font-bold bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 transition-colors"
+                >
+                  +30s
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleAdjustTimeLimit(1, 0)}
+                  className="px-2 py-1 rounded-lg text-[10px] font-bold bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 transition-colors"
+                >
+                  +1m
+                </button>
+                {totalTimeLimitSeconds > 0 && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setTimeLimitMinutes(0);
+                      setTimeLimitSeconds(0);
+                      setPreviewQuestions((prev) =>
+                        prev.map((q) => ({ ...q, time_limit: 0, time_limit_seconds: 0 }))
+                      );
+                    }}
+                    className="px-2 py-1 rounded-lg text-[10px] font-bold text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/40 transition-colors"
+                    title="Reset to 0 (Untimed)"
+                  >
+                    Reset (0s)
+                  </button>
+                )}
+              </div>
+            </div>
           </div>
         </div>
 
@@ -458,6 +652,11 @@ export default function MultiFormatImportModal({
                     </div>
 
                     <div className="flex items-center gap-2 flex-shrink-0">
+                      <div className="flex items-center gap-1 px-2 py-1 rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/80 text-[10px] font-bold text-slate-600 dark:text-slate-300">
+                        <Clock className="w-3 h-3 text-brand-500" />
+                        <span>{formatTimeLimit(q.time_limit !== undefined ? q.time_limit : totalTimeLimitSeconds)}</span>
+                      </div>
+
                       <div className="flex items-center gap-1">
                         <span className="text-[10px] font-bold text-slate-400">Ans:</span>
                         <select
@@ -511,7 +710,10 @@ export default function MultiFormatImportModal({
               </>
             ) : (
               <>
-                <span>Import {previewQuestions.length} Questions to {eventName} (Round {roundNumber})</span>
+                <span>
+                  Import {previewQuestions.length} Questions to {eventName} (Round {roundNumber})
+                  {totalTimeLimitSeconds > 0 ? ` • ${formatTimeLimit(totalTimeLimitSeconds)} per Q` : ''}
+                </span>
                 <ArrowRight className="w-3.5 h-3.5" />
               </>
             )}

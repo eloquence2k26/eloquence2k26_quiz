@@ -648,33 +648,33 @@ class DBStore {
         }
       }
 
-      // Auto-link questions to default Round 1 quiz if quiz_questions is empty
-      if (
-        (!this.data.quiz_questions || this.data.quiz_questions.length === 0) &&
-        this.data.quizzes &&
-        this.data.quizzes.length > 0 &&
-        this.data.questions &&
-        this.data.questions.length > 0
-      ) {
-        const defaultQuiz = this.data.quizzes[0];
-        const defaultLinks = this.data.questions.map((q, idx) => ({
-          id: uuidv4(),
-          quiz_id: defaultQuiz.id,
-          question_id: q.id,
-          display_order: idx + 1,
-          created_at: new Date().toISOString()
-        }));
+      // Hydrate questions with event_name, round_number, events, and round_numbers from quiz_questions & quizzes
+      if (Array.isArray(this.data.questions)) {
+        for (const q of this.data.questions) {
+          const links = (this.data.quiz_questions || []).filter((qq) => qq.question_id === q.id);
+          const matchedQuizzes = links
+            .map((l) => (this.data.quizzes || []).find((qz) => qz.id === l.quiz_id))
+            .filter(Boolean);
 
-        this.data.quiz_questions = defaultLinks;
-        (async () => {
-          try {
-            const cleanLinks = defaultLinks.map((l) => this.sanitize('quiz_questions', l));
-            await supabase.from('quiz_questions').upsert(cleanLinks);
-            logger.info('[DB] Linked questions to default quiz in Supabase');
-          } catch (lErr) {
-            logger.warn(`[DB] Notice linking quiz questions: ${lErr.message}`);
+          if (matchedQuizzes.length > 0) {
+            const primaryQuiz = matchedQuizzes[0];
+            let evName = primaryQuiz.event_name;
+            if (!evName && primaryQuiz.event_id) {
+              const ev = (this.data.events || []).find((e) => e.id === primaryQuiz.event_id);
+              if (ev) evName = ev.title;
+            }
+            q.event_name = evName || q.event_name || 'Technical Quiz';
+            q.round_number = Number(primaryQuiz.round_number) || Number(q.round_number) || 1;
+            q.quiz_id = primaryQuiz.id;
+            q.round_numbers = Array.from(new Set(matchedQuizzes.map((qz) => Number(qz.round_number) || 1)));
+            q.events = Array.from(new Set(matchedQuizzes.map((qz) => qz.event_name || evName).filter(Boolean)));
+          } else {
+            q.event_name = q.event_name || 'Technical Quiz';
+            q.round_number = Number(q.round_number) || 1;
+            q.round_numbers = [q.round_number];
+            q.events = [q.event_name];
           }
-        })();
+        }
       }
 
       // Start automatic live background synchronization timer (every 60s)
@@ -880,7 +880,10 @@ class DBStore {
    */
   async deleteQuestions(ids = null) {
     try {
-      const isDeleteAll = !ids || !Array.isArray(ids) || ids.length === 0;
+      if (Array.isArray(ids) && ids.length === 0) {
+        return 0;
+      }
+      const isDeleteAll = ids === null || ids === undefined;
       let targetIds = [];
 
       if (isDeleteAll) {

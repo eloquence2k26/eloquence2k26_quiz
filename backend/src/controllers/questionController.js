@@ -17,15 +17,14 @@ class QuestionController {
       : db.find('quizzes', (qz) => {
           const matchesRound = Number(qz.round_number) === numRound;
           const matchesEvent = qz.event_name && qz.event_name.trim().toLowerCase() === targetEventLower;
-          const matchesTitle = qz.title && (qz.title.trim().toLowerCase() === targetEventLower || qz.title.trim().toLowerCase().startsWith(targetEventLower));
-          return matchesRound && (matchesEvent || matchesTitle);
+          return matchesRound && matchesEvent;
         });
 
     if (!matchingQuiz) {
       // Ensure Event exists in events table
       let ev = db.find('events', (e) => e.title && e.title.trim().toLowerCase() === targetEventLower);
       if (!ev) {
-        ev = db.insert('events', {
+        ev = await db.insertAsync('events', {
           title: targetEvent,
           code: targetEvent.replace(/[^a-zA-Z0-9]/g, '').substring(0, 6).toUpperCase() || 'ELQ26',
           description: `${targetEvent} symposium event`,
@@ -36,7 +35,7 @@ class QuestionController {
       // Ensure Round exists in rounds table
       let rnd = db.find('rounds', (r) => Number(r.round_number) === numRound && (r.event_id === ev.id || !r.event_id));
       if (!rnd) {
-        rnd = db.insert('rounds', {
+        rnd = await db.insertAsync('rounds', {
           event_id: ev.id,
           round_number: numRound,
           round_name: `Round ${numRound}`,
@@ -47,10 +46,10 @@ class QuestionController {
       }
 
       // Create Live quiz for this event and round so participants can see and attempt it
-      matchingQuiz = db.insert('quizzes', {
+      matchingQuiz = await db.insertAsync('quizzes', {
         event_id: ev.id,
         round_id: rnd.id,
-        title: `${targetEvent} - Examination`,
+        title: `${targetEvent} - Round ${numRound} Examination`,
         event_name: targetEvent,
         event_code: ev.code || 'ELQ26',
         description: `${targetEvent} Examination Round ${numRound}`,
@@ -93,6 +92,22 @@ class QuestionController {
       // Update quiz question count
       const updatedCount = db.filter('quiz_questions', (qq) => qq.quiz_id === matchingQuiz.id).length;
       db.update('quizzes', (qz) => qz.id === matchingQuiz.id, { total_questions: updatedCount });
+
+      // Explicitly tag questionItem in memory with target event & round
+      questionItem.event_name = matchingQuiz.event_name || targetEvent;
+      questionItem.round_number = Number(matchingQuiz.round_number) || numRound;
+      questionItem.quiz_id = matchingQuiz.id;
+      questionItem.events = [questionItem.event_name];
+      questionItem.round_numbers = [questionItem.round_number];
+
+      const qInMemory = db.find('questions', (q) => q.id === questionItem.id);
+      if (qInMemory) {
+        qInMemory.event_name = questionItem.event_name;
+        qInMemory.round_number = questionItem.round_number;
+        qInMemory.quiz_id = questionItem.quiz_id;
+        qInMemory.events = questionItem.events;
+        qInMemory.round_numbers = questionItem.round_numbers;
+      }
     }
 
     return matchingQuiz;
@@ -108,24 +123,50 @@ class QuestionController {
       const quizzes = db.get('quizzes') || [];
       const quizQuestions = db.get('quiz_questions') || [];
       const registeredEvents = db.get('events') || [];
-      const defaultEventTitle = registeredEvents[0]?.title || quizzes[0]?.event_name || quizzes[0]?.title || 'Test run';
+      const defaultEventTitle = registeredEvents[0]?.title || quizzes[0]?.event_name || quizzes[0]?.title || 'Technical Quiz';
 
-      // Enrich questions with associated event and rounds strictly without cross-round bleeding
+      // Enrich questions with associated event and rounds strictly from quiz_questions & quizzes
       let questions = rawQuestions.map((q) => {
-        const primaryEvent = q.event_name || defaultEventTitle;
-        const roundNum = Number(q.round_number) || 1;
-        const roundNumbers = Array.from(
-          new Set([
-            roundNum,
-            ...(Array.isArray(q.rounds) ? q.rounds.map(Number) : [])
-          ].filter((r) => !isNaN(r)))
-        );
+        const links = quizQuestions.filter((qq) => qq.question_id === q.id);
+        const linkedQuizzes = links
+          .map((l) => quizzes.find((qz) => qz.id === l.quiz_id))
+          .filter(Boolean);
+
+        let primaryEvent = q.event_name;
+        let roundNum = q.round_number !== undefined && q.round_number !== null ? Number(q.round_number) : null;
+        let roundNumbers = [];
+        let eventNames = [];
+
+        if (linkedQuizzes.length > 0) {
+          primaryEvent = linkedQuizzes[0].event_name || primaryEvent;
+          roundNum = Number(linkedQuizzes[0].round_number) || roundNum || 1;
+          roundNumbers = Array.from(new Set(linkedQuizzes.map((qz) => Number(qz.round_number)).filter((n) => !isNaN(n) && n > 0)));
+          eventNames = Array.from(new Set(linkedQuizzes.map((qz) => qz.event_name).filter(Boolean)));
+        }
+
+        if (!primaryEvent) primaryEvent = defaultEventTitle;
+        if (!roundNum) roundNum = 1;
+        if (roundNumbers.length === 0) roundNumbers = [roundNum];
+        if (eventNames.length === 0) eventNames = [primaryEvent];
+
+        let timeLimit = Number(q.time_limit) || Number(q.time_limit_seconds) || 0;
+        let cleanExplanation = q.explanation || '';
+        if (cleanExplanation && cleanExplanation.includes('<!-- time_limit:')) {
+          const match = cleanExplanation.match(/<!-- time_limit:\s*(\d+)\s*-->/);
+          if (match) {
+            timeLimit = Number(match[1]);
+            cleanExplanation = cleanExplanation.replace(/\s*<!-- time_limit:\s*\d+\s*-->/, '').trim();
+          }
+        }
 
         return {
           ...q,
+          time_limit: timeLimit,
+          time_limit_seconds: timeLimit,
+          explanation: cleanExplanation,
           event_name: primaryEvent,
-          events: [primaryEvent],
-          round_numbers: roundNumbers.length > 0 ? roundNumbers : [1],
+          events: eventNames,
+          round_numbers: roundNumbers,
           round_number: roundNum
         };
       });
@@ -193,25 +234,33 @@ class QuestionController {
         return error(res, 'Correct answer must be A, B, C, or D', 400);
       }
 
-      const newQ = await db.insertAsync('questions', {
-        question_text: question_text.trim(),
-        option_a: option_a.trim(),
-        option_b: option_b.trim(),
-        option_c: option_c.trim(),
-        option_d: option_d.trim(),
-        correct_answer: correct_answer.toUpperCase().trim(),
-        marks: Number(marks),
-        negative_marks: Number(negative_marks),
-        explanation: explanation ? explanation.trim() : '',
-        category: category.trim(),
-        difficulty: ['Easy', 'Medium', 'Hard'].includes(difficulty) ? difficulty : 'Medium',
-        image_url: req.body.image_url || req.body.image || '',
-        image: req.body.image || req.body.image_url || '',
-        code_snippet: req.body.code_snippet || '',
-        event_name: event_name ? event_name.trim() : 'Technical Quiz',
-        round_number: Number(round_number) || 1,
-        created_by: req.user.id
-      });
+        const qTimeLimit = req.body.time_limit !== undefined ? Number(req.body.time_limit) : (req.body.time_limit_seconds !== undefined ? Number(req.body.time_limit_seconds) : 0);
+        let qExplanation = explanation ? explanation.trim() : '';
+        if (qTimeLimit > 0 && !qExplanation.includes('<!-- time_limit:')) {
+          qExplanation = qExplanation ? `${qExplanation}\n<!-- time_limit: ${qTimeLimit} -->` : `<!-- time_limit: ${qTimeLimit} -->`;
+        }
+
+        const newQ = await db.insertAsync('questions', {
+          question_text: question_text.trim(),
+          option_a: option_a.trim(),
+          option_b: option_b.trim(),
+          option_c: option_c.trim(),
+          option_d: option_d.trim(),
+          correct_answer: correct_answer.toUpperCase().trim(),
+          marks: Number(marks),
+          negative_marks: Number(negative_marks),
+          explanation: qExplanation,
+          category: category.trim(),
+          difficulty: ['Easy', 'Medium', 'Hard'].includes(difficulty) ? difficulty : 'Medium',
+          image_url: req.body.image_url || req.body.image || '',
+          image: req.body.image || req.body.image_url || '',
+          code_snippet: req.body.code_snippet || '',
+          event_name: event_name ? event_name.trim() : 'Technical Quiz',
+          round_number: Number(round_number) || 1,
+          time_limit: qTimeLimit,
+          time_limit_seconds: qTimeLimit,
+          created_by: req.user.id
+        });
 
       // Link to matching/auto-created live quiz in quiz_questions
       await QuestionController.ensureQuizAndLink(newQ, event_name, round_number, req.body.quiz_id);
@@ -300,6 +349,9 @@ class QuestionController {
         return error(res, 'No questions provided for bulk upload', 400);
       }
 
+      const defaultEvent = (req.body.event_name || 'Technical Quiz').trim();
+      const defaultRound = Number(req.body.round_number) || 1;
+
       const inserted = [];
       for (const q of questions) {
         const qText = q.question_text ? String(q.question_text).trim() : '';
@@ -312,7 +364,16 @@ class QuestionController {
           corrAns = 'A';
         }
 
+        const qEvt = (q.event_name || defaultEvent).trim();
+        const qRound = Number(q.round_number) || defaultRound;
+
         if (qText && optA && optB) {
+          const timeLimit = q.time_limit !== undefined ? Number(q.time_limit) : (q.time_limit_seconds !== undefined ? Number(q.time_limit_seconds) : 0);
+          let rawExplanation = q.explanation ? String(q.explanation).trim() : '';
+          if (timeLimit > 0 && !rawExplanation.includes('<!-- time_limit:')) {
+            rawExplanation = rawExplanation ? `${rawExplanation}\n<!-- time_limit: ${timeLimit} -->` : `<!-- time_limit: ${timeLimit} -->`;
+          }
+
           const item = await db.insertAsync('questions', {
             question_text: qText,
             option_a: optA,
@@ -322,20 +383,22 @@ class QuestionController {
             correct_answer: corrAns,
             marks: q.marks !== undefined && q.marks !== null && !isNaN(Number(q.marks)) ? Number(q.marks) : 1.0,
             negative_marks: q.negative_marks !== undefined && q.negative_marks !== null && !isNaN(Number(q.negative_marks)) ? Number(q.negative_marks) : 0.0,
-            explanation: q.explanation ? String(q.explanation).trim() : '',
+            explanation: rawExplanation,
             category: q.category ? String(q.category).trim() : 'General',
             difficulty: ['Easy', 'Medium', 'Hard'].includes(q.difficulty) ? q.difficulty : 'Medium',
             image_url: q.image_url || q.image || '',
             image: q.image || q.image_url || '',
             code_snippet: q.code_snippet || '',
-            event_name: q.event_name ? String(q.event_name).trim() : 'Technical Quiz',
-            round_number: Number(q.round_number) || 1,
+            event_name: qEvt,
+            round_number: qRound,
+            time_limit: timeLimit,
+            time_limit_seconds: timeLimit,
             created_by: req.user ? req.user.id : 'a0000000-0000-0000-0000-000000000001'
           });
           inserted.push(item);
 
           // Link to matching/auto-created live quiz in quiz_questions
-          await QuestionController.ensureQuizAndLink(item, q.event_name, q.round_number, req.body.quiz_id);
+          await QuestionController.ensureQuizAndLink(item, qEvt, qRound, req.body.quiz_id);
         }
       }
 
@@ -356,13 +419,16 @@ class QuestionController {
         return error(res, 'No file uploaded', 400);
       }
 
-      const { event_name = 'Eloquence 2026', round_number = 1, preview_only = 'false', quiz_id } = req.body;
+      const { event_name = 'Technical Quiz', round_number = 1, preview_only = 'false', quiz_id, time_limit = 0 } = req.body;
       const originalFilename = req.file.originalname;
       const fileBuffer = req.file.buffer;
+      const targetEvent = (event_name || 'Technical Quiz').trim();
+      const numRound = Number(round_number) || 1;
 
       const parsedQuestions = await DocumentParserService.parseDocument(fileBuffer, originalFilename, {
-        event_name,
-        round_number: Number(round_number) || 1
+        event_name: targetEvent,
+        round_number: numRound,
+        time_limit: Number(time_limit) || 0
       });
 
       if (!parsedQuestions || parsedQuestions.length === 0) {
@@ -386,10 +452,8 @@ class QuestionController {
         );
       }
 
-      // Insert into DB
+      // Insert into DB with strict event and round scoping
       const inserted = [];
-      const numRound = Number(round_number) || 1;
-      const targetEvent = event_name || 'Technical Quiz';
 
       for (const q of parsedQuestions) {
         const item = await db.insertAsync('questions', {
@@ -407,20 +471,21 @@ class QuestionController {
           image_url: q.image_url || q.image || '',
           image: q.image || q.image_url || '',
           code_snippet: q.code_snippet || '',
-          event_name: q.event_name || targetEvent,
-          round_number: Number(q.round_number) || numRound,
+          event_name: targetEvent,
+          round_number: numRound,
           created_by: req.user ? req.user.id : 'a0000000-0000-0000-0000-000000000001'
         });
         inserted.push(item);
 
         // Link to matching/auto-created live quiz in quiz_questions
-        await QuestionController.ensureQuizAndLink(item, q.event_name || targetEvent, q.round_number || numRound, quiz_id);
+        await QuestionController.ensureQuizAndLink(item, targetEvent, numRound, quiz_id);
       }
 
       AuditService.log(req.user ? req.user.id : 'system', 'IMPORT_FILE_QUESTIONS', 'QUESTION', 'BATCH', {
         filename: originalFilename,
         count: inserted.length,
-        round_number
+        event_name: targetEvent,
+        round_number: numRound
       });
 
       return success(
@@ -446,19 +511,42 @@ class QuestionController {
       const round = req.body?.round !== undefined ? req.body.round : req.query?.round;
       let count = 0;
 
-      if ((event && event !== 'ALL') || (round && round !== 'ALL')) {
-        const targetEvent = event ? String(event).trim().toLowerCase() : '';
+      if ((event && event !== 'ALL') || (round !== undefined && round !== null && round !== 'ALL')) {
+        const targetEvent = event && event !== 'ALL' ? String(event).trim().toLowerCase() : '';
         const targetRound = round !== undefined && round !== null && round !== 'ALL' ? Number(round) : null;
 
+        const quizzes = db.get('quizzes') || [];
+        const quizQuestions = db.get('quiz_questions') || [];
+
         const toDelete = db.filter('questions', (q) => {
-          const qEvt = (q.event_name || '').trim().toLowerCase();
+          const links = quizQuestions.filter((qq) => qq.question_id === q.id);
+          const linkedQuizzes = links
+            .map((l) => quizzes.find((qz) => qz.id === l.quiz_id))
+            .filter(Boolean);
+
+          let qEvt = (q.event_name || '').trim().toLowerCase();
+          let qRound = Number(q.round_number);
+
+          if (linkedQuizzes.length > 0) {
+            const evNames = linkedQuizzes.map((qz) => (qz.event_name || '').trim().toLowerCase()).filter(Boolean);
+            const rNums = linkedQuizzes.map((qz) => Number(qz.round_number)).filter((n) => !isNaN(n));
+            
+            const matchEvent = !targetEvent || targetEvent === 'all' || qEvt === targetEvent || evNames.includes(targetEvent);
+            const matchRound = !targetRound || qRound === targetRound || rNums.includes(targetRound);
+            return matchEvent && matchRound;
+          }
+
           const matchEvent = !targetEvent || targetEvent === 'all' || qEvt === targetEvent || (Array.isArray(q.events) && q.events.some((e) => e && e.toLowerCase() === targetEvent));
-          const matchRound = !targetRound || Number(q.round_number) === targetRound || (Array.isArray(q.round_numbers) && q.round_numbers.includes(targetRound));
+          const matchRound = !targetRound || qRound === targetRound || (Array.isArray(q.round_numbers) && q.round_numbers.includes(targetRound));
           return matchEvent && matchRound;
         });
 
         const deleteIds = toDelete.map((q) => q.id);
-        count = await db.deleteQuestions(deleteIds);
+        if (deleteIds.length > 0) {
+          count = await db.deleteQuestions(deleteIds);
+        } else {
+          count = 0;
+        }
       } else {
         count = await db.deleteQuestions(null);
       }
